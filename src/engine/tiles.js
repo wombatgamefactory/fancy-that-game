@@ -88,14 +88,14 @@ export function createTileBag() {
   return bag;
 }
 
-// Initialize 5×5 market grid by drawing from bag
+// Initialize 6×6 market grid by drawing from bag
 export function initMarket(bag) {
   const market = [];
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < 36; i++) {
     market.push(bag.shift());
   }
   return market;
 }
 
-export const BOARD_SIZE = 5;
+export const BOARD_SIZE = 6;
 export const TRACK_MAX = 5;

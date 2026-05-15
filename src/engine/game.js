@@ -66,10 +66,10 @@ function calculateSweep(marketIndex) {
 
   // Sweep entire row (left and right)
   for (let c = col - 1; c >= 0; c--) {
-    swept.push(row * 5 + c);
+    swept.push(row * BOARD_SIZE + c);
   }
-  for (let c = col + 1; c < 5; c++) {
-    swept.push(row * 5 + c);
+  for (let c = col + 1; c < BOARD_SIZE; c++) {
+    swept.push(row * BOARD_SIZE + c);
   }
 
   return swept;
@@ -234,19 +234,19 @@ function shouldRefill(gameState) {
   let emptyCount = 0;
 
   // Count empty rows
-  for (let row = 0; row < 5; row++) {
+  for (let row = 0; row < BOARD_SIZE; row++) {
     const rowTiles = [];
-    for (let col = 0; col < 5; col++) {
-      rowTiles.push(gameState.market[row * 5 + col]);
+    for (let col = 0; col < BOARD_SIZE; col++) {
+      rowTiles.push(gameState.market[row * BOARD_SIZE + col]);
     }
     if (rowTiles.every(t => t === null)) emptyCount++;
   }
 
   // Count empty columns
-  for (let col = 0; col < 5; col++) {
+  for (let col = 0; col < BOARD_SIZE; col++) {
     const colTiles = [];
-    for (let row = 0; row < 5; row++) {
-      colTiles.push(gameState.market[row * 5 + col]);
+    for (let row = 0; row < BOARD_SIZE; row++) {
+      colTiles.push(gameState.market[row * BOARD_SIZE + col]);
     }
     if (colTiles.every(t => t === null)) emptyCount++;
   }

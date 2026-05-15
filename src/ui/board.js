@@ -83,43 +83,67 @@ const difficultyMap = {
 
 export function renderGameScreen(container, gameState, onMarketClick, onPlacementSubmit, onGameEnd) {
   container.innerHTML = `
-    <div style="display: flex; height: 100vh; font-family: Arial, sans-serif; background: #f5f5f5;">
-      <!-- Left: Market -->
-      <div style="flex: 0 0 400px; padding: 20px; background: white; border-right: 2px solid #ddd; overflow-y: auto;">
-        <h2>Market (5×5)</h2>
-        <div id="market" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px;">
-          <!-- Populated dynamically -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; height: 100vh; gap: 15px; padding: 15px; font-family: Arial, sans-serif; background: #f5f5f5; overflow: hidden;">
+
+      <!-- Top: Player 2 -->
+      <div style="grid-column: 2; grid-row: 1; background: white; padding: 10px; border: 2px solid #999; border-radius: 4px; overflow: hidden;">
+        <h3 style="margin: 5px 0; font-size: 14px;">Player 2</h3>
+        <div id="playerBoard2" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px;">
         </div>
       </div>
 
-      <!-- Center: Current Player Board + Selection -->
-      <div style="flex: 1; padding: 20px; display: flex; flex-direction: column;">
-        <h2 id="currentPlayer">Player Turn</h2>
-        <div style="flex: 1; display: flex; gap: 20px;">
-          <!-- Player Board -->
-          <div style="flex: 1;">
-            <h3>Your Board (5×5)</h3>
-            <div id="playerBoard" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; aspect-ratio: 1;">
-              <!-- Populated dynamically -->
-            </div>
-          </div>
-
-          <!-- Stats Sidebar -->
-          <div style="flex: 0 0 250px; background: #f9f9f9; padding: 15px; border: 1px solid #ddd; border-radius: 4px; overflow-y: auto;">
-            <h3>Game Stats</h3>
-            <div id="stats">
-              <!-- Populated dynamically -->
-            </div>
-          </div>
+      <!-- Left: Player 3 -->
+      <div style="grid-column: 1; grid-row: 2; background: white; padding: 10px; border: 2px solid #999; border-radius: 4px; overflow: hidden;">
+        <h3 style="margin: 5px 0; font-size: 14px;">Player 3</h3>
+        <div id="playerBoard3" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px;">
         </div>
+      </div>
 
-        <!-- Placement Controls -->
-        <div id="placementControls" style="margin-top: 20px; padding: 15px; background: #fffacd; border: 2px solid #ffeb3b; border-radius: 4px; display: none;">
-          <h3>Place Selected Tiles</h3>
-          <p id="selectedTilesInfo"></p>
-          <button id="placementSubmit" style="padding: 8px 16px; margin-right: 10px; cursor: pointer;">Submit Placement</button>
-          <button id="placementCancel" style="padding: 8px 16px; cursor: pointer;">Cancel</button>
+      <!-- Center: Market + Current Player Info -->
+      <div style="grid-column: 2; grid-row: 2; background: white; padding: 15px; border: 2px solid #333; border-radius: 4px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+        <h2 id="currentPlayer" style="margin: 0 0 10px 0; font-size: 18px;">Player Turn</h2>
+        <div id="market" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; width: 100%; aspect-ratio: 1;">
         </div>
+      </div>
+
+      <!-- Right: Player 4 -->
+      <div style="grid-column: 3; grid-row: 2; background: white; padding: 10px; border: 2px solid #999; border-radius: 4px; overflow: hidden;">
+        <h3 style="margin: 5px 0; font-size: 14px;">Player 4</h3>
+        <div id="playerBoard4" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px;">
+        </div>
+      </div>
+
+      <!-- Bottom: Player 1 + Controls + Stats -->
+      <div style="grid-column: 2; grid-row: 3; background: white; padding: 10px; border: 2px solid #0066cc; border-radius: 4px; overflow: hidden;">
+        <h3 style="margin: 5px 0; font-size: 14px;">Your Board (Player 1)</h3>
+        <div id="playerBoard1" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; margin-bottom: 10px;">
+        </div>
+        <div id="placementControls" style="background: #fffacd; border: 2px solid #ffeb3b; border-radius: 4px; padding: 8px; display: none; font-size: 12px;">
+          <p id="selectedTilesInfo" style="margin: 0 0 5px 0;"></p>
+          <button id="placementSubmit" style="padding: 4px 12px; margin-right: 5px; cursor: pointer; font-size: 12px;">Submit</button>
+          <button id="placementCancel" style="padding: 4px 12px; cursor: pointer; font-size: 12px;">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Stats: Top-left and Top-right corners -->
+      <div style="grid-column: 1; grid-row: 1; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; border-radius: 4px; overflow-y: auto; font-size: 12px;">
+        <h3 style="margin: 0 0 8px 0; font-size: 14px;">Stats</h3>
+        <div id="stats"></div>
+      </div>
+
+      <div style="grid-column: 3; grid-row: 1; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; border-radius: 4px; overflow-y: auto; font-size: 12px;">
+        <h3 style="margin: 0 0 8px 0; font-size: 14px;">Legend</h3>
+        <p style="margin: 4px 0; font-size: 11px;"><strong>🟨 Yellow</strong> 🟩 Green 🟦 Blue 🟥 Pink 🟧 Orange</p>
+      </div>
+
+      <!-- Bottom stats -->
+      <div style="grid-column: 1; grid-row: 3; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; overflow-y: auto;">
+        <p id="gameInfo" style="margin: 0;"></p>
+      </div>
+
+      <div style="grid-column: 3; grid-row: 3; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; overflow-y: auto;">
+        <p style="margin: 0;"><strong>Turns:</strong> <span id="turnsDisplay">0</span></p>
+        <p style="margin: 4px 0 0 0;"><strong>Market:</strong> <span id="marketDisplay">36</span> tiles</p>
       </div>
     </div>
   `;
@@ -151,13 +175,13 @@ export function updateGameDisplay(gameState) {
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
   // Update current player info
-  document.getElementById('currentPlayer').textContent = `${currentPlayer.name}'s Turn (Phase: ${gameState.gamePhase})`;
+  document.getElementById('currentPlayer').textContent = `${currentPlayer.name}'s Turn`;
 
   // Update market
   const market = document.getElementById('market');
   if (market) {
     market.innerHTML = gameState.market.map((tile, idx) => `
-      <div style="aspect-ratio: 1; border: 2px solid #ddd; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: ${tile ? 'pointer' : 'default'}; background: ${tile ? getColourCSS(tile.colour) : '#eee'}; opacity: ${tile ? 1 : 0.3}; position: relative;" data-index="${idx}" class="market-tile">
+      <div style="aspect-ratio: 1; border: 2px solid #ddd; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: ${tile ? 'pointer' : 'default'}; background: ${tile ? getColourCSS(tile.colour) : '#eee'}; opacity: ${tile ? 1 : 0.3};" data-index="${idx}" class="market-tile">
         ${tile ? `<img src="images/symbol_${tile.ingredient}.png" style="width: 70%; height: 70%; object-fit: contain;" alt="${tile.ingredient}">` : ''}
       </div>
     `).join('');
@@ -172,42 +196,63 @@ export function updateGameDisplay(gameState) {
     }
   }
 
-  // Update player board
-  const playerBoard = document.getElementById('playerBoard');
-  if (playerBoard) {
-    playerBoard.innerHTML = currentPlayer.board.map((tile, idx) => `
-      <div style="aspect-ratio: 1; border: 2px solid #999; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: ${tile ? getColourCSS(tile.colour) : '#fff'}; cursor: ${gameState.gamePhase === 'place' ? 'pointer' : 'default'};" class="board-tile" data-index="${idx}">
-        ${tile ? `<img src="images/symbol_${tile.ingredient}.png" style="width: 70%; height: 70%; object-fit: contain;" alt="${tile.ingredient}">` : ''}
-      </div>
-    `).join('');
+  // Update all 4 player boards
+  gameState.players.forEach((player, playerIdx) => {
+    const boardEl = document.getElementById(`playerBoard${playerIdx + 1}`);
+    if (boardEl) {
+      boardEl.innerHTML = player.board.map((tile, idx) => {
+        const isP1 = playerIdx === 0;
+        const canPlace = gameState.gamePhase === 'place' && isP1 && currentPlayer.isHuman;
+        return `
+          <div style="aspect-ratio: 1; border: 2px solid #999; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: ${tile ? getColourCSS(tile.colour) : '#fff'}; cursor: ${canPlace ? 'pointer' : 'default'};" class="board-tile" data-index="${idx}" data-player="${playerIdx}">
+            ${tile ? `<img src="images/symbol_${tile.ingredient}.png" style="width: 70%; height: 70%; object-fit: contain;" alt="${tile.ingredient}">` : ''}
+          </div>
+        `;
+      }).join('');
 
-    if (gameState.gamePhase === 'place') {
-      document.querySelectorAll('.board-tile').forEach(el => {
-        el.addEventListener('click', () => togglePlacement(parseInt(el.dataset.index), gameState));
-      });
+      // Add click handlers only for Player 1 (human) during placement
+      if (playerIdx === 0 && gameState.gamePhase === 'place' && currentPlayer.isHuman) {
+        boardEl.querySelectorAll('.board-tile').forEach(el => {
+          el.addEventListener('click', () => togglePlacement(parseInt(el.dataset.index), gameState));
+        });
+      }
     }
-  }
+  });
 
   // Update stats
   const stats = document.getElementById('stats');
   if (stats) {
     const statsHTML = gameState.players.map(p => `
-      <div style="margin: 10px 0; padding: 8px; background: white; border-radius: 3px;">
+      <div style="margin: 5px 0; padding: 6px; background: white; border-radius: 3px; font-size: 11px;">
         <strong>${p.name}</strong><br>
-        Score: ${p.score}<br>
-        Cards: ${p.claimedCards.length}<br>
-        Tracks: ${Object.entries(p.ingredientTracks).map(([k, v]) => `${k.substring(0,1)}:${v}`).join(' ')}
+        Score: ${p.score} | Cards: ${p.claimedCards.length}
       </div>
     `).join('');
     stats.innerHTML = statsHTML;
   }
 
-  // Update placement controls
+  // Update game info
+  const gameInfo = document.getElementById('gameInfo');
+  if (gameInfo) {
+    gameInfo.textContent = `Phase: ${gameState.gamePhase}`;
+  }
+
+  // Update turn and market tile count
+  const turnsDisplay = document.getElementById('turnsDisplay');
+  if (turnsDisplay) turnsDisplay.textContent = gameState.stats.turnsPlayed;
+
+  const marketDisplay = document.getElementById('marketDisplay');
+  if (marketDisplay) {
+    const tilesInMarket = gameState.market.filter(t => t !== null).length;
+    marketDisplay.textContent = tilesInMarket;
+  }
+
+  // Update placement controls (only for Player 1 / human)
   const placementControls = document.getElementById('placementControls');
   if (placementControls) {
-    if (gameState.gamePhase === 'place' && currentPlayer.isHuman) {
+    if (gameState.gamePhase === 'place' && gameState.players[0].isHuman && gameState.currentPlayerIndex === 0) {
       placementControls.style.display = 'block';
-      document.getElementById('selectedTilesInfo').textContent = `Selected: ${gameState.selectedTiles.length} tiles to place. Click on your board to place them.`;
+      document.getElementById('selectedTilesInfo').textContent = `Selected: ${gameState.selectedTiles.length} tiles to place`;
     } else {
       placementControls.style.display = 'none';
     }
