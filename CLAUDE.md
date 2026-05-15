@@ -19,8 +19,9 @@ board.js is the only file that touches the DOM.
 ## Game summary
 - 2–4 players; tile placement + patisserie collection
 - Central market: 5×5 grid, refilled from a tile bag
-- Personal boards: 5×5 grid per player (4×4 in 2-player)
-- Tiles: 5 colours × 5 ingredient symbols = 100 tiles (4 copies each)
+- Personal boards: 5×5 grid per player
+- Tiles: 5 colours × 5 ingredients = 100 unique tiles (4 copies each = 400 total)
+- Reward cards: 50 unique patisserie cards, each requiring a specific 2×2 colour pattern
 
 ## Turn structure
 1. SWEEP: point to a tile; take it + all tiles between it and the nearest edge
@@ -38,23 +39,27 @@ board.js is the only file that touches the DOM.
   for that ingredient. No flat VP.
 - Personal board scoring strip: additional end-game criteria (TBD)
 
-## Key constants (update as design is finalised)
-- BOARD_SIZE = 5           (4 in 2-player mode)
-- COLOURS = 5              (palette TBD: pink, yellow, green, blue, cream)
-- SYMBOLS = ['strawberry', 'lemon', 'chocolate', 'almond', 'caramel']
-- TILES_PER_TYPE = 4       (100 tiles total)
-- TRACK_MAX = 5
-- PATISSERIE_TYPES = 8     (TBD from candidate list)
-- CARDS_PER_TYPE = 3       (24 cards total)
-- REFILL_TRIGGER = 3       (empty rows + columns combined)
+## Key constants
+- BOARD_SIZE = 5
+- COLOURS = ['yellow', 'pink', 'green', 'blue', 'orange']
+- INGREDIENTS = ['lemon', 'chocolate', 'caramel', 'strawberry', 'almond']
+- TILES_PER_TYPE = 4
+- TRACK_MAX = 5 (ingredient tracks)
+- REFILL_TRIGGER = 3 (empty rows/columns that trigger refill)
+- REWARD_CARDS = 50 unique patisserie cards
 
 ## Patisserie card structure
+Each card in REWARD_CARDS:
 {
-  type: 'bakewellTart',
-  pattern: [[C1, C2], [C3, C4]],   // 2×2 colour pattern
-  positions: [0,1,2],              // which of 4 cells the figure appears in
-  symbols: ['almond', 'almond', 'strawberry']  // end-game scoring symbols
+  id: 1-50,
+  name: 'Lemon madeleine',
+  ingredient: 'lemon',              // ingredient that scores when card is claimed
+  pattern: ['yellow', 'pink', ...]  // 1-4 colours forming the 2×2 pattern (left-to-right, top-to-bottom)
 }
+
+Pattern matching: cards are claimed when a player completes a 2×2 region on their
+personal board matching the card's colour pattern (no rotation/reflection).
+When claimed, player advances that ingredient's track (already advanced on SWEEP).
 
 ## Simulation mode (Node)
 node simulate.js --games 1000 --players 2
