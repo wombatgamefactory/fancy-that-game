@@ -117,11 +117,19 @@ function isValidPlacement(board, positions) {
 // Player places all selected tiles (PLACE phase)
 export function place(gameState, placements) {
   if (gameState.gamePhase !== 'place') throw new Error('Not in place phase');
+
+  const player = gameState.players[gameState.currentPlayerIndex];
+
+  // If no placements provided (bot couldn't find valid positions), end game
+  if (placements.length === 0 || placements.length < gameState.selectedTiles.length) {
+    gameState.gameOver = true;
+    calculateFinalScores(gameState);
+    return gameState;
+  }
+
   if (placements.length !== gameState.selectedTiles.length) {
     throw new Error('Must place all selected tiles');
   }
-
-  const player = gameState.players[gameState.currentPlayerIndex];
 
   // Check validity
   if (!isValidPlacement(player.board, placements)) {

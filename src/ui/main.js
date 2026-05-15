@@ -71,6 +71,10 @@ async function autoPlayGame() {
       if (availableTiles.length > 0) {
         const marketIndex = availableTiles[Math.floor(Math.random() * availableTiles.length)];
         sweep(gameState, marketIndex);
+      } else {
+        // No tiles in market - end game
+        gameState.gameOver = true;
+        break;
       }
     } else if (gameState.gamePhase === 'place') {
       // AI chooses placement for selected tiles
