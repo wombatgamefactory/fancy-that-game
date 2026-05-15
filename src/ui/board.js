@@ -83,7 +83,7 @@ const difficultyMap = {
 
 export function renderGameScreen(container, gameState, onMarketClick, onPlacementSubmit, onGameEnd) {
   container.innerHTML = `
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; height: 100vh; gap: 8px; padding: 10px; font-family: Arial, sans-serif; background: #f5f5f5; overflow: hidden; font-size: 13px;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1.1fr 1fr 1.1fr; height: 100vh; gap: 8px; padding: 10px; font-family: Arial, sans-serif; background: #f5f5f5; overflow: hidden; font-size: 13px;">
 
       <!-- Top: Player 2 -->
       <div style="grid-column: 2; grid-row: 1; background: white; padding: 6px; border: 2px solid #999; border-radius: 3px; overflow: hidden; display: flex; flex-direction: column;">
