@@ -83,67 +83,67 @@ const difficultyMap = {
 
 export function renderGameScreen(container, gameState, onMarketClick, onPlacementSubmit, onGameEnd) {
   container.innerHTML = `
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; height: 100vh; gap: 15px; padding: 15px; font-family: Arial, sans-serif; background: #f5f5f5; overflow: hidden;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; height: 100vh; gap: 8px; padding: 10px; font-family: Arial, sans-serif; background: #f5f5f5; overflow: hidden; font-size: 13px;">
 
       <!-- Top: Player 2 -->
-      <div style="grid-column: 2; grid-row: 1; background: white; padding: 10px; border: 2px solid #999; border-radius: 4px; overflow: hidden;">
-        <h3 style="margin: 5px 0; font-size: 14px;">Player 2</h3>
-        <div id="playerBoard2" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px;">
+      <div style="grid-column: 2; grid-row: 1; background: white; padding: 6px; border: 2px solid #999; border-radius: 3px; overflow: hidden; display: flex; flex-direction: column;">
+        <h3 style="margin: 0; font-size: 12px; padding: 2px 0;">Player 2</h3>
+        <div id="playerBoard2" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; flex: 1;">
         </div>
       </div>
 
       <!-- Left: Player 3 -->
-      <div style="grid-column: 1; grid-row: 2; background: white; padding: 10px; border: 2px solid #999; border-radius: 4px; overflow: hidden;">
-        <h3 style="margin: 5px 0; font-size: 14px;">Player 3</h3>
-        <div id="playerBoard3" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px;">
+      <div style="grid-column: 1; grid-row: 2; background: white; padding: 6px; border: 2px solid #999; border-radius: 3px; overflow: hidden; display: flex; flex-direction: column;">
+        <h3 style="margin: 0; font-size: 12px; padding: 2px 0;">Player 3</h3>
+        <div id="playerBoard3" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; flex: 1;">
         </div>
       </div>
 
       <!-- Center: Market + Current Player Info -->
-      <div style="grid-column: 2; grid-row: 2; background: white; padding: 15px; border: 2px solid #333; border-radius: 4px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-        <h2 id="currentPlayer" style="margin: 0 0 10px 0; font-size: 18px;">Player Turn</h2>
-        <div id="market" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; width: 100%; aspect-ratio: 1;">
+      <div style="grid-column: 2; grid-row: 2; background: white; padding: 8px; border: 2px solid #333; border-radius: 3px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+        <h3 id="currentPlayer" style="margin: 0 0 6px 0; font-size: 12px;">Turn</h3>
+        <div id="market" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; width: 100%; aspect-ratio: 1;">
         </div>
       </div>
 
       <!-- Right: Player 4 -->
-      <div style="grid-column: 3; grid-row: 2; background: white; padding: 10px; border: 2px solid #999; border-radius: 4px; overflow: hidden;">
-        <h3 style="margin: 5px 0; font-size: 14px;">Player 4</h3>
-        <div id="playerBoard4" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px;">
+      <div style="grid-column: 3; grid-row: 2; background: white; padding: 6px; border: 2px solid #999; border-radius: 3px; overflow: hidden; display: flex; flex-direction: column;">
+        <h3 style="margin: 0; font-size: 12px; padding: 2px 0;">Player 4</h3>
+        <div id="playerBoard4" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; flex: 1;">
         </div>
       </div>
 
-      <!-- Bottom: Player 1 + Controls + Stats -->
-      <div style="grid-column: 2; grid-row: 3; background: white; padding: 10px; border: 2px solid #0066cc; border-radius: 4px; overflow: hidden;">
-        <h3 style="margin: 5px 0; font-size: 14px;">Your Board (Player 1)</h3>
-        <div id="playerBoard1" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; margin-bottom: 10px;">
+      <!-- Bottom: Player 1 + Controls -->
+      <div style="grid-column: 2; grid-row: 3; background: white; padding: 6px; border: 2px solid #0066cc; border-radius: 3px; overflow: hidden; display: flex; flex-direction: column;">
+        <h3 style="margin: 0; font-size: 12px; padding: 2px 0;">Your Board (P1)</h3>
+        <div id="playerBoard1" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; flex: 1; margin-bottom: 4px;">
         </div>
-        <div id="placementControls" style="background: #fffacd; border: 2px solid #ffeb3b; border-radius: 4px; padding: 8px; display: none; font-size: 12px;">
-          <p id="selectedTilesInfo" style="margin: 0 0 5px 0;"></p>
-          <button id="placementSubmit" style="padding: 4px 12px; margin-right: 5px; cursor: pointer; font-size: 12px;">Submit</button>
-          <button id="placementCancel" style="padding: 4px 12px; cursor: pointer; font-size: 12px;">Cancel</button>
+        <div id="placementControls" style="background: #fffacd; border: 1px solid #ffeb3b; border-radius: 2px; padding: 4px; display: none; font-size: 11px;">
+          <p id="selectedTilesInfo" style="margin: 0 0 3px 0;"></p>
+          <button id="placementSubmit" style="padding: 3px 8px; margin-right: 3px; cursor: pointer; font-size: 11px;">Submit</button>
+          <button id="placementCancel" style="padding: 3px 8px; cursor: pointer; font-size: 11px;">Cancel</button>
         </div>
       </div>
 
-      <!-- Stats: Top-left and Top-right corners -->
-      <div style="grid-column: 1; grid-row: 1; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; border-radius: 4px; overflow-y: auto; font-size: 12px;">
-        <h3 style="margin: 0 0 8px 0; font-size: 14px;">Stats</h3>
+      <!-- Top-left: Stats -->
+      <div style="grid-column: 1; grid-row: 1; background: #f9f9f9; padding: 6px; border: 1px solid #ddd; border-radius: 3px; overflow-y: auto; font-size: 11px;">
+        <h4 style="margin: 0 0 4px 0; font-size: 11px;">Scores</h4>
         <div id="stats"></div>
       </div>
 
-      <div style="grid-column: 3; grid-row: 1; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; border-radius: 4px; overflow-y: auto; font-size: 12px;">
-        <h3 style="margin: 0 0 8px 0; font-size: 14px;">Legend</h3>
-        <p style="margin: 4px 0; font-size: 11px;"><strong>🟨 Yellow</strong> 🟩 Green 🟦 Blue 🟥 Pink 🟧 Orange</p>
+      <!-- Top-right: Game Status -->
+      <div style="grid-column: 3; grid-row: 1; background: #f9f9f9; padding: 6px; border: 1px solid #ddd; border-radius: 3px; overflow-y: auto; font-size: 11px;">
+        <p id="gameInfo" style="margin: 0; font-weight: bold;"></p>
+        <p style="margin: 3px 0 0 0;">Turns: <span id="turnsDisplay">0</span></p>
+        <p style="margin: 2px 0 0 0;">Market: <span id="marketDisplay">36</span></p>
       </div>
 
-      <!-- Bottom stats -->
-      <div style="grid-column: 1; grid-row: 3; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; overflow-y: auto;">
-        <p id="gameInfo" style="margin: 0;"></p>
+      <!-- Bottom-left: (empty) -->
+      <div style="grid-column: 1; grid-row: 3; background: #f9f9f9; padding: 6px; border: 1px solid #ddd; border-radius: 3px; overflow-y: auto; font-size: 11px;">
       </div>
 
-      <div style="grid-column: 3; grid-row: 3; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; overflow-y: auto;">
-        <p style="margin: 0;"><strong>Turns:</strong> <span id="turnsDisplay">0</span></p>
-        <p style="margin: 4px 0 0 0;"><strong>Market:</strong> <span id="marketDisplay">36</span> tiles</p>
+      <!-- Bottom-right: (empty) -->
+      <div style="grid-column: 3; grid-row: 3; background: #f9f9f9; padding: 6px; border: 1px solid #ddd; border-radius: 3px; overflow-y: auto; font-size: 11px;">
       </div>
     </div>
   `;
@@ -181,8 +181,8 @@ export function updateGameDisplay(gameState) {
   const market = document.getElementById('market');
   if (market) {
     market.innerHTML = gameState.market.map((tile, idx) => `
-      <div style="aspect-ratio: 1; border: 2px solid #ddd; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: ${tile ? 'pointer' : 'default'}; background: ${tile ? getColourCSS(tile.colour) : '#eee'}; opacity: ${tile ? 1 : 0.3};" data-index="${idx}" class="market-tile">
-        ${tile ? `<img src="images/symbol_${tile.ingredient}.png" style="width: 70%; height: 70%; object-fit: contain;" alt="${tile.ingredient}">` : ''}
+      <div style="aspect-ratio: 1; border: 1px solid #999; border-radius: 2px; display: flex; align-items: center; justify-content: center; cursor: ${tile ? 'pointer' : 'default'}; background: ${tile ? getColourCSS(tile.colour) : '#eee'}; opacity: ${tile ? 1 : 0.2};" data-index="${idx}" class="market-tile">
+        ${tile ? `<img src="images/symbol_${tile.ingredient}.png" style="width: 60%; height: 60%; object-fit: contain;" alt="${tile.ingredient}">` : ''}
       </div>
     `).join('');
 
@@ -204,8 +204,8 @@ export function updateGameDisplay(gameState) {
         const isP1 = playerIdx === 0;
         const canPlace = gameState.gamePhase === 'place' && isP1 && currentPlayer.isHuman;
         return `
-          <div style="aspect-ratio: 1; border: 2px solid #999; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: ${tile ? getColourCSS(tile.colour) : '#fff'}; cursor: ${canPlace ? 'pointer' : 'default'};" class="board-tile" data-index="${idx}" data-player="${playerIdx}">
-            ${tile ? `<img src="images/symbol_${tile.ingredient}.png" style="width: 70%; height: 70%; object-fit: contain;" alt="${tile.ingredient}">` : ''}
+          <div style="aspect-ratio: 1; border: 1px solid #ccc; border-radius: 2px; display: flex; align-items: center; justify-content: center; background: ${tile ? getColourCSS(tile.colour) : '#fff'}; cursor: ${canPlace ? 'pointer' : 'default'};" class="board-tile" data-index="${idx}" data-player="${playerIdx}">
+            ${tile ? `<img src="images/symbol_${tile.ingredient}.png" style="width: 60%; height: 60%; object-fit: contain;" alt="${tile.ingredient}">` : ''}
           </div>
         `;
       }).join('');
