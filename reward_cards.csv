@@ -1,0 +1,51 @@
+Card#,Version,Qty,Needed,Cardback,Discussion,@background,Title,Description,@cake,Scoring,pattern1,pattern2,pattern3,pattern4,@score1,@score2,@score3,@score4,@score5,@tile1,@tile2,@tile3,@tile4
+1,1,1,1,reward,,reward_bg.png,Lemon madeleine,xxx,patisserie_lemon_madeleine.png,Lemon,Yellow,,,,,,,,,tile_yellow.png,,,
+2,1,1,1,reward,,reward_bg.png,Tarte au citron,xxx,patisserie_tarte_au_citron.png,Lemon,Yellow,Yellow,,,symbol_lemon.png,,,,,tile_yellow.png,tile_yellow.png,,
+3,1,1,1,reward,,reward_bg.png,Pink grapefruit tartelette,xxx,patisserie_pink_grapefruit_tartelette.png,Lemon,Pink,Pink,,,symbol_lemon.png,,,,,tile_pink.png,tile_pink.png,,
+4,1,1,1,reward,,reward_bg.png,Orange marmalade slice,xxx,patisserie_orange_marmalade_slice.png,Lemon,Orange,Orange,,,symbol_lemon.png,,,,,tile_orange.png,tile_orange.png,,
+5,1,1,1,reward,,reward_bg.png,Lemon meringue pie,xxx,patisserie_lemon_meringue_pie.png,Lemon,Yellow,Yellow,Pink,,,,,symbol_lemon.png,symbol_lemon.png,tile_yellow.png,tile_yellow.png,tile_pink.png,
+6,1,1,1,reward,,reward_bg.png,Earl Grey financier,xxx,patisserie_earl_grey_financier.png,Lemon,Blue,Blue,Yellow,,,,,symbol_lemon.png,symbol_lemon.png,tile_blue.png,tile_blue.png,tile_yellow.png,
+7,1,1,1,reward,,reward_bg.png,Key lime & blueberry tart,xxx,patisserie_key_lime_&_blueberry_tart.png,Lemon,Green,Green,Blue,,,,,symbol_lemon.png,symbol_lemon.png,tile_green.png,tile_green.png,tile_blue.png,
+8,1,1,1,reward,,reward_bg.png,Blood orange tart,xxx,patisserie_blood_orange_tart.png,Lemon,Orange,Orange,Pink,,,,,symbol_lemon.png,symbol_lemon.png,tile_orange.png,tile_orange.png,tile_pink.png,
+9,1,1,1,reward,,reward_bg.png,Yuzu tart,xxx,patisserie_yuzu_tart.png,Lemon,Yellow,Yellow,Green,Green,symbol_lemon.png,symbol_lemon.png,symbol_lemon.png,,,tile_yellow.png,tile_yellow.png,tile_green.png,tile_green.png
+10,1,1,1,reward,,reward_bg.png,Lime & Earl Grey drizzle cake,xxx,patisserie_lime_&_earl_grey_drizzle_cake.png,Lemon,Green,Green,Blue,Blue,symbol_lemon.png,symbol_lemon.png,symbol_lemon.png,,,tile_green.png,tile_green.png,tile_blue.png,tile_blue.png
+11,1,1,1,reward,,reward_bg.png,Chocolate-orange truffle,xxx,patisserie_chocolate-orange_truffle.png,Chocolate,Orange,,,,,,,,,tile_orange.png,,,
+12,1,1,1,reward,,reward_bg.png,Chocolate-cherry tart,xxx,patisserie_chocolate-cherry_tart.png,Chocolate,Pink,Pink,,,symbol_chocolate.png,,,,,tile_pink.png,tile_pink.png,,
+13,1,1,1,reward,,reward_bg.png,Chocolate-mint truffle,xxx,patisserie_chocolate-mint_truffle.png,Chocolate,Green,Green,,,symbol_chocolate.png,,,,,tile_green.png,tile_green.png,,
+14,1,1,1,reward,,reward_bg.png,Chocolate-hazelnut praliné,xxx,patisserie_chocolate-hazelnut_praliné.png,Chocolate,Orange,Orange,,,symbol_chocolate.png,,,,,tile_orange.png,tile_orange.png,,
+15,1,1,1,reward,,reward_bg.png,Black Forest gateau,xxx,patisserie_black_forest_gateau.png,Chocolate,Pink,Pink,Green,,,,,symbol_chocolate.png,symbol_chocolate.png,tile_pink.png,tile_pink.png,tile_green.png,
+16,1,1,1,reward,,reward_bg.png,Sachertorte,xxx,patisserie_sachertorte.png,Chocolate,Orange,Orange,Yellow,,,,,symbol_chocolate.png,symbol_chocolate.png,tile_orange.png,tile_orange.png,tile_yellow.png,
+17,1,1,1,reward,,reward_bg.png,Pistachio chocolate religieuse,xxx,patisserie_pistachio_chocolate_religieuse.png,Chocolate,Green,Green,Pink,,,,,symbol_chocolate.png,symbol_chocolate.png,tile_green.png,tile_green.png,tile_pink.png,
+18,1,1,1,reward,,reward_bg.png,Chocolate-blueberry tartelette,xxx,patisserie_chocolate-blueberry_tartelette.png,Chocolate,Blue,Blue,Pink,,,,,symbol_chocolate.png,symbol_chocolate.png,tile_blue.png,tile_blue.png,tile_pink.png,
+19,1,1,1,reward,,reward_bg.png,Opéra cake,xxx,patisserie_opéra_cake.png,Chocolate,Yellow,Yellow,Orange,Orange,symbol_chocolate.png,symbol_chocolate.png,symbol_chocolate.png,,,tile_yellow.png,tile_yellow.png,tile_orange.png,tile_orange.png
+20,1,1,1,reward,,reward_bg.png,Florentine,xxx,patisserie_florentine.png,Chocolate,Orange,Pink,Green,Blue,symbol_chocolate.png,symbol_chocolate.png,symbol_chocolate.png,,,tile_orange.png,tile_pink.png,tile_green.png,tile_blue.png
+21,1,1,1,reward,,reward_bg.png,Crème brûlée,xxx,patisserie_crème_brûlée.png,Caramel,Yellow,,,,,,,,,tile_yellow.png,,,
+22,1,1,1,reward,,reward_bg.png,Canelé,xxx,patisserie_canelé.png,Caramel,Orange,Orange,,,symbol_caramel.png,,,,,tile_orange.png,tile_orange.png,,
+23,1,1,1,reward,,reward_bg.png,Tarte Tatin,xxx,patisserie_tarte_tatin.png,Caramel,Orange,Green,,,symbol_caramel.png,,,,,tile_orange.png,tile_green.png,,
+24,1,1,1,reward,,reward_bg.png,Crème caramel,xxx,patisserie_crème_caramel.png,Caramel,Yellow,Orange,,,symbol_caramel.png,,,,,tile_yellow.png,tile_orange.png,,
+25,1,1,1,reward,,reward_bg.png,Salted caramel tart,xxx,patisserie_salted_caramel_tart.png,Caramel,Orange,Orange,Yellow,,,,,symbol_caramel.png,symbol_caramel.png,tile_orange.png,tile_orange.png,tile_yellow.png,
+26,1,1,1,reward,,reward_bg.png,Sticky toffee pudding,xxx,patisserie_sticky_toffee_pudding.png,Caramel,Orange,Pink,Pink,,,,,symbol_caramel.png,symbol_caramel.png,tile_orange.png,tile_pink.png,tile_pink.png,
+27,1,1,1,reward,,reward_bg.png,Caramel apple charlotte,xxx,patisserie_caramel_apple_charlotte.png,Caramel,Green,Green,Orange,,,,,symbol_caramel.png,symbol_caramel.png,tile_green.png,tile_green.png,tile_orange.png,
+28,1,1,1,reward,,reward_bg.png,Earl Grey & caramel tart,xxx,patisserie_earl_grey_&_caramel_tart.png,Caramel,Blue,Blue,Yellow,,,,,symbol_caramel.png,symbol_caramel.png,tile_blue.png,tile_blue.png,tile_yellow.png,
+29,1,1,1,reward,,reward_bg.png,Paris-Brest (blueberry praliné),xxx,patisserie_paris-brest_(blueberry_praliné).png,Caramel,Yellow,Yellow,Orange,Blue,symbol_caramel.png,symbol_caramel.png,symbol_caramel.png,,,tile_yellow.png,tile_yellow.png,tile_orange.png,tile_blue.png
+30,1,1,1,reward,,reward_bg.png,Banoffee pie,xxx,patisserie_banoffee_pie.png,Caramel,Yellow,Yellow,Orange,Pink,symbol_caramel.png,symbol_caramel.png,symbol_caramel.png,,,tile_yellow.png,tile_yellow.png,tile_orange.png,tile_pink.png
+31,1,1,1,reward,,reward_bg.png,Strawberry tartlet,xxx,patisserie_strawberry_tartlet.png,Strawberry,Pink,,,,,,,,,tile_pink.png,,,
+32,1,1,1,reward,,reward_bg.png,Apple turnover,xxx,patisserie_apple_turnover.png,Strawberry,Green,Green,,,symbol_strawberry.png,,,,,tile_green.png,tile_green.png,,
+33,1,1,1,reward,,reward_bg.png,Blueberry mille-feuille,xxx,patisserie_blueberry_mille-feuille.png,Strawberry,Blue,Blue,,,symbol_strawberry.png,,,,,tile_blue.png,tile_blue.png,,
+34,1,1,1,reward,,reward_bg.png,Plum tart,xxx,patisserie_plum_tart.png,Strawberry,Blue,Blue,,,symbol_strawberry.png,,,,,tile_blue.png,tile_blue.png,,
+35,1,1,1,reward,,reward_bg.png,Fraisier,xxx,patisserie_fraisier.png,Strawberry,Pink,Pink,Green,,,,,symbol_strawberry.png,symbol_strawberry.png,tile_pink.png,tile_pink.png,tile_green.png,
+36,1,1,1,reward,,reward_bg.png,Mixed berry pavlova,xxx,patisserie_mixed_berry_pavlova.png,Strawberry,Pink,Blue,Blue,,,,,symbol_strawberry.png,symbol_strawberry.png,tile_pink.png,tile_blue.png,tile_blue.png,
+37,1,1,1,reward,,reward_bg.png,Carrot cake,xxx,patisserie_carrot_cake.png,Strawberry,Orange,Orange,Green,,,,,symbol_strawberry.png,symbol_strawberry.png,tile_orange.png,tile_orange.png,tile_green.png,
+38,1,1,1,reward,,reward_bg.png,Blackcurrant cheesecake,xxx,patisserie_blackcurrant_cheesecake.png,Strawberry,Blue,Blue,Pink,,,,,symbol_strawberry.png,symbol_strawberry.png,tile_blue.png,tile_blue.png,tile_pink.png,
+39,1,1,1,reward,,reward_bg.png,Charlotte aux fraises,xxx,patisserie_charlotte_aux_fraises.png,Strawberry,Pink,Pink,Yellow,Green,symbol_strawberry.png,symbol_strawberry.png,symbol_strawberry.png,,,tile_pink.png,tile_pink.png,tile_yellow.png,tile_green.png
+40,1,1,1,reward,,reward_bg.png,Autumn fruit crumble,xxx,patisserie_autumn_fruit_crumble.png,Strawberry,Green,Orange,Blue,Pink,symbol_strawberry.png,symbol_strawberry.png,symbol_strawberry.png,,,tile_green.png,tile_orange.png,tile_blue.png,tile_pink.png
+41,1,1,1,reward,,reward_bg.png,Financier,xxx,patisserie_financier.png,Almond,Yellow,,,,,,,,,tile_yellow.png,,,
+42,1,1,1,reward,,reward_bg.png,Pistachio macaron,xxx,patisserie_pistachio_macaron.png,Almond,Green,Green,,,symbol_almond.png,,,,,tile_green.png,tile_green.png,,
+43,1,1,1,reward,,reward_bg.png,Raspberry & pistachio tart,xxx,patisserie_raspberry_&_pistachio_tart.png,Almond,Pink,Green,,,symbol_almond.png,,,,,tile_pink.png,tile_green.png,,
+44,1,1,1,reward,,reward_bg.png,Pistachio & blueberry religieuse,xxx,patisserie_pistachio_&_blueberry_religieuse.png,Almond,Green,Blue,,,symbol_almond.png,,,,,tile_green.png,tile_blue.png,,
+45,1,1,1,reward,,reward_bg.png,Bakewell tart,xxx,patisserie_bakewell_tart.png,Almond,Pink,Pink,Green,,,,,symbol_almond.png,symbol_almond.png,tile_pink.png,tile_pink.png,tile_green.png,
+46,1,1,1,reward,,reward_bg.png,Galette des Rois,xxx,patisserie_galette_des_rois.png,Almond,Yellow,Yellow,Orange,,,,,symbol_almond.png,symbol_almond.png,tile_yellow.png,tile_yellow.png,tile_orange.png,
+47,1,1,1,reward,,reward_bg.png,Mont Blanc,xxx,patisserie_mont_blanc.png,Almond,Pink,Pink,Yellow,,,,,symbol_almond.png,symbol_almond.png,tile_pink.png,tile_pink.png,tile_yellow.png,
+48,1,1,1,reward,,reward_bg.png,Blueberry frangipane tart,xxx,patisserie_blueberry_frangipane_tart.png,Almond,Blue,Blue,Yellow,,,,,symbol_almond.png,symbol_almond.png,tile_blue.png,tile_blue.png,tile_yellow.png,
+49,1,1,1,reward,,reward_bg.png,Fig & almond tart,xxx,patisserie_fig_&_almond_tart.png,Almond,Blue,Blue,Pink,Orange,symbol_almond.png,symbol_almond.png,symbol_almond.png,,,tile_blue.png,tile_blue.png,tile_pink.png,tile_orange.png
+50,1,1,1,reward,,reward_bg.png,Battenberg,xxx,patisserie_battenberg.png,Almond,Pink,Yellow,Yellow,Pink,symbol_almond.png,symbol_almond.png,symbol_almond.png,,,tile_pink.png,tile_yellow.png,tile_yellow.png,tile_pink.png
