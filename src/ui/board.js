@@ -155,8 +155,8 @@ export function updateGameDisplay(gameState) {
   const market = document.getElementById('market');
   if (market) {
     market.innerHTML = gameState.market.map((tile, idx) => `
-      <div style="aspect-ratio: 1; border: 2px solid #ddd; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: ${tile ? 'pointer' : 'default'}; background: ${tile ? getColourCSS(tile.colour) : '#eee'}; opacity: ${tile ? 1 : 0.3};" data-index="${idx}" class="market-tile">
-        ${tile ? `<small>${tile.ingredient.substring(0, 3).toUpperCase()}</small>` : ''}
+      <div style="aspect-ratio: 1; border: 2px solid #ddd; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: ${tile ? 'pointer' : 'default'}; background: ${tile ? getColourCSS(tile.colour) : '#eee'}; opacity: ${tile ? 1 : 0.3}; position: relative;" data-index="${idx}" class="market-tile">
+        ${tile ? `<img src="images/symbol_${tile.ingredient}.png" style="width: 70%; height: 70%; object-fit: contain;" alt="${tile.ingredient}">` : ''}
       </div>
     `).join('');
 
@@ -175,7 +175,7 @@ export function updateGameDisplay(gameState) {
   if (playerBoard) {
     playerBoard.innerHTML = currentPlayer.board.map((tile, idx) => `
       <div style="aspect-ratio: 1; border: 2px solid #999; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: ${tile ? getColourCSS(tile.colour) : '#fff'}; cursor: ${gameState.gamePhase === 'place' ? 'pointer' : 'default'};" class="board-tile" data-index="${idx}">
-        ${tile ? `<small>${tile.ingredient.substring(0, 3).toUpperCase()}</small>` : ''}
+        ${tile ? `<img src="images/symbol_${tile.ingredient}.png" style="width: 70%; height: 70%; object-fit: contain;" alt="${tile.ingredient}">` : ''}
       </div>
     `).join('');
 
