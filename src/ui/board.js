@@ -32,15 +32,17 @@ export function renderSetupScreen(container, onStart) {
     const count = parseInt(playerCount.value);
     let html = '';
     for (let i = 0; i < count; i++) {
+      const isPlayer1 = i === 0;
+      const defaultType = isPlayer1 ? 'human' : 'ai';
       html += `
         <div style="margin: 10px 0; padding: 10px; border: 1px solid #ccc;">
           <label>Player ${i + 1}:
-            <select id="player${i}Type" style="margin-left: 10px;">
+            <select id="player${i}Type" style="margin-left: 10px;" onchange="document.getElementById('player${i}DifficultyLabel').style.display = this.value === 'human' ? 'none' : 'inline-block';">
               <option value="ai">AI</option>
-              ${i === 0 ? '<option value="human">Human</option>' : ''}
+              <option value="human" ${isPlayer1 ? 'selected' : ''}>Human</option>
             </select>
           </label>
-          <label style="margin-left: 20px;">Difficulty:
+          <label id="player${i}DifficultyLabel" style="margin-left: 20px; display: ${defaultType === 'human' ? 'none' : 'inline-block'};">Difficulty:
             <select id="player${i}Difficulty">
               <option value="random">Random</option>
               <option value="shallow">Shallow MCTS (100)</option>
