@@ -99,8 +99,10 @@ function checkAutoAdvance() {
 }
 
 async function autoPlayGame() {
+  console.log('autoPlayGame started, autoPlayMode:', autoPlayMode);
   while (!gameState.gameOver) {
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+    console.log(`Turn: Player ${currentPlayer.id} (${currentPlayer.name}), Phase: ${gameState.gamePhase}`);
 
     if (!currentPlayer.isHuman) {
       try {
@@ -109,12 +111,19 @@ async function autoPlayGame() {
             const bonusTileIndex = decideBonusTile(gameState);
             if (bonusTileIndex !== null) {
               takeBonusTile(gameState, bonusTileIndex);
+            } else {
+              // Skip bonus and move to place phase
+              gameState.bonusTileAvailable = false;
+              gameState.gamePhase = 'place';
             }
           } else {
             const sweepMove = decideSweep(gameState);
-            if (sweepMove) {
-              sweep(gameState, sweepMove.rowOrCol, sweepMove.isRow, sweepMove.declaration, sweepMove.declarationType);
+            if (!sweepMove) {
+              // No valid sweeps - game should be over, but end it just in case
+              gameState.gameOver = true;
+              break;
             }
+            sweep(gameState, sweepMove.rowOrCol, sweepMove.isRow, sweepMove.declaration, sweepMove.declarationType);
           }
         } else if (gameState.gamePhase === 'place') {
           const placements = decidePlacements(gameState);

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm start *)",
+      "Bash(npm run *)",
+      "PowerShell(Get-NetTCPConnection -State Listen | Where-Object {$_.LocalPort -in @\\(8000, 8080, 8081\\)} | Select-Object LocalPort, OwningProcess, @{Name='ProcessName';Expression={\\(Get-Process -Id $_.OwningProcess\\).Name}})"
+    ]
+  }
+}

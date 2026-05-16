@@ -44,7 +44,10 @@ export function decideBonusTile(gameState) {
     .map((t, i) => ({ tile: t, index: i }))
     .filter(({ tile }) => tile !== null);
 
-  if (availableTiles.length === 0) return null;
+  if (availableTiles.length === 0) {
+    // No tiles available - shouldn't happen but handle gracefully
+    return null;
+  }
 
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   let bestIndex = availableTiles[0].index;
