@@ -559,7 +559,10 @@ function setupDragAndDrop(gameState) {
     if (targetCell === null && tileIndex >= 0 && tileIndex < gameState.pendingSweepTiles.length) {
       if (!ui.placementMap) ui.placementMap = {};
       ui.placementMap[tileIndex] = boardIndex;
-      updateGameDisplay(gameState);
+      // Delay display update to allow drop event to complete first
+      requestAnimationFrame(() => {
+        updateGameDisplay(gameState);
+      });
     }
   }, false);
 
