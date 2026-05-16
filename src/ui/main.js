@@ -92,8 +92,14 @@ function checkAutoAdvance() {
 
     if (gameState.gameOver) {
       onGameEnd();
-    } else if (autoPlayMode) {
-      setTimeout(() => autoPlayGame(), 500);
+    } else {
+      // Check if next player is AI and let them play
+      setTimeout(() => {
+        const nextPlayer = gameState.players[gameState.currentPlayerIndex];
+        if (!nextPlayer.isHuman) {
+          autoPlayGame();
+        }
+      }, 500);
     }
   }
 }
