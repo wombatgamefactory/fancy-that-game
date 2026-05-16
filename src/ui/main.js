@@ -1,116 +1,172 @@
-import { createGame, sweep, place } from '../engine/game.js';
+import { createGame, sweep, takeBonusTile, place, claim, skipClaim, refill, getValidSweeps, getPatternMatches, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
 import { renderSetupScreen, renderGameScreen, updateGameDisplay } from './board.js';
-import { makeRandomMove } from '../bots/randomBot.js';
+import { decideSweep, decideBonusTile, decidePlacements, decideClaim } from '../bots/basicBot.js';
 
 let gameState = null;
 let autoPlayMode = false;
 
-// Initialize: show setup screen
 function init() {
   const app = document.getElementById('app');
   renderSetupScreen(app, onGameStart);
 }
 
-// Game start callback
 function onGameStart(playerConfigs) {
   gameState = createGame(playerConfigs);
   autoPlayMode = playerConfigs.every(p => !p.isHuman);
 
   const app = document.getElementById('app');
-  renderGameScreen(app, gameState, onMarketClick, onPlacementSubmit, onGameEnd);
+  renderGameScreen(app, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim);
 
   updateDisplay();
 
-  // Auto-play AI if no humans
   if (autoPlayMode) {
     autoPlayGame();
   }
 }
 
-// Handle market tile click (sweep phase)
-function onMarketClick(marketIndex) {
+function onMarketClick(rowOrCol, isRow, declaration, declarationType) {
   if (gameState.gamePhase !== 'sweep') return;
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-  if (currentPlayer.isHuman && gameState.gamePhase === 'sweep') {
-    try {
-      sweep(gameState, marketIndex);
-      updateDisplay();
-    } catch (e) {
-      alert(e.message);
-    }
-  }
-}
+  if (!currentPlayer.isHuman) return;
 
-// Handle placement submission
-function onPlacementSubmit(placements) {
   try {
-    place(gameState, placements);
+    sweep(gameState, rowOrCol, isRow, declaration, declarationType);
     updateDisplay();
 
-    if (gameState.gameOver) {
-      onGameEnd();
-    } else if (autoPlayMode) {
-      autoPlayGame();
+    if (!gameState.bonusTileAvailable) {
+      checkAutoAdvance();
     }
   } catch (e) {
     alert(e.message);
   }
 }
 
-// Auto-play moves for AI players
-async function autoPlayGame() {
-  while (!gameState.gameOver && gameState.players.every(p => !p.isHuman)) {
-    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+function onBonusTile(marketIndex) {
+  if (!gameState.bonusTileAvailable) return;
+  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  if (!currentPlayer.isHuman) return;
 
-    if (gameState.gamePhase === 'sweep') {
-      // AI chooses a market tile to sweep
-      const availableTiles = gameState.market
-        .map((tile, idx) => tile ? idx : null)
-        .filter(idx => idx !== null);
-
-      if (availableTiles.length > 0) {
-        const marketIndex = availableTiles[Math.floor(Math.random() * availableTiles.length)];
-        sweep(gameState, marketIndex);
-      } else {
-        // No tiles in market - end game
-        gameState.gameOver = true;
-        break;
-      }
-    } else if (gameState.gamePhase === 'place') {
-      // AI chooses placement for selected tiles
-      const placements = makeRandomMove(currentPlayer.board, gameState.selectedTiles.length);
-      place(gameState, placements);
-    }
-
+  try {
+    takeBonusTile(gameState, marketIndex);
     updateDisplay();
-    await new Promise(r => setTimeout(r, 500)); // Pause for visibility
-  }
-
-  if (gameState.gameOver) {
-    onGameEnd();
+    checkAutoAdvance();
+  } catch (e) {
+    alert(e.message);
   }
 }
 
-// Update display
+function onPlacementSubmit(placements) {
+  try {
+    place(gameState, placements);
+    updateDisplay();
+    checkAutoAdvance();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+function onClaimSubmit(cardId, removedBoardIndex) {
+  try {
+    claim(gameState, cardId, removedBoardIndex);
+    updateDisplay();
+    checkAutoAdvance();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+function onSkipClaim() {
+  try {
+    skipClaim(gameState);
+    updateDisplay();
+    checkAutoAdvance();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+function checkAutoAdvance() {
+  if (gameState.gamePhase === 'refill') {
+    refill(gameState);
+    updateDisplay();
+
+    if (gameState.gameOver) {
+      onGameEnd();
+    } else if (autoPlayMode) {
+      setTimeout(() => autoPlayGame(), 500);
+    }
+  }
+}
+
+async function autoPlayGame() {
+  while (!gameState.gameOver) {
+    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+
+    if (!currentPlayer.isHuman) {
+      try {
+        if (gameState.gamePhase === 'sweep') {
+          if (gameState.bonusTileAvailable) {
+            const bonusTileIndex = decideBonusTile(gameState);
+            if (bonusTileIndex !== null) {
+              takeBonusTile(gameState, bonusTileIndex);
+            }
+          } else {
+            const sweepMove = decideSweep(gameState);
+            if (sweepMove) {
+              sweep(gameState, sweepMove.rowOrCol, sweepMove.isRow, sweepMove.declaration, sweepMove.declarationType);
+            }
+          }
+        } else if (gameState.gamePhase === 'place') {
+          const placements = decidePlacements(gameState);
+          place(gameState, placements);
+        } else if (gameState.gamePhase === 'claim') {
+          const claimDecision = decideClaim(gameState);
+          if (claimDecision) {
+            claim(gameState, claimDecision.cardId, claimDecision.removedBoardIndex);
+          } else {
+            skipClaim(gameState);
+          }
+        } else if (gameState.gamePhase === 'refill') {
+          refill(gameState);
+        }
+
+        updateDisplay();
+
+        if (gameState.gameOver) {
+          onGameEnd();
+          break;
+        }
+      } catch (e) {
+        console.error('AI error:', e);
+        gameState.gameOver = true;
+        break;
+      }
+
+      await new Promise(r => setTimeout(r, 500));
+    } else {
+      break;
+    }
+  }
+}
+
 function updateDisplay() {
   updateGameDisplay(gameState);
 }
 
-// Game end callback
 function onGameEnd() {
+  const winner = gameState.players.reduce((a, b) => a.score > b.score ? a : b);
   const stats = {
     turnsPlayed: gameState.stats.turnsPlayed,
     scores: gameState.players.map(p => ({
       name: p.name,
       score: p.score,
       cardsWon: p.claimedCards.length,
-      tracks: p.ingredientTracks,
+      scoringPile: p.scoringPile.length,
     })),
   };
 
   console.log('Game Over!', stats);
-  alert(`Game Over!\n\nWinner: ${gameState.players.reduce((a, b) => a.score > b.score ? a : b).name}\n\nStats: ${JSON.stringify(stats, null, 2)}`);
+  alert(`Game Over!\n\nWinner: ${winner.name} with ${winner.score} points\n\nScores: ${gameState.players.map(p => `${p.name}: ${p.score}`).join(', ')}`);
 }
 
-// Start the app
 init();
