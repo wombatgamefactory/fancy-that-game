@@ -68,14 +68,16 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
   container.innerHTML = `
     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: auto auto; gap: 3px; padding: 5px; font-family: Arial, sans-serif; background: #f5f5f5; font-size: 10px;">
 
-      <div style="grid-column: 1; grid-row: 1; background: white; padding: 2px; border: 1px solid #0066cc; border-radius: 2px; display: flex; flex-direction: column; align-items: flex-start;">
-        <div id="playerScore1" style="width: 100%; padding: 2px; margin-bottom: 2px; border-bottom: 1px solid #ddd;"></div>
-        <h3 style="margin: 0; font-size: 8px; padding: 1px 0; align-self: center;">Your Board (P1)</h3>
-        <div id="workingArea1" style="display: grid; grid-template-columns: repeat(7, 50px); grid-template-rows: 1fr; gap: 1px; border: 1px dashed #999; padding: 2px; min-width: 60px; visibility: hidden; width: 100%; margin-bottom: 2px;">
-        </div>
-        <div id="playerBoard1" style="display: grid; grid-template-columns: repeat(${BOARD_SIZE}, 75px); grid-template-rows: repeat(${BOARD_SIZE}, 75px); gap: 1px; align-self: center;">
-        </div>
-        <div id="phaseControls" style="background: #fffacd; border: 1px solid #ffeb3b; border-radius: 2px; padding: 2px; font-size: 8px; width: 100%; box-sizing: border-box; margin-top: 2px; align-self: center; min-height: 24px; visibility: hidden;">
+      <div style="grid-column: 1; grid-row: 1; background: white; padding: 2px; border: 1px solid #0066cc; border-radius: 2px; display: flex; flex-direction: row; gap: 4px;">
+        <div id="playerScore1" style="background: #f9f9f9; border: 1px solid #ddd; border-radius: 2px; padding: 3px; min-width: 140px; overflow-y: auto; max-height: 400px; flex-shrink: 0;"></div>
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <h3 style="margin: 0; font-size: 8px; padding: 1px 0;">Your Board (P1)</h3>
+          <div id="workingArea1" style="display: grid; grid-template-columns: repeat(7, 50px); grid-template-rows: 1fr; gap: 1px; border: 1px dashed #999; padding: 2px; min-width: 60px; visibility: hidden; margin-bottom: 2px;">
+          </div>
+          <div id="playerBoard1" style="display: grid; grid-template-columns: repeat(${BOARD_SIZE}, 75px); grid-template-rows: repeat(${BOARD_SIZE}, 75px); gap: 1px;">
+          </div>
+          <div id="phaseControls" style="background: #fffacd; border: 1px solid #ffeb3b; border-radius: 2px; padding: 2px; font-size: 8px; width: 100%; box-sizing: border-box; margin-top: 2px; min-height: 24px; visibility: hidden;">
+          </div>
         </div>
       </div>
 
@@ -90,21 +92,25 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
         </div>
       </div>
 
-      <div style="grid-column: 3; grid-row: 1; background: white; padding: 2px; border: 1px solid #999; border-radius: 2px; display: flex; flex-direction: column; align-items: flex-start;">
-        <div id="playerScore3" style="width: 100%; padding: 2px; margin-bottom: 2px; border-bottom: 1px solid #ddd;"></div>
-        <h3 style="margin: 0; font-size: 8px; padding: 1px 0; align-self: center;">Player 3</h3>
-        <div id="workingArea3" style="display: grid; grid-template-columns: repeat(7, 50px); grid-template-rows: 1fr; gap: 1px; border: 1px dashed #ccc; padding: 2px; min-width: 60px; visibility: hidden; width: 100%; margin-bottom: 2px;">
-        </div>
-        <div id="playerBoard3" style="display: grid; grid-template-columns: repeat(${BOARD_SIZE}, 75px); grid-template-rows: repeat(${BOARD_SIZE}, 75px); gap: 1px; align-self: center;">
+      <div style="grid-column: 3; grid-row: 1; background: white; padding: 2px; border: 1px solid #999; border-radius: 2px; display: flex; flex-direction: row; gap: 4px;">
+        <div id="playerScore3" style="background: #f9f9f9; border: 1px solid #ddd; border-radius: 2px; padding: 3px; min-width: 140px; overflow-y: auto; max-height: 400px; flex-shrink: 0;"></div>
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <h3 style="margin: 0; font-size: 8px; padding: 1px 0;">Player 3</h3>
+          <div id="workingArea3" style="display: grid; grid-template-columns: repeat(7, 50px); grid-template-rows: 1fr; gap: 1px; border: 1px dashed #ccc; padding: 2px; min-width: 60px; visibility: hidden; margin-bottom: 2px;">
+          </div>
+          <div id="playerBoard3" style="display: grid; grid-template-columns: repeat(${BOARD_SIZE}, 75px); grid-template-rows: repeat(${BOARD_SIZE}, 75px); gap: 1px;">
+          </div>
         </div>
       </div>
 
-      <div style="grid-column: 1; grid-row: 2; background: white; padding: 2px; border: 1px solid #999; border-radius: 2px; display: flex; flex-direction: column; align-items: flex-start;">
-        <div id="playerScore2" style="width: 100%; padding: 2px; margin-bottom: 2px; border-bottom: 1px solid #ddd;"></div>
-        <h3 style="margin: 0; font-size: 8px; padding: 1px 0; align-self: center;">Player 2</h3>
-        <div id="workingArea2" style="display: grid; grid-template-columns: repeat(7, 50px); grid-template-rows: 1fr; gap: 1px; border: 1px dashed #ccc; padding: 2px; min-width: 60px; visibility: hidden; width: 100%; margin-bottom: 2px;">
-        </div>
-        <div id="playerBoard2" style="display: grid; grid-template-columns: repeat(${BOARD_SIZE}, 75px); grid-template-rows: repeat(${BOARD_SIZE}, 75px); gap: 1px; align-self: center;">
+      <div style="grid-column: 1; grid-row: 2; background: white; padding: 2px; border: 1px solid #999; border-radius: 2px; display: flex; flex-direction: row; gap: 4px;">
+        <div id="playerScore2" style="background: #f9f9f9; border: 1px solid #ddd; border-radius: 2px; padding: 3px; min-width: 140px; overflow-y: auto; max-height: 400px; flex-shrink: 0;"></div>
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <h3 style="margin: 0; font-size: 8px; padding: 1px 0;">Player 2</h3>
+          <div id="workingArea2" style="display: grid; grid-template-columns: repeat(7, 50px); grid-template-rows: 1fr; gap: 1px; border: 1px dashed #ccc; padding: 2px; min-width: 60px; visibility: hidden; margin-bottom: 2px;">
+          </div>
+          <div id="playerBoard2" style="display: grid; grid-template-columns: repeat(${BOARD_SIZE}, 75px); grid-template-rows: repeat(${BOARD_SIZE}, 75px); gap: 1px;">
+          </div>
         </div>
       </div>
 
@@ -121,12 +127,14 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
         </div>
       </div>
 
-      <div style="grid-column: 3; grid-row: 2; background: white; padding: 2px; border: 1px solid #999; border-radius: 2px; display: flex; flex-direction: column; align-items: flex-start;">
-        <div id="playerScore4" style="width: 100%; padding: 2px; margin-bottom: 2px; border-bottom: 1px solid #ddd;"></div>
-        <h3 style="margin: 0; font-size: 8px; padding: 1px 0; align-self: center;">Player 4</h3>
-        <div id="workingArea4" style="display: grid; grid-template-columns: repeat(7, 50px); grid-template-rows: 1fr; gap: 1px; border: 1px dashed #ccc; padding: 2px; min-width: 60px; visibility: hidden; width: 100%; margin-bottom: 2px;">
-        </div>
-        <div id="playerBoard4" style="display: grid; grid-template-columns: repeat(${BOARD_SIZE}, 75px); grid-template-rows: repeat(${BOARD_SIZE}, 75px); gap: 1px; align-self: center;">
+      <div style="grid-column: 3; grid-row: 2; background: white; padding: 2px; border: 1px solid #999; border-radius: 2px; display: flex; flex-direction: row; gap: 4px;">
+        <div id="playerScore4" style="background: #f9f9f9; border: 1px solid #ddd; border-radius: 2px; padding: 3px; min-width: 140px; overflow-y: auto; max-height: 400px; flex-shrink: 0;"></div>
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <h3 style="margin: 0; font-size: 8px; padding: 1px 0;">Player 4</h3>
+          <div id="workingArea4" style="display: grid; grid-template-columns: repeat(7, 50px); grid-template-rows: 1fr; gap: 1px; border: 1px dashed #ccc; padding: 2px; min-width: 60px; visibility: hidden; margin-bottom: 2px;">
+          </div>
+          <div id="playerBoard4" style="display: grid; grid-template-columns: repeat(${BOARD_SIZE}, 75px); grid-template-rows: repeat(${BOARD_SIZE}, 75px); gap: 1px;">
+          </div>
         </div>
       </div>
     </div>
@@ -642,13 +650,13 @@ function updateStats(gameState) {
     const totalScore = Object.values(scores).reduce((a, b) => a + b, 0);
 
     let html = `
-      <div style="font-weight: bold; margin-bottom: 2px; font-size: 14px;">Total: ${totalScore}</div>
+      <div style="font-weight: bold; margin-bottom: 3px; font-size: 14px; text-align: center;">Total: ${totalScore}</div>
       <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-        <tr style="border-bottom: 1px solid #ddd;">
-          <th style="padding: 2px; text-align: left;">Ingredient</th>
-          <th style="padding: 2px; text-align: center;">Cards</th>
-          <th style="padding: 2px; text-align: center;">Tiles</th>
-          <th style="padding: 2px; text-align: center;">Score</th>
+        <tr style="border-bottom: 1px solid #ccc;">
+          <th style="padding: 2px; text-align: left; font-size: 11px;">Ing</th>
+          <th style="padding: 2px; text-align: center; font-size: 11px;">C</th>
+          <th style="padding: 2px; text-align: center; font-size: 11px;">T</th>
+          <th style="padding: 2px; text-align: center; font-size: 11px;">S</th>
         </tr>
     `;
 
@@ -660,13 +668,12 @@ function updateStats(gameState) {
 
       html += `
         <tr style="border-bottom: 1px solid #f0f0f0;">
-          <td style="padding: 2px; display: flex; align-items: center; gap: 3px;">
-            <img src="images/symbol_${ingredient}.png" style="width: 16px; height: 16px; object-fit: contain;">
-            <span>${ingredient.slice(0, 4)}</span>
+          <td style="padding: 2px; display: flex; align-items: center; gap: 2px; font-size: 11px;">
+            <img src="images/symbol_${ingredient}.png" style="width: 14px; height: 14px; flex-shrink: 0; object-fit: contain;">
           </td>
-          <td style="padding: 2px; text-align: center; font-weight: bold;">${cardCount}</td>
-          <td style="padding: 2px; text-align: center; font-weight: bold;">${tileCount}</td>
-          <td style="padding: 2px; text-align: center; background: ${scoreColor}; font-weight: bold;">${score}</td>
+          <td style="padding: 2px; text-align: center; font-weight: bold; font-size: 11px;">${cardCount}</td>
+          <td style="padding: 2px; text-align: center; font-weight: bold; font-size: 11px;">${tileCount}</td>
+          <td style="padding: 2px; text-align: center; background: ${scoreColor}; font-weight: bold; font-size: 11px;">${score}</td>
         </tr>
       `;
     }
