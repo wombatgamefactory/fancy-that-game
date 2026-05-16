@@ -75,7 +75,7 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
         </div>
         <div id="playerBoard1" style="display: grid; grid-template-columns: repeat(${BOARD_SIZE}, 75px); grid-template-rows: repeat(${BOARD_SIZE}, 75px); gap: 1px; align-self: center;">
         </div>
-        <div id="phaseControls" style="background: #fffacd; border: 1px solid #ffeb3b; border-radius: 2px; padding: 2px; display: none; font-size: 8px; width: 100%; box-sizing: border-box; margin-top: 2px; align-self: center;">
+        <div id="phaseControls" style="background: #fffacd; border: 1px solid #ffeb3b; border-radius: 2px; padding: 2px; font-size: 8px; width: 100%; box-sizing: border-box; margin-top: 2px; align-self: center; min-height: 24px; visibility: hidden;">
         </div>
       </div>
 
@@ -698,11 +698,11 @@ function updatePhaseControls(gameState) {
 
   const player = gameState.players[gameState.currentPlayerIndex];
   if (!player.isHuman) {
-    controls.style.display = 'none';
+    controls.style.visibility = 'hidden';
     return;
   }
 
-  controls.style.display = 'block';
+  controls.style.visibility = 'visible';
   let html = '';
 
   if (gameState.gamePhase === 'sweep' && gameState.bonusTileAvailable) {
