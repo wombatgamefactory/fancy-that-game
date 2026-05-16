@@ -151,7 +151,10 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
     placementMap: {},
     removableTiles: [],
     claimingCardId: null,
+    dragSetupDone: false,
   };
+
+  setupDragAndDrop(gameState);
 }
 
 export function updateGameDisplay(gameState) {
@@ -471,8 +474,6 @@ function updatePlayerBoards(gameState) {
           </div>
         ` : '';
       }).join('');
-
-      setupDragAndDrop(gameState);
     } else {
       workingAreaEl.style.visibility = 'hidden';
       workingAreaEl.innerHTML = '';
@@ -497,10 +498,14 @@ function updatePlayerBoards(gameState) {
 
 function setupDragAndDrop(gameState) {
   const ui = window._gameUI;
+  if (ui.dragSetupDone) return;
+
   const workingArea = document.getElementById('workingArea1');
   const playerBoard = document.getElementById('playerBoard1');
 
   if (!workingArea || !playerBoard) return;
+
+  ui.dragSetupDone = true;
 
   // Setup drag on working tiles
   workingArea.addEventListener('dragstart', (e) => {
