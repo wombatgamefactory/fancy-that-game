@@ -261,6 +261,36 @@ label {
   font-size: 12px;
 }
 
+.ft-btn-rules {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  width: 80px;
+  height: 100px;
+  padding: var(--spacing-md);
+  border: 2px solid var(--color-border);
+  background: var(--color-card);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.ft-btn-rules:hover {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(193, 123, 92, 0.1);
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, var(--color-card) 0%, rgba(193, 123, 92, 0.05) 100%);
+}
+
+.ft-btn-rules:active {
+  transform: translateY(0);
+}
+
 /* ======= Game Screen ======= */
 
 .ft-game {
@@ -1311,4 +1341,55 @@ select:focus {
   font-weight: 700;
   color: var(--color-accent);
   font-family: 'Fraunces', serif;
+}
+
+/* ======= Rules Modal ======= */
+
+.ft-rules {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.ft-rules__section {
+  margin-bottom: var(--spacing-xl);
+}
+
+.ft-rules__section-title {
+  font-family: 'Fraunces', serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-accent);
+  margin-bottom: var(--spacing-md);
+}
+
+.ft-rules__step {
+  margin-bottom: var(--spacing-md);
+  padding-left: var(--spacing-md);
+  border-left: 2px solid var(--color-border);
+  padding: var(--spacing-md);
+  background: var(--color-cream);
+  border-radius: var(--radius-sm);
+}
+
+.ft-rules__step-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.ft-rules__text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.ft-rules__text:last-child {
+  margin-bottom: 0;
+}
+
+.ft-rules__btn {
+  width: 100%;
+  margin-top: var(--spacing-lg);
 }

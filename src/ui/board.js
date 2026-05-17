@@ -1,6 +1,73 @@
 import { BOARD_SIZE, MARKET_SIZE, CARD_MARKET_SIZE, REWARD_CARDS, INGREDIENTS } from '../engine/tiles.js';
 import { getPatternMatches } from '../engine/game.js';
 
+export function showRulesModal() {
+  const modal = document.createElement('div');
+  modal.className = 'ft-modal';
+  modal.innerHTML = `
+    <div class="ft-modal__inner">
+      <button class="ft-modal__close" aria-label="Close rules">✕</button>
+      <div class="ft-modal__title">
+        <h2>How to Play</h2>
+      </div>
+      <div class="ft-rules">
+        <div class="ft-rules__section">
+          <div class="ft-rules__section-title">Goal</div>
+          <div class="ft-rules__text">Collect patisserie reward cards by building colour patterns on your board, then score points by multiplying the ingredient symbols on your cards by the matching ingredient tiles you've collected.</div>
+        </div>
+
+        <div class="ft-rules__section">
+          <div class="ft-rules__section-title">Your Turn (4 Steps)</div>
+
+          <div class="ft-rules__step">
+            <div class="ft-rules__step-title">1. Sweep</div>
+            <div class="ft-rules__text">Choose a row or column from the market. Declare either a colour or an ingredient symbol. Take all tiles matching your declaration.</div>
+            <div class="ft-rules__text"><strong>Bonus:</strong> If you clear a row/column completely, take 1 extra tile from anywhere on the market.</div>
+          </div>
+
+          <div class="ft-rules__step">
+            <div class="ft-rules__step-title">2. Place Tiles</div>
+            <div class="ft-rules__text">Place all swept tiles anywhere on your 5×5 board. No adjacency required — tiles can go in any empty cells.</div>
+          </div>
+
+          <div class="ft-rules__step">
+            <div class="ft-rules__step-title">3. Claim (Optional)</div>
+            <div class="ft-rules__text">If tiles on your board match a card's colour pattern (in any rotation or reflection), you may claim it.</div>
+            <div class="ft-rules__text">When claiming: remove 1 tile from the pattern, place it in your scoring pile, tuck the card under your board.</div>
+          </div>
+
+          <div class="ft-rules__step">
+            <div class="ft-rules__step-title">4. Refill Market</div>
+            <div class="ft-rules__text">If 6 or fewer tiles remain on the market, refill from the bag.</div>
+          </div>
+        </div>
+
+        <div class="ft-rules__section">
+          <div class="ft-rules__section-title">Scoring</div>
+          <div class="ft-rules__text">At game end, for each ingredient:</div>
+          <div class="ft-rules__text"><strong>(symbols on your cards) × (tiles in your scoring pile)</strong></div>
+          <div class="ft-rules__text">Sum all five ingredients for your final score.</div>
+        </div>
+
+        <div class="ft-rules__section">
+          <div class="ft-rules__section-title">Game Ends When</div>
+          <div class="ft-rules__text">• The last card is claimed from the card market, OR</div>
+          <div class="ft-rules__text">• A player sweeps and can't fit all tiles on their board, OR</div>
+          <div class="ft-rules__text">• All market tiles are gone and the bag is empty</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const closeBtn = modal.querySelector('.ft-modal__close');
+  closeBtn.addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.remove();
+  });
+};
+
 export function renderSetupScreen(container, onStart) {
   container.innerHTML = `
     <div class="ft-setup">
@@ -20,13 +87,17 @@ export function renderSetupScreen(container, onStart) {
 
       <div id="playerSetup" class="ft-setup__section"></div>
 
-      <button id="startButton" class="ft-btn ft-btn--primary" style="width: 100%; padding: 12px;">Start Game</button>
+      <div style="display: flex; gap: var(--spacing-sm); margin-bottom: var(--spacing-md);">
+        <button id="rulesButton" class="ft-btn ft-btn--secondary" style="flex: 1;">📖 Rules</button>
+        <button id="startButton" class="ft-btn ft-btn--primary" style="flex: 2; padding: 12px;">Start Game</button>
+      </div>
     </div>
   `;
 
   const playerCount = document.getElementById('playerCount');
   const playerSetup = document.getElementById('playerSetup');
   const startButton = document.getElementById('startButton');
+  const rulesButton = document.getElementById('rulesButton');
 
   function updatePlayerSetup() {
     const count = parseInt(playerCount.value);
@@ -83,6 +154,8 @@ export function renderSetupScreen(container, onStart) {
   playerCount.addEventListener('change', updatePlayerSetup);
   updatePlayerSetup();
 
+  rulesButton.addEventListener('click', showRulesModal);
+
   startButton.addEventListener('click', () => {
     const count = parseInt(playerCount.value);
     const playerConfigs = [];
@@ -128,14 +201,22 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
       </div>
 
       <!-- Market Panel - Grid position: col 2, row 1 -->
-      <div class="ft-panel" style="grid-column: 2; grid-row: 1;">
-        <div class="ft-panel__header">
-          <h2 class="ft-panel__title">Tile Market</h2>
+      <div class="ft-panel" style="grid-column: 2; grid-row: 1; display: grid; grid-template-columns: 1fr auto; gap: var(--spacing-lg);">
+        <div style="display: flex; flex-direction: column; gap: var(--spacing-md);">
+          <div class="ft-panel__header">
+            <h2 class="ft-panel__title">Tile Market</h2>
+          </div>
+          <div id="marketContainer" style="display: grid; grid-template-columns: var(--tile-size) repeat(${MARKET_SIZE}, var(--tile-size)); grid-template-rows: var(--tile-size) repeat(${MARKET_SIZE}, var(--tile-size)); gap: 2px;">
+            <div style="grid-column: 2 / span ${MARKET_SIZE}; grid-row: 1; display: flex; gap: var(--tile-gap);" id="marketColButtons"></div>
+            <div style="grid-column: 1; grid-row: 2 / span ${MARKET_SIZE}; display: flex; flex-direction: column; gap: var(--tile-gap);" id="marketRowButtons"></div>
+            <div id="market" class="ft-market-grid" style="grid-column: 2 / span ${MARKET_SIZE}; grid-row: 2 / span ${MARKET_SIZE};"></div>
+          </div>
         </div>
-        <div id="marketContainer" style="display: grid; grid-template-columns: var(--tile-size) repeat(${MARKET_SIZE}, var(--tile-size)); grid-template-rows: var(--tile-size) repeat(${MARKET_SIZE}, var(--tile-size)); gap: 2px;">
-          <div style="grid-column: 2 / span ${MARKET_SIZE}; grid-row: 1; display: flex; gap: var(--tile-gap);" id="marketColButtons"></div>
-          <div style="grid-column: 1; grid-row: 2 / span ${MARKET_SIZE}; display: flex; flex-direction: column; gap: var(--tile-gap);" id="marketRowButtons"></div>
-          <div id="market" class="ft-market-grid" style="grid-column: 2 / span ${MARKET_SIZE}; grid-row: 2 / span ${MARKET_SIZE};"></div>
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <button id="gameRulesButton" class="ft-btn-rules" title="Show rules">
+            <div style="font-size: 32px; margin-bottom: var(--spacing-sm);">📖</div>
+            <div style="font-size: 12px; font-weight: 600;">Rules</div>
+          </button>
         </div>
       </div>
 
@@ -217,6 +298,11 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
     cupcakeMode: false,
     lastPlayerIndex: -1,
   };
+
+  const gameRulesButton = document.getElementById('gameRulesButton');
+  if (gameRulesButton) {
+    gameRulesButton.addEventListener('click', showRulesModal);
+  }
 
   setupDragAndDrop(gameState);
 }
