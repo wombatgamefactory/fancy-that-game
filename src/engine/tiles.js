@@ -97,4 +97,4 @@ export function createTileBag() {
 export const BOARD_SIZE = 5;
 export const MARKET_SIZE = 6;
 export const CARD_MARKET_SIZE = 4;
-export const CARDS_PER_PLAYER = 4;
+export const TOTAL_GAME_CARDS = 16;

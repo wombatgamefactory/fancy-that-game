@@ -160,13 +160,13 @@ export function decideClaim(gameState) {
   const match = matches[0];
 
   // Choose which tile to remove: prefer tiles with ingredients we already have
-  const patternCells = getAllPatternCells(card.pattern, match.row, match.col, match.rotation);
+  const patternCells = getAllPatternCells(card.pattern, match.row, match.col, match.rotation, match.isFlipped);
   let bestRemoveIndex = patternCells[0];
   let bestRemoveScore = -1;
 
   for (const cellIndex of patternCells) {
     const tile = currentPlayer.board[cellIndex];
-    if (!tile || tile.type === 'placeholder') continue;
+    if (!tile) continue;
 
     let score = 0;
 
@@ -177,7 +177,7 @@ export function decideClaim(gameState) {
 
     // Prefer removing duplicates if we have them
     const otherTiles = currentPlayer.board.filter(
-      (t, i) => i !== cellIndex && t && t.type !== 'placeholder' && t.ingredient === tile.ingredient
+      (t, i) => i !== cellIndex && t && t.ingredient === tile.ingredient
     );
     score += otherTiles.length;
 
@@ -190,8 +190,12 @@ export function decideClaim(gameState) {
   return { cardId: card.id, removedBoardIndex: bestRemoveIndex };
 }
 
-function getAllPatternCells(pattern, row, col, rotation) {
-  const rotated = rotatePattern(pattern, rotation);
+function getAllPatternCells(pattern, row, col, rotation, isFlipped = false) {
+  let p = rotatePattern(pattern, rotation);
+  if (isFlipped) {
+    p = reflectPatternHorizontal(p);
+  }
+
   const cells = [];
   const boardIndices = [
     row * BOARD_SIZE + col,
@@ -201,12 +205,16 @@ function getAllPatternCells(pattern, row, col, rotation) {
   ];
 
   for (let i = 0; i < 4; i++) {
-    if (rotated[i]) {
+    if (p[i]) {
       cells.push(boardIndices[i]);
     }
   }
 
   return cells;
+}
+
+function reflectPatternHorizontal(pattern) {
+  return [pattern[1], pattern[0], pattern[3], pattern[2]];
 }
 
 function rotatePattern(pattern, turns) {

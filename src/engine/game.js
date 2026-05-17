@@ -1,6 +1,6 @@
-import { BOARD_SIZE, MARKET_SIZE, CARD_MARKET_SIZE, CARDS_PER_PLAYER, REWARD_CARDS, COLOURS, INGREDIENTS, createTileBag } from './tiles.js';
+import { BOARD_SIZE, MARKET_SIZE, CARD_MARKET_SIZE, TOTAL_GAME_CARDS, REWARD_CARDS, COLOURS, INGREDIENTS, createTileBag } from './tiles.js';
 
-export function createGame(playerConfigs) {
+export function createGame(playerConfigs, statsCollector = null) {
   const bag = createTileBag();
   const playerCount = playerConfigs.length;
 
@@ -12,6 +12,7 @@ export function createGame(playerConfigs) {
     board: Array(BOARD_SIZE * BOARD_SIZE).fill(null),
     scoringPile: [],
     claimedCards: [],
+    cupcakes: 0,
     score: 0,
   }));
 
@@ -20,7 +21,18 @@ export function createGame(playerConfigs) {
     market.push(bag.shift());
   }
 
+  if (statsCollector) {
+    statsCollector.recordMarketFill();
+  }
+
   const { gameDeck, cardMarket } = initGameDeck(playerCount);
+  const cardsNeededToEnd = TOTAL_GAME_CARDS;
+
+  if (statsCollector) {
+    for (const card of cardMarket) {
+      statsCollector.recordCardMarketEntry(card.id, 0);
+    }
+  }
 
   return {
     players,
@@ -33,18 +45,21 @@ export function createGame(playerConfigs) {
     pendingSweepTiles: [],
     bonusTileAvailable: false,
     gameOver: false,
+    endGameReason: null, // 'cardMarket' or 'boardOverflow'
+    remainingTurnsInEndGame: 0, // for boardOverflow end game
+    cardsNeededToEnd,
     stats: {
       turnsPlayed: 0,
     },
+    statsCollector,
   };
 }
 
 export function initGameDeck(playerCount) {
-  const cardsNeeded = CARDS_PER_PLAYER * playerCount;
   const shuffledCards = [...REWARD_CARDS].sort(() => Math.random() - 0.5);
 
   const cardMarket = shuffledCards.splice(0, CARD_MARKET_SIZE);
-  const gameDeck = shuffledCards.splice(0, cardsNeeded);
+  const gameDeck = shuffledCards.splice(0, TOTAL_GAME_CARDS);
 
   return { gameDeck, cardMarket };
 }
@@ -106,6 +121,10 @@ export function sweep(gameState, rowOrCol, isRow, declaration, declarationType) 
 
   gameState.bonusTileAvailable = isLineClear;
 
+  if (gameState.statsCollector) {
+    gameState.statsCollector.recordSweep(sweptTiles.length);
+  }
+
   if (!isLineClear) {
     gameState.gamePhase = 'place';
   }
@@ -132,6 +151,16 @@ export function place(gameState, placements) {
   }
 
   const player = gameState.players[gameState.currentPlayerIndex];
+  const emptyCount = getValidPlacements(player.board).length;
+
+  // Check for board overflow - not enough empty cells to place all swept tiles
+  if (placements.length > emptyCount) {
+    gameState.endGameReason = 'boardOverflow';
+    gameState.remainingTurnsInEndGame = gameState.players.length - 1;
+    gameState.pendingSweepTiles = [];
+    gameState.gamePhase = 'refill'; // Skip directly to refill to move to next player
+    return gameState;
+  }
 
   for (let i = 0; i < placements.length; i++) {
     const boardIndex = placements[i];
@@ -161,24 +190,52 @@ export function claim(gameState, cardId, removedBoardIndex) {
 
   if (matches.length === 0) throw new Error('Pattern not found on board');
 
-  const match = matches[0];
-  const patternCells = getAllPatternCells(card.pattern, match.row, match.col, match.rotation);
+  const allValidCells = new Set();
+  for (const match of matches) {
+    const patternCells = getAllPatternCells(card.pattern, match.row, match.col, match.rotation, match.isFlipped);
+    patternCells.forEach(cell => allValidCells.add(cell));
+  }
 
-  if (!patternCells.includes(removedBoardIndex)) {
-    throw new Error('Removed tile not in matching pattern');
+  if (!allValidCells.has(removedBoardIndex)) {
+    throw new Error('Removed tile not in any valid matching pattern');
   }
 
   player.scoringPile.push(player.board[removedBoardIndex]);
-  player.board[removedBoardIndex] = { type: 'placeholder' };
+  player.board[removedBoardIndex] = null;
   player.claimedCards.push(cardId);
+  player.cupcakes++;
+
+  if (gameState.statsCollector) {
+    gameState.statsCollector.recordCardClaimed(cardId, gameState.stats.turnsPlayed);
+    gameState.statsCollector.recordCardMarketExit(cardId, gameState.stats.turnsPlayed);
+  }
 
   gameState.cardMarket.splice(cardIndex, 1);
 
   if (gameState.gameDeck.length > 0) {
-    gameState.cardMarket.push(gameState.gameDeck.shift());
+    const newCard = gameState.gameDeck.shift();
+    gameState.cardMarket.push(newCard);
+    if (gameState.statsCollector) {
+      gameState.statsCollector.recordCardMarketEntry(newCard.id, gameState.stats.turnsPlayed);
+    }
   }
 
   gameState.gamePhase = 'refill';
+  return gameState;
+}
+
+export function moveTile(gameState, fromIndex, toIndex) {
+  const allowedPhases = ['sweep', 'place', 'claim'];
+  if (!allowedPhases.includes(gameState.gamePhase)) {
+    throw new Error('Cannot move tile in this phase');
+  }
+  const player = gameState.players[gameState.currentPlayerIndex];
+  if (player.cupcakes <= 0) throw new Error('No cupcakes available');
+  if (player.board[fromIndex] === null) throw new Error('No tile at source cell');
+  if (player.board[toIndex] !== null) throw new Error('Target cell is occupied');
+  player.board[toIndex] = player.board[fromIndex];
+  player.board[fromIndex] = null;
+  player.cupcakes--;
   return gameState;
 }
 
@@ -199,10 +256,30 @@ export function refill(gameState) {
         gameState.market[i] = gameState.bag.shift();
       }
     }
+    if (gameState.statsCollector) {
+      gameState.statsCollector.recordMarketFill();
+    }
   }
 
-  if (isGameOver(gameState)) {
+  // Handle board overflow end game
+  if (gameState.endGameReason === 'boardOverflow') {
+    gameState.remainingTurnsInEndGame--;
+    if (gameState.remainingTurnsInEndGame === 0) {
+      gameState.gameOver = true;
+      calculateFinalScores(gameState);
+    } else {
+      gameState.stats.turnsPlayed++;
+      gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
+      gameState.gamePhase = 'sweep';
+    }
+  } else if (isGameOver(gameState)) {
     gameState.gameOver = true;
+    gameState.endGameReason = 'cardMarket';
+    calculateFinalScores(gameState);
+  } else if (gameState.market.every(t => t === null) && gameState.bag.length === 0) {
+    // Market tiles exhausted
+    gameState.gameOver = true;
+    gameState.endGameReason = 'marketTiles';
     calculateFinalScores(gameState);
   } else {
     gameState.stats.turnsPlayed++;
@@ -249,6 +326,10 @@ function rotatePattern(pattern, turns) {
   return p;
 }
 
+function reflectPatternHorizontal(pattern) {
+  return [pattern[1], pattern[0], pattern[3], pattern[2]];
+}
+
 export function getPatternMatches(board, cardPattern) {
   const matches = [];
 
@@ -257,8 +338,8 @@ export function getPatternMatches(board, cardPattern) {
   if (isSingleTile) {
     const colour = cardPattern[0];
     for (let i = 0; i < board.length; i++) {
-      if (board[i] && board[i].type !== 'placeholder' && board[i].colour === colour) {
-        matches.push({ row: Math.floor(i / BOARD_SIZE), col: i % BOARD_SIZE, rotation: 0, cells: [i] });
+      if (board[i] && board[i].colour === colour) {
+        matches.push({ row: Math.floor(i / BOARD_SIZE), col: i % BOARD_SIZE, rotation: 0, isFlipped: false, cells: [i] });
       }
     }
     return matches;
@@ -267,23 +348,27 @@ export function getPatternMatches(board, cardPattern) {
   for (let row = 0; row < BOARD_SIZE - 1; row++) {
     for (let col = 0; col < BOARD_SIZE - 1; col++) {
       for (let rotation = 0; rotation < 4; rotation++) {
-        const rotated = rotatePattern(cardPattern, rotation);
-        const boardCells = [
-          board[row * BOARD_SIZE + col],
-          board[row * BOARD_SIZE + col + 1],
-          board[(row + 1) * BOARD_SIZE + col],
-          board[(row + 1) * BOARD_SIZE + col + 1],
-        ];
+        for (let isFlipped = 0; isFlipped < 2; isFlipped++) {
+          const rotated = rotatePattern(cardPattern, rotation);
+          const pattern = isFlipped ? reflectPatternHorizontal(rotated) : rotated;
 
-        const boardIndices = [
-          row * BOARD_SIZE + col,
-          row * BOARD_SIZE + col + 1,
-          (row + 1) * BOARD_SIZE + col,
-          (row + 1) * BOARD_SIZE + col + 1,
-        ];
+          const boardCells = [
+            board[row * BOARD_SIZE + col],
+            board[row * BOARD_SIZE + col + 1],
+            board[(row + 1) * BOARD_SIZE + col],
+            board[(row + 1) * BOARD_SIZE + col + 1],
+          ];
 
-        if (patternMatches(boardCells, rotated)) {
-          matches.push({ row, col, rotation, cells: boardIndices });
+          const boardIndices = [
+            row * BOARD_SIZE + col,
+            row * BOARD_SIZE + col + 1,
+            (row + 1) * BOARD_SIZE + col,
+            (row + 1) * BOARD_SIZE + col + 1,
+          ];
+
+          if (patternMatches(boardCells, pattern)) {
+            matches.push({ row, col, rotation, isFlipped: isFlipped === 1, cells: boardIndices });
+          }
         }
       }
     }
@@ -295,14 +380,18 @@ export function getPatternMatches(board, cardPattern) {
 function patternMatches(boardCells, pattern) {
   for (let i = 0; i < 4; i++) {
     if (pattern[i]) {
-      if (!boardCells[i] || boardCells[i].type === 'placeholder' || boardCells[i].colour !== pattern[i]) return false;
+      if (!boardCells[i] || boardCells[i].colour !== pattern[i]) return false;
     }
   }
   return true;
 }
 
-function getAllPatternCells(pattern, row, col, rotation) {
-  const rotated = rotatePattern(pattern, rotation);
+function getAllPatternCells(pattern, row, col, rotation, isFlipped = false) {
+  let p = rotatePattern(pattern, rotation);
+  if (isFlipped) {
+    p = reflectPatternHorizontal(p);
+  }
+
   const cells = [];
   const boardIndices = [
     row * BOARD_SIZE + col,
@@ -312,7 +401,7 @@ function getAllPatternCells(pattern, row, col, rotation) {
   ];
 
   for (let i = 0; i < 4; i++) {
-    if (rotated[i]) {
+    if (p[i]) {
       cells.push(boardIndices[i]);
     }
   }
@@ -330,8 +419,13 @@ export function getValidPlacements(board) {
   return valid;
 }
 
+export function getTotalCardsClaimed(gameState) {
+  return gameState.players.reduce((sum, p) => sum + p.claimedCards.length, 0);
+}
+
 export function isGameOver(gameState) {
-  return gameState.cardMarket.length === 0 && gameState.gameDeck.length === 0;
+  const totalCardsClaimed = getTotalCardsClaimed(gameState);
+  return totalCardsClaimed >= gameState.cardsNeededToEnd;
 }
 
 export function calculateFinalScores(gameState) {
@@ -351,6 +445,7 @@ export function calculateFinalScores(gameState) {
       score += cardSymbols * pileCount;
     }
 
+    score += player.cupcakes;
     player.score = score;
   }
 }

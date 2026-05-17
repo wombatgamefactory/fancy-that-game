@@ -100,7 +100,7 @@ Symbol count = tiles − 1. All symbols on a card are the same ingredient.
 The card's ingredient is always thematically linked to the patisserie depicted.
 
 **Pattern matching rule:** The pattern shown on the card may be matched in any
-rotation on the player's board. Reflections are NOT valid. The card itself is
+rotation or reflection on the player's board. The card itself is
 never rotated during play — the player scans their board for the shape in any
 of its valid orientations.
 
@@ -122,9 +122,9 @@ of its valid orientations.
 
 ## Setup
 
-1. Shuffle the full 50-card deck. Deal **4 cards per player** face-down to form
-   the **game deck**: 8 cards (2p), 12 cards (3p), 16 cards (4p). Set remaining
-   cards aside — they play no further part this game.
+1. Shuffle the full 50-card deck. Deal **16 cards** face-down to form the **game deck**,
+   regardless of player count. Set remaining cards aside — they play no further part
+   this game.
 2. Reveal the top **4 cards** from the game deck face-up as the **card market**.
    These are the only cards players may currently claim.
 3. Dump tiles from the bag to fill the 6×6 market board.
@@ -156,7 +156,7 @@ This bonus does not chain — it triggers at most once per turn.
 ### Step 3 — Claim (optional, maximum 1 per turn)
 - Examine your personal board
 - If tiles on your board form the colour pattern on any face-up card in the card
-  market — in that exact shape or any **rotation** (not reflection) — you may claim it
+  market — in that exact shape or any **rotation or reflection** — you may claim it
 - When you claim a card:
   1. **Remove exactly 1 tile** from those that formed the matching pattern.
      Place it in your personal scoring pile. You choose which tile to remove.
@@ -229,20 +229,31 @@ each. Multiply pairs and sum. Five multiplications, four additions total.
 
 ---
 
-## End Game Condition
+## End Game Conditions
 
+The game ends in one of three ways:
+
+### 1. Card Market Exhausted (Normal End)
 The game ends when the **last card is claimed from the card market** — the game
 deck is exhausted and the final market card is taken. Complete the current round
 so all players have had equal turns, then score.
 
 | Players | Cards in game deck | Cards claimed per player (approx) |
 |---------|--------------------|-----------------------------------|
-| 2       | 8                  | ~4                                |
-| 3       | 12                 | ~4                                |
+| 2       | 16                 | ~8                                |
+| 3       | 16                 | ~5–6                              |
 | 4       | 16                 | ~4                                |
 
-Note: 2-player balance is under active playtesting. The 8-card game deck with a
-4-card visible market may need adjustment.
+### 2. Board Overflow (Immediate End)
+If a player sweeps tiles and is unable to place all of them on their 5×5 board
+(insufficient empty cells), the game ends immediately. All other players get
+exactly **one more turn** each to complete their actions, then final scoring occurs.
+
+The player who triggered the overflow does not get additional turns.
+
+### 3. Market Tiles Exhausted
+If all tiles are removed from the 6×6 market board and the tile bag is empty,
+the game ends immediately. No further sweeps are possible. Final scoring occurs.
 
 **Tiebreaker:** Most reward cards claimed. If still tied, share the victory.
 
@@ -392,7 +403,7 @@ Calico, with a distinctive visual register.
 
 ## Still To Be Resolved
 
-- **2-player balance** — 8-card game deck with 4-card visible market needs dedicated playtesting; may need adjustment to deck size or market size at 2p
+- **2-player balance** — with the 16-card fixed deck, 2-player games may need dedicated playtesting to ensure adequate game length and player interaction
 - **Tile colour accuracy on cards** — the rendered card tile colours (Blue appears as mid-teal; Yellow as lime-yellow on the Blueberry frangipane tart) should be confirmed against physical tile colours before print production
 - **Score pad design** — the end-game calculation would benefit from a purpose-designed scoring sheet with 5 ingredient columns
 - **Box insert design** — tiles need to be accessible by colour/symbol for setup

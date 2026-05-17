@@ -1,9 +1,13 @@
-import { createGame, sweep, takeBonusTile, place, claim, skipClaim, refill, getValidSweeps, getPatternMatches, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
-import { renderSetupScreen, renderGameScreen, updateGameDisplay } from './board.js';
-import { decideSweep, decideBonusTile, decidePlacements, decideClaim } from '../bots/basicBot.js';
+import { createGame, sweep, takeBonusTile, place, claim, skipClaim, refill, moveTile, getValidSweeps, getValidPlacements, getPatternMatches, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
+import { createStatsCollector } from '../engine/statsCollector.js';
+import { renderSetupScreen, renderGameScreen, updateGameDisplay, setThinkingState, renderEndScreen } from './board.js';
+import * as basicBot from '../bots/basicBot.js';
+import * as mctsBot from '../bots/mctsBot.js';
 
 let gameState = null;
+let statsCollector = null;
 let autoPlayMode = false;
+let lastPlayerIndex = -1;
 
 function init() {
   const app = document.getElementById('app');
@@ -11,11 +15,12 @@ function init() {
 }
 
 function onGameStart(playerConfigs) {
-  gameState = createGame(playerConfigs);
+  statsCollector = createStatsCollector();
+  gameState = createGame(playerConfigs, statsCollector);
   autoPlayMode = playerConfigs.every(p => !p.isHuman);
 
   const app = document.getElementById('app');
-  renderGameScreen(app, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim);
+  renderGameScreen(app, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onMoveTile, onCupcakeClick);
 
   updateDisplay();
 
@@ -85,6 +90,24 @@ function onSkipClaim() {
   }
 }
 
+function onMoveTile(fromIndex, toIndex) {
+  try {
+    moveTile(gameState, fromIndex, toIndex);
+    window._gameUI.cupcakeMode = false;
+    updateDisplay();
+  } catch (e) {
+    console.warn('Move tile failed:', e.message);
+  }
+}
+
+function onCupcakeClick() {
+  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  if (currentPlayer.cupcakes > 0 && ['sweep', 'place', 'claim'].includes(gameState.gamePhase)) {
+    window._gameUI.cupcakeMode = !window._gameUI.cupcakeMode;
+    updateDisplay();
+  }
+}
+
 function checkAutoAdvance() {
   if (gameState.gamePhase === 'refill') {
     refill(gameState);
@@ -112,9 +135,17 @@ async function autoPlayGame() {
 
     if (!currentPlayer.isHuman) {
       try {
+        const isMCTS = currentPlayer.aiDifficulty && currentPlayer.aiDifficulty.startsWith('mcts');
+        const bot = isMCTS ? mctsBot : basicBot;
+
         if (gameState.gamePhase === 'sweep') {
           if (gameState.bonusTileAvailable) {
-            const bonusTileIndex = decideBonusTile(gameState);
+            setThinkingState(currentPlayer.name, true);
+            updateDisplay();
+            const bonusTileIndex = await bot.decideBonusTile(gameState, currentPlayer.aiDifficulty);
+            setThinkingState(currentPlayer.name, false);
+            updateDisplay();
+
             if (bonusTileIndex !== null) {
               takeBonusTile(gameState, bonusTileIndex);
             } else {
@@ -123,7 +154,12 @@ async function autoPlayGame() {
               gameState.gamePhase = 'place';
             }
           } else {
-            const sweepMove = decideSweep(gameState);
+            setThinkingState(currentPlayer.name, true);
+            updateDisplay();
+            const sweepMove = await bot.decideSweep(gameState, currentPlayer.aiDifficulty);
+            setThinkingState(currentPlayer.name, false);
+            updateDisplay();
+
             if (!sweepMove) {
               // No valid sweeps - game should be over, but end it just in case
               gameState.gameOver = true;
@@ -132,10 +168,30 @@ async function autoPlayGame() {
             sweep(gameState, sweepMove.rowOrCol, sweepMove.isRow, sweepMove.declaration, sweepMove.declarationType);
           }
         } else if (gameState.gamePhase === 'place') {
-          const placements = decidePlacements(gameState);
-          place(gameState, placements);
+          const emptyCount = getValidPlacements(currentPlayer.board).length;
+
+          // Check for board overflow - if not enough space, discard remaining tiles and move to refill
+          if (gameState.pendingSweepTiles.length > emptyCount) {
+            gameState.endGameReason = 'boardOverflow';
+            gameState.remainingTurnsInEndGame = gameState.players.length - 1;
+            gameState.pendingSweepTiles = [];
+            gameState.gamePhase = 'refill';
+          } else {
+            setThinkingState(currentPlayer.name, true);
+            updateDisplay();
+            const placements = await bot.decidePlacements(gameState, currentPlayer.aiDifficulty);
+            setThinkingState(currentPlayer.name, false);
+            updateDisplay();
+
+            place(gameState, placements);
+          }
         } else if (gameState.gamePhase === 'claim') {
-          const claimDecision = decideClaim(gameState);
+          setThinkingState(currentPlayer.name, true);
+          updateDisplay();
+          const claimDecision = await bot.decideClaim(gameState, currentPlayer.aiDifficulty);
+          setThinkingState(currentPlayer.name, false);
+          updateDisplay();
+
           if (claimDecision) {
             claim(gameState, claimDecision.cardId, claimDecision.removedBoardIndex);
           } else {
@@ -169,19 +225,15 @@ function updateDisplay() {
 }
 
 function onGameEnd() {
-  const winner = gameState.players.reduce((a, b) => a.score > b.score ? a : b);
-  const stats = {
-    turnsPlayed: gameState.stats.turnsPlayed,
-    scores: gameState.players.map(p => ({
-      name: p.name,
-      score: p.score,
-      cardsWon: p.claimedCards.length,
-      scoringPile: p.scoringPile.length,
-    })),
-  };
-
-  console.log('Game Over!', stats);
-  alert(`Game Over!\n\nWinner: ${winner.name} with ${winner.score} points\n\nScores: ${gameState.players.map(p => `${p.name}: ${p.score}`).join(', ')}`);
+  const app = document.getElementById('app');
+  const gameStats = statsCollector?.getReport() || {};
+  renderEndScreen(
+    app,
+    gameState,
+    () => init(),
+    () => init(),
+    gameStats
+  );
 }
 
 init();
