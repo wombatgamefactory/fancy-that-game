@@ -221,7 +221,7 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
       </div>
 
       <!-- Player 3 Panel - Grid position: col 3, row 1 -->
-      <div class="ft-panel ft-panel--player3" id="playerPanel3" style="grid-column: 3; grid-row: 1; display: flex; flex-direction: row; gap: var(--spacing-lg);">
+      <div class="ft-panel ft-panel--player3" id="playerPanel3" style="grid-column: 3; grid-row: 1; display: ${playerCount >= 3 ? 'flex' : 'none'}; flex-direction: row; gap: var(--spacing-lg);">
         <div id="playerScore3" style="flex-shrink: 0; min-width: 200px; overflow-y: auto; max-height: 550px;"></div>
         <div style="display: flex; flex-direction: column; align-items: center; flex: 1;">
           <div class="ft-panel__header" style="width: 100%; padding: 0 0 var(--spacing-sm) 0; border-bottom: 1px solid var(--color-border); margin-bottom: var(--spacing-sm);">
@@ -233,7 +233,7 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
       </div>
 
       <!-- Player 2 Panel - Grid position: col 1, row 2 -->
-      <div class="ft-panel ft-panel--player2" id="playerPanel2" style="grid-column: 1; grid-row: 2; display: flex; flex-direction: row; gap: var(--spacing-lg);">
+      <div class="ft-panel ft-panel--player2" id="playerPanel2" style="grid-column: 1; grid-row: 2; display: ${playerCount >= 2 ? 'flex' : 'none'}; flex-direction: row; gap: var(--spacing-lg);">
         <div id="playerScore2" style="flex-shrink: 0; min-width: 200px; overflow-y: auto; max-height: 550px;"></div>
         <div style="display: flex; flex-direction: column; align-items: center; flex: 1;">
           <div class="ft-panel__header" style="width: 100%; padding: 0 0 var(--spacing-sm) 0; border-bottom: 1px solid var(--color-border); margin-bottom: var(--spacing-sm);">
@@ -268,7 +268,7 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
       </div>
 
       <!-- Player 4 Panel - Grid position: col 3, row 2 -->
-      <div class="ft-panel ft-panel--player4" id="playerPanel4" style="grid-column: 3; grid-row: 2; display: flex; flex-direction: row; gap: var(--spacing-lg);">
+      <div class="ft-panel ft-panel--player4" id="playerPanel4" style="grid-column: 3; grid-row: 2; display: ${playerCount >= 4 ? 'flex' : 'none'}; flex-direction: row; gap: var(--spacing-lg);">
         <div id="playerScore4" style="flex-shrink: 0; min-width: 200px; overflow-y: auto; max-height: 550px;"></div>
         <div style="display: flex; flex-direction: column; align-items: center; flex: 1;">
           <div class="ft-panel__header" style="width: 100%; padding: 0 0 var(--spacing-sm) 0; border-bottom: 1px solid var(--color-border); margin-bottom: var(--spacing-sm);">
