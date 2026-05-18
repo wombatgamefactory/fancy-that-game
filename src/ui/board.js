@@ -1224,6 +1224,9 @@ function updatePhaseControls(gameState) {
   controls.classList.remove('ft-hidden');
   const hasCupcakes = player.cupcakes > 0 && ['sweep', 'place', 'claim'].includes(gameState.gamePhase);
   const cupcakeHint = hasCupcakes ? `<div class="ft-phase-bar__cupcake-hint">💡 You have ${player.cupcakes} cupcake${player.cupcakes === 1 ? '' : 's'} available — click one to move tiles on your board!</div>` : '';
+  const ui = window._gameUI;
+  const canUndo = ui?.canUndo === true;
+  const undoBtn = canUndo ? `<button id="undoBtn" class="ft-btn ft-btn--secondary ft-btn--small">↩ Undo</button>` : '';
   let html = '';
 
   if (gameState.gamePhase === 'sweep' && gameState.bonusTileAvailable) {
@@ -1232,10 +1235,12 @@ function updatePhaseControls(gameState) {
         <div class="ft-phase-bar__instruction">Bonus tile available!</div>
         <div class="ft-phase-bar__status success">Click any market tile to claim it</div>
         ${cupcakeHint}
+        <div class="ft-phase-bar__controls">
+          ${undoBtn}
+        </div>
       </div>
     `;
   } else if (gameState.gamePhase === 'place') {
-    const ui = window._gameUI;
     const placementCount = ui.placementMap ? Object.keys(ui.placementMap).length : 0;
     const allPlaced = placementCount === gameState.pendingSweepTiles.length;
 
@@ -1245,12 +1250,12 @@ function updatePhaseControls(gameState) {
         <div class="ft-phase-bar__status">Placed: <strong>${placementCount}/${gameState.pendingSweepTiles.length}</strong></div>
         ${cupcakeHint}
         <div class="ft-phase-bar__controls">
+          ${undoBtn}
           <button id="placementDone" class="ft-btn ft-btn--primary ft-btn--small" ${!allPlaced ? 'disabled' : ''}>Done</button>
         </div>
       </div>
     `;
   } else if (gameState.gamePhase === 'claim') {
-    const ui = window._gameUI;
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
     if (ui.removableTiles && ui.removableTiles.length > 0) {
@@ -1276,6 +1281,7 @@ function updatePhaseControls(gameState) {
             <div class="ft-phase-bar__instruction">No patterns match</div>
             ${cupcakeHint}
             <div class="ft-phase-bar__controls">
+              ${undoBtn}
               <button id="skipClaim" class="ft-btn ft-btn--secondary ft-btn--small">Skip Claim</button>
             </div>
           </div>
@@ -1286,15 +1292,36 @@ function updatePhaseControls(gameState) {
             <div class="ft-phase-bar__instruction">Click a card to claim it</div>
             ${cupcakeHint}
             <div class="ft-phase-bar__controls">
+              ${undoBtn}
               <button id="skipClaim" class="ft-btn ft-btn--secondary ft-btn--small">Skip Claim</button>
             </div>
           </div>
         `;
       }
     }
+  } else if (gameState.gamePhase === 'refill') {
+    html = `
+      <div class="ft-phase-bar">
+        <div class="ft-phase-bar__instruction">Turn complete</div>
+        <div class="ft-phase-bar__controls">
+          ${undoBtn}
+          <button id="confirmTurn" class="ft-btn ft-btn--primary ft-btn--small">Confirm Turn →</button>
+        </div>
+      </div>
+    `;
   }
 
   controls.innerHTML = html;
+
+  const undoBtnEl = controls.querySelector('#undoBtn');
+  if (undoBtnEl) {
+    undoBtnEl.addEventListener('click', () => window._gameUI.onUndo?.());
+  }
+
+  const confirmBtn = controls.querySelector('#confirmTurn');
+  if (confirmBtn && gameState.gamePhase === 'refill') {
+    confirmBtn.addEventListener('click', () => window._gameUI.onConfirmTurn?.());
+  }
 
   const placementDoneBtn = controls.querySelector('#placementDone');
   if (placementDoneBtn && gameState.gamePhase === 'place') {

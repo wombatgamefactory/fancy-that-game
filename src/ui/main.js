@@ -8,13 +8,58 @@ let gameState = null;
 let statsCollector = null;
 let autoPlayMode = false;
 let lastPlayerIndex = -1;
+let undoStack = [];
 
 function init() {
   const app = document.getElementById('app');
   renderSetupScreen(app, onGameStart);
 }
 
+function snapshotGameState() {
+  const { statsCollector, ...rest } = gameState;
+  const clone = JSON.parse(JSON.stringify(rest));
+  clone.statsCollector = statsCollector;
+  return clone;
+}
+
+function pushUndoSnapshot() {
+  undoStack.push(snapshotGameState());
+}
+
+function undoAction() {
+  if (undoStack.length === 0) return;
+  const snapshot = undoStack.pop();
+  const statsCollector = gameState.statsCollector;
+  Object.assign(gameState, snapshot);
+  gameState.statsCollector = statsCollector;
+  if (window._gameUI) {
+    window._gameUI.selectedPlacements = [];
+    window._gameUI.placementMap = {};
+    window._gameUI.removableTiles = [];
+    window._gameUI.claimingCardId = null;
+    window._gameUI.cupcakeMode = false;
+  }
+  updateDisplay();
+}
+
+function confirmTurn() {
+  undoStack.length = 0;
+  refill(gameState);
+  updateDisplay();
+  if (gameState.gameOver) {
+    onGameEnd();
+  } else {
+    setTimeout(() => {
+      const nextPlayer = gameState.players[gameState.currentPlayerIndex];
+      if (!nextPlayer.isHuman) {
+        autoPlayGame();
+      }
+    }, 500);
+  }
+}
+
 function onGameStart(playerConfigs) {
+  undoStack.length = 0;
   statsCollector = createStatsCollector();
   gameState = createGame(playerConfigs, statsCollector);
   autoPlayMode = playerConfigs.every(p => !p.isHuman);
@@ -35,6 +80,7 @@ function onMarketClick(rowOrCol, isRow, declaration, declarationType) {
   if (!currentPlayer.isHuman) return;
 
   try {
+    pushUndoSnapshot();
     sweep(gameState, rowOrCol, isRow, declaration, declarationType);
     updateDisplay();
 
@@ -52,6 +98,7 @@ function onBonusTile(marketIndex) {
   if (!currentPlayer.isHuman) return;
 
   try {
+    pushUndoSnapshot();
     takeBonusTile(gameState, marketIndex);
     updateDisplay();
     checkAutoAdvance();
@@ -62,6 +109,7 @@ function onBonusTile(marketIndex) {
 
 function onPlacementSubmit(placements) {
   try {
+    pushUndoSnapshot();
     place(gameState, placements);
     updateDisplay();
     checkAutoAdvance();
@@ -72,6 +120,7 @@ function onPlacementSubmit(placements) {
 
 function onClaimSubmit(cardId, removedBoardIndex) {
   try {
+    pushUndoSnapshot();
     claim(gameState, cardId, removedBoardIndex);
     updateDisplay();
     checkAutoAdvance();
@@ -82,6 +131,7 @@ function onClaimSubmit(cardId, removedBoardIndex) {
 
 function onSkipClaim() {
   try {
+    pushUndoSnapshot();
     skipClaim(gameState);
     updateDisplay();
     checkAutoAdvance();
@@ -92,6 +142,7 @@ function onSkipClaim() {
 
 function onMoveTile(fromIndex, toIndex) {
   try {
+    pushUndoSnapshot();
     moveTile(gameState, fromIndex, toIndex);
     window._gameUI.cupcakeMode = false;
     updateDisplay();
@@ -110,13 +161,18 @@ function onCupcakeClick() {
 
 function checkAutoAdvance() {
   if (gameState.gamePhase === 'refill') {
+    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+    if (currentPlayer.isHuman) {
+      // Don't auto-advance — show Confirm Turn button instead
+      updateDisplay();
+      return;
+    }
+    // AI player: auto-advance as before
     refill(gameState);
     updateDisplay();
-
     if (gameState.gameOver) {
       onGameEnd();
     } else {
-      // Check if next player is AI and let them play
       setTimeout(() => {
         const nextPlayer = gameState.players[gameState.currentPlayerIndex];
         if (!nextPlayer.isHuman) {
@@ -221,6 +277,11 @@ async function autoPlayGame() {
 }
 
 function updateDisplay() {
+  if (window._gameUI) {
+    window._gameUI.canUndo = undoStack.length > 0;
+    window._gameUI.onUndo = undoAction;
+    window._gameUI.onConfirmTurn = confirmTurn;
+  }
   updateGameDisplay(gameState);
 }
 
