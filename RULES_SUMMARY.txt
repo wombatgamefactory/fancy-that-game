@@ -1,0 +1,138 @@
+FANCY THAT! - RULES SUMMARY
+============================
+
+GOAL
+----
+Collect patisserie reward cards by building colour patterns on your personal
+board, then score points by multiplying the ingredient symbols on your cards
+by the matching ingredient tiles you've collected.
+
+COMPONENTS
+----------
+- Tiles: 100 tiles (5 colours × 5 ingredient symbols)
+- Reward Cards: 50 unique cards (10 per ingredient)
+- Personal Boards: One 5×5 grid per player
+- Market Board: One shared 6×6 grid
+- Cupcakes: 5 per player at game start
+
+SETUP
+-----
+1. Deal 16 cards face-down to form the game deck
+2. Reveal the top 4 cards face-up as the card market
+3. Fill the 6×6 market board with tiles from the bag
+4. Each player takes a personal board and clears space for their scoring pile
+5. Randomly determine first player
+
+YOUR TURN (5 STEPS)
+-------------------
+
+STEP 1 — SWEEP
+Choose a row or column on the market board and declare either a colour or an
+ingredient symbol. Take all tiles matching your declaration.
+
+Bonus: If you clear a row/column completely, take 1 extra tile from anywhere
+on the market board.
+
+STEP 2 — PLACE TILES
+Place all swept tiles anywhere on your 5×5 board. No adjacency required —
+tiles can go in any empty cells. All tiles taken must be placed this turn.
+
+STEP 3 — CLAIM (Optional, maximum 1 per turn)
+If tiles on your board form the colour pattern on any face-up card in the card
+market (in any rotation or reflection), you may claim it.
+
+When claiming:
+1. Remove exactly 1 tile from those that formed the matching pattern
+2. Place it in your personal scoring pile
+3. Tuck the card face-down under your board
+4. Draw the top card from the game deck to refill the card market
+
+Blocked Spaces: The cell where you removed the tile becomes permanently blocked
+and cannot accept new tiles.
+
+STEP 3.5 — MOVE TILES (Optional, using cupcakes)
+You may spend a cupcake to move one tile from its current cell to any other
+empty cell on your board. You can do this at any point during your turn. Each
+move costs 1 cupcake.
+
+STEP 4 — REFILL MARKET
+If 6 or fewer tiles remain on the market board and the bag has tiles, refill
+the market to restore empty spaces.
+
+CUPCAKES
+--------
+You start the game with exactly 5 cupcakes. They are a limited resource that
+can be spent to move tiles on your board (1 cupcake per move). Cupcakes cannot
+be earned during play. At game end, each unspent cupcake is worth 1 point.
+
+CARD PATTERNS
+-------------
+All patterns fit within a 2×2 ghost area on your board.
+
+Tier 1 — Single (1 tile, 0 symbols)
+Any 1 tile of the stated colour anywhere on the board.
+
+Tier 2 — Domino (2 tiles, 1 symbol)
+Two orthogonally adjacent tiles of the stated colours. Valid horizontally or
+vertically.
+
+Tier 3 — L-tromino (3 tiles, 2 symbols)
+Three tiles in an L-shape within a 2×2 area (one corner cell empty). Four
+valid rotations.
+
+Tier 4 — 2×2 square (4 tiles, 3 symbols)
+All four cells of a 2×2 area filled with the stated colours.
+
+SCORING
+-------
+At game end, calculate your score as follows:
+
+1. For each ingredient:
+   (symbols on your claimed cards) × (tiles in your scoring pile) = ingredient score
+
+2. Sum all five ingredients for your base score
+
+3. Add 1 point for each remaining cupcake
+
+Final Score = Base Score + Cupcakes
+
+Example: You hold cards with 4 Almond symbols and your scoring pile has
+3 Almond tiles. Almond score: 4 × 3 = 12 points.
+
+GAME ENDS WHEN
+--------------
+1. Card Market Exhausted (Normal End)
+   The game ends when the last card is claimed from the card market. The current
+   round is completed so all players have had equal turns, then scoring occurs.
+
+2. Board Overflow (Immediate End)
+   If a player sweeps tiles and cannot place all of them on their 5×5 board
+   (insufficient empty cells), the game ends immediately. All other players get
+   exactly one more turn each, then final scoring occurs. The player who triggered
+   overflow does not get additional turns.
+
+3. Market Tiles Exhausted
+   If all tiles are removed from the market board and the tile bag is empty,
+   the game ends immediately. No further sweeps are possible. Final scoring
+   occurs.
+
+TIEBREAKER
+----------
+If players are tied on points, the player with the most reward cards claimed
+wins. If still tied, share the victory.
+
+KEY STRATEGY
+------------
+The central strategic tension: Sweeping by colour controls which colours you
+collect (for pattern building) but randomises which ingredient symbols you get.
+Sweeping by symbol controls your end-game multiplier potential but randomises
+the colours you receive.
+
+Players manage two collections simultaneously:
+- Tiles on their board (for future patterns)
+- Tiles in their scoring pile (for end-game multipliers)
+
+These objectives frequently conflict, which is the strategic heart of the game.
+
+Cupcakes add another layer: limited movement flexibility that lets you optimize
+your board layout, but spending them reduces your end-game score.
