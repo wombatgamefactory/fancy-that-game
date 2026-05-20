@@ -167,7 +167,8 @@ export function place(gameState, placements) {
     const tile = gameState.pendingSweepTiles[i];
 
     if (boardIndex < 0 || boardIndex >= BOARD_SIZE * BOARD_SIZE) throw new Error('Invalid board position');
-    if (player.board[boardIndex] !== null) throw new Error('Cell already occupied');
+    const cell = player.board[boardIndex];
+    if (cell !== null) throw new Error('Cell already occupied or blocked');
 
     player.board[boardIndex] = tile;
   }
@@ -201,7 +202,7 @@ export function claim(gameState, cardId, removedBoardIndex) {
   }
 
   player.scoringPile.push(player.board[removedBoardIndex]);
-  player.board[removedBoardIndex] = null;
+  player.board[removedBoardIndex] = { type: 'blocked' };
   player.claimedCards.push(cardId);
   player.cupcakes++;
 
@@ -231,8 +232,8 @@ export function moveTile(gameState, fromIndex, toIndex) {
   }
   const player = gameState.players[gameState.currentPlayerIndex];
   if (player.cupcakes <= 0) throw new Error('No cupcakes available');
-  if (player.board[fromIndex] === null) throw new Error('No tile at source cell');
-  if (player.board[toIndex] !== null) throw new Error('Target cell is occupied');
+  if (player.board[fromIndex] === null || isBlockedSpace(player.board[fromIndex])) throw new Error('No tile at source cell');
+  if (player.board[toIndex] !== null) throw new Error('Target cell is occupied or blocked');
   player.board[toIndex] = player.board[fromIndex];
   player.board[fromIndex] = null;
   player.cupcakes--;
@@ -380,7 +381,8 @@ export function getPatternMatches(board, cardPattern) {
 function patternMatches(boardCells, pattern) {
   for (let i = 0; i < 4; i++) {
     if (pattern[i]) {
-      if (!boardCells[i] || boardCells[i].colour !== pattern[i]) return false;
+      const cell = boardCells[i];
+      if (!cell || isBlockedSpace(cell) || cell.colour !== pattern[i]) return false;
     }
   }
   return true;
@@ -417,6 +419,10 @@ export function getValidPlacements(board) {
     }
   }
   return valid;
+}
+
+function isBlockedSpace(cell) {
+  return cell && typeof cell === 'object' && cell.type === 'blocked';
 }
 
 export function getTotalCardsClaimed(gameState) {

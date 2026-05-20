@@ -34,6 +34,7 @@ export function showRulesModal() {
             <div class="ft-rules__step-title">3. Claim (Optional)</div>
             <div class="ft-rules__text">If tiles on your board match a card's colour pattern (in any rotation or reflection), you may claim it.</div>
             <div class="ft-rules__text">When claiming: remove 1 tile from the pattern, place it in your scoring pile, tuck the card under your board.</div>
+            <div class="ft-rules__text"><strong>Blocked Spaces:</strong> The cell where you removed the tile becomes a permanently blocked space, marked by a croissant icon. No new tiles can be placed on blocked spaces, and they break pattern matching.</div>
           </div>
 
           <div class="ft-rules__step">
@@ -830,10 +831,11 @@ function updatePlayerBoards(gameState) {
     const showWorkingArea = isCurrentPlayer && isPlacingPhase && player.isHuman;
 
     boardEl.innerHTML = player.board.map((tile, idx) => {
+      const isBlockedCell = tile && typeof tile === 'object' && tile.type === 'blocked';
       const isDropTarget = isCurrentPlayer && isPlacingPhase && player.isHuman;
       const isRemovable = isCurrentPlayer && ui.removableTiles && ui.removableTiles.includes(idx);
       const isInCupcakeMode = isCurrentPlayer && player.isHuman && ui.cupcakeMode;
-      const isMovableInCupcakeMode = isInCupcakeMode && tile !== null;
+      const isMovableInCupcakeMode = isInCupcakeMode && tile !== null && !isBlockedCell;
       const isMoveTarget = isInCupcakeMode && tile === null;
 
       let pendingTile = null;
@@ -851,7 +853,9 @@ function updatePlayerBoards(gameState) {
 
       const displayTile = tile || pendingTile;
       let tileClass = 'ft-tile board-tile';
-      if (!displayTile) {
+      if (isBlockedCell) {
+        tileClass += ' ft-tile--blocked';
+      } else if (!displayTile) {
         tileClass += ' ft-tile--empty';
         if (isMoveTarget) tileClass += ' ft-tile--move-target';
       } else {
@@ -861,8 +865,10 @@ function updatePlayerBoards(gameState) {
         if (isMovableInCupcakeMode) tileClass += ' ft-tile--movable';
       }
 
-      const bgColor = displayTile ? `background-color: ${getColourCSS(displayTile.colour)};` : '';
-      const imageHtml = displayTile ? `<img src="images/symbol_${displayTile.ingredient}.png" class="ft-tile__icon" alt="${displayTile.ingredient}">` : '';
+      const bgColor = (displayTile && !isBlockedCell) ? `background-color: ${getColourCSS(displayTile.colour)};` : '';
+      const imageHtml = isBlockedCell
+        ? `<img src="images/blocked_space.png" class="ft-tile__icon" alt="blocked">`
+        : (displayTile ? `<img src="images/symbol_${displayTile.ingredient}.png" class="ft-tile__icon" alt="${displayTile.ingredient}">` : '');
       const draggableAttr = isMovableInCupcakeMode ? 'draggable="true"' : '';
       const boardTileIndexAttr = isMovableInCupcakeMode ? `data-board-tile-index="${idx}"` : '';
 
@@ -1019,8 +1025,9 @@ function setupDragAndDrop(gameState) {
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
     const targetCell = currentPlayer.board[boardIndex];
 
-    // Only allow drop on empty cells (not placeholders, not occupied)
-    if (targetCell === null && tileIndex >= 0 && tileIndex < gameState.pendingSweepTiles.length) {
+    // Only allow drop on empty cells (not placeholders, not occupied, not blocked)
+    const isBlockedCell = targetCell && typeof targetCell === 'object' && targetCell.type === 'blocked';
+    if (targetCell === null && !isBlockedCell && tileIndex >= 0 && tileIndex < gameState.pendingSweepTiles.length) {
       if (!ui.placementMap) ui.placementMap = {};
       ui.placementMap[tileIndex] = boardIndex;
       // Delay display update to allow drop event to complete first
@@ -1051,8 +1058,9 @@ function setupDragAndDrop(gameState) {
     if (col >= 0 && col < BOARD_SIZE && row >= 0 && row < BOARD_SIZE) {
       const boardIndex = row * BOARD_SIZE + col;
       const targetCell = gameState.players[gameState.currentPlayerIndex].board[boardIndex];
-      // Only highlight empty cells (not placeholders)
-      if (targetCell === null) {
+      // Only highlight empty cells (not placeholders, not blocked)
+      const isBlockedCell = targetCell && typeof targetCell === 'object' && targetCell.type === 'blocked';
+      if (targetCell === null && !isBlockedCell) {
         const tile = document.querySelector(`.board-tile[data-player="0"][data-index="${boardIndex}"]`);
         if (tile) {
           tile.classList.add('drag-over');
