@@ -12,7 +12,7 @@ export function createGame(playerConfigs, statsCollector = null) {
     board: Array(BOARD_SIZE * BOARD_SIZE).fill(null),
     scoringPile: [],
     claimedCards: [],
-    cupcakes: 0,
+    cupcakes: 5,
     score: 0,
   }));
 
@@ -26,7 +26,9 @@ export function createGame(playerConfigs, statsCollector = null) {
   }
 
   const { gameDeck, cardMarket } = initGameDeck(playerCount);
-  const cardsNeededToEnd = TOTAL_GAME_CARDS;
+  let cardsNeededToEnd = TOTAL_GAME_CARDS;
+  if (playerCount === 3) cardsNeededToEnd = 24;
+  else if (playerCount === 4) cardsNeededToEnd = 32;
 
   if (statsCollector) {
     for (const card of cardMarket) {
@@ -204,7 +206,6 @@ export function claim(gameState, cardId, removedBoardIndex) {
   player.scoringPile.push(player.board[removedBoardIndex]);
   player.board[removedBoardIndex] = { type: 'blocked' };
   player.claimedCards.push(cardId);
-  player.cupcakes++;
 
   if (gameState.statsCollector) {
     gameState.statsCollector.recordCardClaimed(cardId, gameState.stats.turnsPlayed);

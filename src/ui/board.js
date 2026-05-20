@@ -17,6 +17,11 @@ export function showRulesModal() {
         </div>
 
         <div class="ft-rules__section">
+          <div class="ft-rules__section-title">Cupcakes</div>
+          <div class="ft-rules__text">You start the game with 5 cupcakes. You may spend them during your turn to move tiles on your board. Each move costs 1 cupcake. At game end, each unspent cupcake is worth 1 point.</div>
+        </div>
+
+        <div class="ft-rules__section">
           <div class="ft-rules__section-title">Your Turn (4 Steps)</div>
 
           <div class="ft-rules__step">
@@ -38,6 +43,11 @@ export function showRulesModal() {
           </div>
 
           <div class="ft-rules__step">
+            <div class="ft-rules__step-title">3.5 Move Tiles (Optional)</div>
+            <div class="ft-rules__text">You may spend a cupcake to move one tile from its current cell to any other empty cell on your board. You can do this during any phase of your turn.</div>
+          </div>
+
+          <div class="ft-rules__step">
             <div class="ft-rules__step-title">4. Refill Market</div>
             <div class="ft-rules__text">If 6 or fewer tiles remain on the market, refill from the bag.</div>
           </div>
@@ -47,7 +57,9 @@ export function showRulesModal() {
           <div class="ft-rules__section-title">Scoring</div>
           <div class="ft-rules__text">At game end, for each ingredient:</div>
           <div class="ft-rules__text"><strong>(symbols on your cards) × (tiles in your scoring pile)</strong></div>
-          <div class="ft-rules__text">Sum all five ingredients for your final score.</div>
+          <div class="ft-rules__text">Sum all five ingredients for your base score.</div>
+          <div class="ft-rules__text"><strong>Cupcakes:</strong> Add 1 point for each remaining cupcake.</div>
+          <div class="ft-rules__text">Your final score = base score + cupcakes.</div>
         </div>
 
         <div class="ft-rules__section">
@@ -1174,7 +1186,7 @@ function updateStats(gameState) {
                     ${!canUseCupcakes ? 'disabled' : ''}>
               <img src="images/cupcake.png" class="ft-cupcake-icon" alt="cupcake" />
             </button>
-          `).join('') : '<span class="ft-cupcake-empty">No cupcakes yet. Claim cards to earn them!</span>'}
+          `).join('') : '<span class="ft-cupcake-empty">You have no cupcakes left</span>'}
         </div>
         <span class="ft-cupcake-points">${cupcakeCount} ${cupcakeCount === 1 ? 'point' : 'points'} at end game</span>
       </div>

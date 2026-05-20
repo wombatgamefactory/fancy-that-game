@@ -109,6 +109,12 @@ of its valid orientations.
 - Tiles may be placed anywhere on the grid — no adjacency requirements
 - Each player also maintains a personal **scoring pile** of removed tiles beside their board
 
+### Cupcakes (5 per player)
+- Each player starts the game with exactly **5 cupcakes**
+- Cupcakes may be **spent to move a single tile** on your personal board from one empty cell to another (one cupcake per move)
+- Cupcakes are spent, never earned during play
+- At end game, each remaining cupcake is worth **1 VP**
+
 ### Central Market Board (1 total)
 - 6×6 recessed grid (36 cells)
 - Row and column coordinates printed on edges for clear sweep communication
@@ -165,6 +171,11 @@ This bonus does not chain — it triggers at most once per turn.
      refilling the card market back to 4 face-up cards
 - You may only claim **1 card per turn**, even if multiple patterns are complete
 
+### Step 3.5 — Move Tiles (optional, using cupcakes)
+- At any point during your turn (during sweep, place, or claim phases), you may spend a **cupcake** to move one tile on your personal board from its current cell to any other empty cell
+- You may move multiple tiles in a single turn if you have cupcakes to spend
+- Each move costs exactly 1 cupcake
+
 ### Step 4 — Refill Market Board
 - Count tiles remaining on the 6×6 market board
 - If **6 or fewer tiles** remain, dump tiles from the bag into the recesses to refill
@@ -220,8 +231,9 @@ Sum all five ingredients for your final total.
 (2× Almond) = 4 almond symbols total. Your scoring pile contains 3 tiles with
 the almond symbol. Almond score: 4 × 3 = 12 VP.
 
-There is no flat VP anywhere in the game. All scoring comes from card symbols
-multiplied by removed tiles.
+**Cupcakes:** Add 1 VP for each remaining cupcake (unspent).
+
+Final score = (ingredient multiplications summed) + (remaining cupcakes).
 
 The physical process at end game: sort tucked cards into 5 ingredient groups,
 count symbols in each. Sort scoring pile tiles into 5 ingredient groups, count
