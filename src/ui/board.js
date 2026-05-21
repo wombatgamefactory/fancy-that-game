@@ -1,6 +1,18 @@
 import { BOARD_SIZE, CARD_MARKET_SIZE, REWARD_CARDS, INGREDIENTS } from '../engine/tiles.js';
 import { getPatternMatches } from '../engine/game.js';
 
+const DIFFICULTY_LABELS = {
+  'basic': 'Basic',
+  'mcts-1': 'Easy',
+  'mcts-2': 'Medium',
+  'mcts-3': 'Hard',
+  'mcts-4': 'Expert'
+};
+
+function getDifficultyLabel(difficulty) {
+  return DIFFICULTY_LABELS[difficulty] || difficulty;
+}
+
 export function showRulesModal() {
   const modal = document.createElement('div');
   modal.className = 'ft-modal';
@@ -92,9 +104,9 @@ export function renderSetupScreen(container, onStart) {
       <div class="ft-setup__section">
         <label class="ft-setup__label">Number of Players</label>
         <select id="playerCount" class="ft-setup__select">
-          <option value="2">2 Players</option>
+          <option value="2" selected>2 Players</option>
           <option value="3">3 Players</option>
-          <option value="4" selected>4 Players</option>
+          <option value="4">4 Players</option>
         </select>
       </div>
 
@@ -127,8 +139,8 @@ export function renderSetupScreen(container, onStart) {
           <div id="player${i}DifficultyWrap" class="ft-setup__difficulty-group" style="${isPlayer1 ? 'display: none;' : ''}">
             <button class="ft-setup__difficulty-btn" data-player="${i}" data-difficulty="basic">Basic</button>
             <button class="ft-setup__difficulty-btn" data-player="${i}" data-difficulty="mcts-1">Easy</button>
-            <button class="ft-setup__difficulty-btn ${i === 0 ? '' : 'active'}" data-player="${i}" data-difficulty="mcts-2">Medium</button>
-            <button class="ft-setup__difficulty-btn" data-player="${i}" data-difficulty="mcts-3">Hard</button>
+            <button class="ft-setup__difficulty-btn" data-player="${i}" data-difficulty="mcts-2">Medium</button>
+            <button class="ft-setup__difficulty-btn ${i === 0 ? '' : 'active'}" data-player="${i}" data-difficulty="mcts-3">Hard</button>
             <button class="ft-setup__difficulty-btn" data-player="${i}" data-difficulty="mcts-4">Expert</button>
           </div>
         </div>
@@ -180,12 +192,12 @@ export function renderSetupScreen(container, onStart) {
       const activeDiff = Array.from(diffBtns).find(b => b.classList.contains('active'));
 
       const type = activeType?.dataset.type || 'human';
-      const difficulty = activeDiff?.dataset.difficulty || 'mcts-2';
+      const difficulty = activeDiff?.dataset.difficulty || 'mcts-3';
       const isHuman = type === 'human';
-      const namePrefix = isHuman ? 'Human' : `AI ${difficulty === 'basic' ? 'Basic' : difficulty.toUpperCase()}`;
+      const namePrefix = isHuman ? 'Human' : `AI ${getDifficultyLabel(difficulty)}`;
 
       playerConfigs.push({
-        name: `${namePrefix} (P${i + 1})`,
+        name: `${namePrefix} (Player ${i + 1})`,
         isHuman,
         aiDifficulty: isHuman ? null : difficulty,
       });
