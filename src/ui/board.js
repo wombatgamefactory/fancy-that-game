@@ -222,7 +222,7 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
           <div id="marketContainer" style="display: grid; grid-template-columns: var(--tile-size) repeat(${gameState.marketSize}, var(--tile-size)); grid-template-rows: var(--tile-size) repeat(${gameState.marketSize}, var(--tile-size)); gap: 2px;">
             <div style="grid-column: 2 / span ${gameState.marketSize}; grid-row: 1; display: flex; gap: var(--tile-gap);" id="marketColButtons"></div>
             <div style="grid-column: 1; grid-row: 2 / span ${gameState.marketSize}; display: flex; flex-direction: column; gap: var(--tile-gap);" id="marketRowButtons"></div>
-            <div id="market" class="ft-market-grid" style="grid-column: 2 / span ${gameState.marketSize}; grid-row: 2 / span ${gameState.marketSize};"></div>
+            <div id="market" class="ft-market-grid" style="grid-column: 2 / span ${gameState.marketSize}; grid-row: 2 / span ${gameState.marketSize}; display: grid; grid-template-columns: repeat(${gameState.marketSize}, var(--tile-size)); grid-template-rows: repeat(${gameState.marketSize}, var(--tile-size)); gap: 2px;"></div>
           </div>
         </div>
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
