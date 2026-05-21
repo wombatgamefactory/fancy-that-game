@@ -40,7 +40,7 @@ export const REWARD_CARDS = [
   { id: 36, name: 'Mixed berry pavlova', ingredient: 'strawberry', pattern: ["yellow","blue","blue","yellow",null,null], symbolCount: 2 },
   { id: 37, name: 'Carrot cake', ingredient: 'strawberry', pattern: ["orange","green",null,"green","orange",null], symbolCount: 3 },
   { id: 38, name: 'Blackcurrant cheesecake', ingredient: 'strawberry', pattern: ["green","yellow","green",null,"yellow",null], symbolCount: 2 },
-  { id: 39, name: 'Charlotte aux fraises', ingredient: 'strawberry', pattern: ["yellow","pink","yellow",null,"pink",null], symbolCount: 2 },
+  { id: 39, name: 'Charlotte aux fraises', ingredient: 'strawberry', pattern: ["pink","pink","yellow",null,"green",null], symbolCount: 3 },
   { id: 40, name: 'Autumn fruit crumble', ingredient: 'strawberry', pattern: ["orange","orange",null,"green","blue",null], symbolCount: 3 },
   { id: 41, name: 'Financier', ingredient: 'almond', pattern: ["yellow","yellow","orange",null,null,null], symbolCount: 1 },
   { id: 42, name: 'Pistachio macaron', ingredient: 'almond', pattern: ["green","green","yellow",null,null,null], symbolCount: 1 },
