@@ -194,10 +194,10 @@ export function renderSetupScreen(container, onStart) {
       const type = activeType?.dataset.type || 'human';
       const difficulty = activeDiff?.dataset.difficulty || 'mcts-3';
       const isHuman = type === 'human';
-      const namePrefix = isHuman ? 'Human' : `AI ${getDifficultyLabel(difficulty)}`;
+      const typeSuffix = isHuman ? 'Human' : `AI ${getDifficultyLabel(difficulty)}`;
 
       playerConfigs.push({
-        name: `${namePrefix} (Player ${i + 1})`,
+        name: `Player ${i + 1} (${typeSuffix})`,
         isHuman,
         aiDifficulty: isHuman ? null : difficulty,
       });
