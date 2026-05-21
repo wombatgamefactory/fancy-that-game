@@ -261,6 +261,11 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
       <div class="ft-panel" style="grid-column: 2; grid-row: 2;">
         <div class="ft-panel__header">
           <h2 class="ft-panel__title" id="currentPlayer">Turn</h2>
+          <div id="thinkingProgressContainer" style="display: none; margin-top: var(--spacing-sm); width: 100%;">
+            <div style="height: 6px; background-color: #E0E7FF; border-radius: 3px; overflow: hidden;">
+              <div id="thinkingProgressBar" style="height: 100%; background-color: #3B82F6; width: 0%; transition: width 0.2s ease;"></div>
+            </div>
+          </div>
         </div>
         <div id="cardProgress" style="padding: var(--spacing-md); background: #FAFAFA; border-radius: var(--radius-md);">
           <div style="font-size: 12px; color: var(--color-text-secondary); font-weight: 600; margin-bottom: var(--spacing-sm);">Cards Claimed</div>
@@ -476,23 +481,33 @@ export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup
 
 export function setThinkingState(playerName, isThinking) {
   const element = document.getElementById('currentPlayer');
+  const containerElement = document.getElementById('thinkingProgressContainer');
   if (!element) return;
 
   if (isThinking) {
     element.textContent = `🤔 ${playerName} is thinking…`;
+    if (containerElement) containerElement.style.display = 'block';
   } else {
+    if (containerElement) containerElement.style.display = 'none';
     updateGameDisplay(window._gameUI?.gameState);
   }
 }
 
 export function setThinkingProgress(playerName, progress) {
-  const element = document.getElementById('currentPlayer');
-  if (!element) return;
+  const textElement = document.getElementById('currentPlayer');
+  const containerElement = document.getElementById('thinkingProgressContainer');
+  const progressBar = document.getElementById('thinkingProgressBar');
+
+  if (!textElement || !containerElement || !progressBar) return;
 
   if (progress !== null && progress !== undefined && progress > 0) {
-    element.textContent = `🤔 ${playerName} is thinking… (${progress}%)`;
+    textElement.textContent = `🤔 ${playerName} is thinking… (${progress}%)`;
+    containerElement.style.display = 'block';
+    progressBar.style.width = `${progress}%`;
   } else {
-    element.textContent = `🤔 ${playerName} is thinking…`;
+    textElement.textContent = `🤔 ${playerName} is thinking…`;
+    containerElement.style.display = 'block';
+    progressBar.style.width = '0%';
   }
 }
 
