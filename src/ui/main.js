@@ -253,6 +253,8 @@ async function autoPlayGame() {
 
             place(gameState, placements);
           }
+        } else if (gameState.gamePhase === 'move') {
+          skipMove(gameState);
         } else if (gameState.gamePhase === 'claim') {
           setThinkingState(currentPlayer.name, true);
           updateDisplay();
