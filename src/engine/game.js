@@ -403,6 +403,8 @@ export function getPatternMatches(board, cardPattern) {
       tryPatternMatch(board, flipHorizontal3x2(cardPattern), row, col, 3, 2, true, matches);
       // Vertical flip of 3×2
       tryPatternMatch(board, flipVertical3x2(cardPattern), row, col, 3, 2, true, matches);
+      // Both flips (180-degree rotation)
+      tryPatternMatch(board, flipHorizontal3x2(flipVertical3x2(cardPattern)), row, col, 3, 2, true, matches);
     }
   }
 
@@ -416,6 +418,8 @@ export function getPatternMatches(board, cardPattern) {
       tryPatternMatch(board, flipHorizontal2x3(rotated), row, col, 2, 3, true, matches);
       // Vertical flip of 2×3
       tryPatternMatch(board, flipVertical2x3(rotated), row, col, 2, 3, true, matches);
+      // Both flips (180-degree rotation)
+      tryPatternMatch(board, flipHorizontal2x3(flipVertical2x3(rotated)), row, col, 2, 3, true, matches);
     }
   }
 
