@@ -539,7 +539,7 @@ function expand(node) {
   return child;
 }
 
-async function mctsSearch(state, playerIndex, totalIterations) {
+async function mctsSearch(state, playerIndex, totalIterations, progressCallback) {
   const root = new MCTSNode(cloneState(state), null, null);
 
   for (let i = 0; i < totalIterations; i += CHUNK_SIZE) {
@@ -560,6 +560,12 @@ async function mctsSearch(state, playerIndex, totalIterations) {
       backpropagate(leaf, outcome);
     }
 
+    // Report progress
+    if (progressCallback) {
+      const progress = Math.round((end / totalIterations) * 100);
+      progressCallback(progress);
+    }
+
     await new Promise(r => setTimeout(r, 0));
   }
 
@@ -578,7 +584,7 @@ async function mctsSearch(state, playerIndex, totalIterations) {
   return bestChild.action;
 }
 
-export async function decideSweep(gameState, difficulty) {
+export async function decideSweep(gameState, difficulty, progressCallback) {
   if (!difficulty || !difficulty.startsWith('mcts')) {
     return null;
   }
@@ -587,7 +593,7 @@ export async function decideSweep(gameState, difficulty) {
   const playerIndex = gameState.currentPlayerIndex;
 
   try {
-    const bestAction = await mctsSearch(gameState, playerIndex, iterations);
+    const bestAction = await mctsSearch(gameState, playerIndex, iterations, progressCallback);
     return bestAction;
   } catch (e) {
     console.error('Error in MCTS decideSweep:', e);

@@ -485,6 +485,17 @@ export function setThinkingState(playerName, isThinking) {
   }
 }
 
+export function setThinkingProgress(playerName, progress) {
+  const element = document.getElementById('currentPlayer');
+  if (!element) return;
+
+  if (progress !== null && progress !== undefined && progress > 0) {
+    element.textContent = `🤔 ${playerName} is thinking… (${progress}%)`;
+  } else {
+    element.textContent = `🤔 ${playerName} is thinking…`;
+  }
+}
+
 export function updateGameDisplay(gameState) {
   const ui = window._gameUI;
   if (!ui) return;

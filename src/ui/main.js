@@ -1,6 +1,6 @@
 import { createGame, sweep, takeBonusTile, place, claim, skipClaim, skipMove, refill, moveTile, getValidSweeps, getValidPlacements, getPatternMatches, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
 import { createStatsCollector } from '../engine/statsCollector.js';
-import { renderSetupScreen, renderGameScreen, updateGameDisplay, setThinkingState, renderEndScreen } from './board.js';
+import { renderSetupScreen, renderGameScreen, updateGameDisplay, setThinkingState, setThinkingProgress, renderEndScreen } from './board.js';
 import * as basicBot from '../bots/basicBot.js';
 import * as mctsBot from '../bots/mctsBot.js';
 
@@ -223,7 +223,8 @@ async function autoPlayGame() {
           } else {
             setThinkingState(currentPlayer.name, true);
             updateDisplay();
-            const sweepMove = await bot.decideSweep(gameState, currentPlayer.aiDifficulty);
+            const progressCallback = (progress) => setThinkingProgress(currentPlayer.name, progress);
+            const sweepMove = await bot.decideSweep(gameState, currentPlayer.aiDifficulty, progressCallback);
             setThinkingState(currentPlayer.name, false);
             updateDisplay();
 
