@@ -396,7 +396,7 @@ export function getPatternMatches(board, cardPattern) {
 
   // Try 3×2 orientation (3 wide, 2 tall)
   for (let row = 0; row < BOARD_SIZE - 1; row++) {
-    for (let col = 0; col < BOARD_SIZE - 3; col++) {
+    for (let col = 0; col <= BOARD_SIZE - 3; col++) {
       // Original 3×2 pattern
       tryPatternMatch(board, cardPattern, row, col, 3, 2, false, matches);
       // Horizontal flip of 3×2
