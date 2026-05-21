@@ -223,6 +223,9 @@ function getActionsForPhase(state) {
       return [];
     }
     return ['greedy', 'ingredient', 'spread'];
+  } else if (phase === 'move') {
+    // For move phase, just skip (moving costs cupcakes and is rarely optimal)
+    return [null];
   } else if (phase === 'claim') {
     const claimOptions = [];
     for (const card of state.cardMarket) {
@@ -263,6 +266,9 @@ function applyAction(state, action) {
         placements = greedyPlacements(cloned);
       }
       place(cloned, placements);
+      return cloned;
+    } else if (phase === 'move') {
+      skipMove(cloned);
       return cloned;
     } else if (phase === 'claim') {
       if (action === null) {
@@ -598,30 +604,11 @@ export async function decideBonusTile(gameState, difficulty) {
   return greedyBonusTile(gameState);
 }
 
-export async function decidePlacements(gameState, difficulty) {
-  if (!difficulty || !difficulty.startsWith('mcts')) {
-    return greedyPlacements(gameState);
-  }
-
-  // Run MCTS on placement strategies
-  const iterations = Math.floor((ITERATIONS_MAP[difficulty] || 100) / 3);
-  const playerIndex = gameState.currentPlayerIndex;
-
-  try {
-    const bestAction = await mctsSearch(gameState, playerIndex, iterations);
-
-    // Dispatch to correct placement strategy
-    if (bestAction === 'ingredient') {
-      return ingredientPlacements(gameState);
-    } else if (bestAction === 'spread') {
-      return spreadPlacements(gameState);
-    } else {
-      return greedyPlacements(gameState);
-    }
-  } catch (e) {
-    console.error('Error in MCTS decidePlacements:', e);
-    return greedyPlacements(gameState);
-  }
+export function decidePlacements(gameState, difficulty) {
+  // Placement strategy exploration happens naturally in the MCTS tree
+  // (getActionsForPhase returns ['greedy', 'ingredient', 'spread'])
+  // So here we just return the greedy strategy synchronously
+  return greedyPlacements(gameState);
 }
 
 export async function decideClaim(gameState, difficulty) {
