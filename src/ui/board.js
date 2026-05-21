@@ -1,4 +1,4 @@
-import { BOARD_SIZE, MARKET_SIZE, CARD_MARKET_SIZE, REWARD_CARDS, INGREDIENTS } from '../engine/tiles.js';
+import { BOARD_SIZE, CARD_MARKET_SIZE, REWARD_CARDS, INGREDIENTS } from '../engine/tiles.js';
 import { getPatternMatches } from '../engine/game.js';
 
 export function showRulesModal() {
@@ -219,10 +219,10 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
           <div class="ft-panel__header">
             <h2 class="ft-panel__title">Tile Market</h2>
           </div>
-          <div id="marketContainer" style="display: grid; grid-template-columns: var(--tile-size) repeat(${MARKET_SIZE}, var(--tile-size)); grid-template-rows: var(--tile-size) repeat(${MARKET_SIZE}, var(--tile-size)); gap: 2px;">
-            <div style="grid-column: 2 / span ${MARKET_SIZE}; grid-row: 1; display: flex; gap: var(--tile-gap);" id="marketColButtons"></div>
-            <div style="grid-column: 1; grid-row: 2 / span ${MARKET_SIZE}; display: flex; flex-direction: column; gap: var(--tile-gap);" id="marketRowButtons"></div>
-            <div id="market" class="ft-market-grid" style="grid-column: 2 / span ${MARKET_SIZE}; grid-row: 2 / span ${MARKET_SIZE};"></div>
+          <div id="marketContainer" style="display: grid; grid-template-columns: var(--tile-size) repeat(${gameState.marketSize}, var(--tile-size)); grid-template-rows: var(--tile-size) repeat(${gameState.marketSize}, var(--tile-size)); gap: 2px;">
+            <div style="grid-column: 2 / span ${gameState.marketSize}; grid-row: 1; display: flex; gap: var(--tile-gap);" id="marketColButtons"></div>
+            <div style="grid-column: 1; grid-row: 2 / span ${gameState.marketSize}; display: flex; flex-direction: column; gap: var(--tile-gap);" id="marketRowButtons"></div>
+            <div id="market" class="ft-market-grid" style="grid-column: 2 / span ${gameState.marketSize}; grid-row: 2 / span ${gameState.marketSize};"></div>
           </div>
         </div>
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
@@ -555,7 +555,7 @@ function setupMarketSelectButtons(gameState) {
   const marketColButtons = document.getElementById('marketColButtons');
   if (!marketRowButtons || !marketColButtons) return;
 
-  const colLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
+  const colLabels = ['A', 'B', 'C', 'D', 'E', 'F'].slice(0, gameState.marketSize);
 
   marketColButtons.innerHTML = colLabels.map((label, col) => `
     <button class="ft-btn ft-btn--sweep market-col-btn" data-col="${col}" style="width: var(--tile-size); height: var(--tile-size); display: flex; align-items: center; justify-content: center; gap: var(--spacing-xs); flex-shrink: 0;">
@@ -564,7 +564,7 @@ function setupMarketSelectButtons(gameState) {
     </button>
   `).join('');
 
-  marketRowButtons.innerHTML = Array.from({ length: MARKET_SIZE }, (_, row) => `
+  marketRowButtons.innerHTML = Array.from({ length: gameState.marketSize }, (_, row) => `
     <button class="ft-btn ft-btn--sweep market-row-btn" data-row="${row}" style="width: var(--tile-size); height: var(--tile-size); display: flex; align-items: center; justify-content: center; gap: var(--spacing-xs); flex-shrink: 0;">
       <img src="images/arrow_left.png" style="width: 16px; height: 16px; object-fit: contain;">
       <span style="font-weight: 600;">${row + 1}</span>
@@ -600,8 +600,8 @@ function setupBonusUI(gameState) {
 
 function showSweepOptionsForRow(gameState, row) {
   const tiles = [];
-  for (let c = 0; c < MARKET_SIZE; c++) {
-    tiles.push(gameState.market[row * MARKET_SIZE + c]);
+  for (let c = 0; c < gameState.marketSize; c++) {
+    tiles.push(gameState.market[row * gameState.marketSize + c]);
   }
 
   const colours = new Set();
@@ -684,8 +684,8 @@ function showSweepOptionsForRow(gameState, row) {
 
 function showSweepOptionsForCol(gameState, col) {
   const tiles = [];
-  for (let r = 0; r < MARKET_SIZE; r++) {
-    tiles.push(gameState.market[r * MARKET_SIZE + col]);
+  for (let r = 0; r < gameState.marketSize; r++) {
+    tiles.push(gameState.market[r * gameState.marketSize + col]);
   }
 
   const colours = new Set();
@@ -697,7 +697,7 @@ function showSweepOptionsForCol(gameState, col) {
     }
   }
 
-  const colLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
+  const colLabels = ['A', 'B', 'C', 'D', 'E', 'F'].slice(0, gameState.marketSize);
   let html = `
     <div class="ft-modal__title">
       <h2>Column ${colLabels[col]}</h2>
@@ -1382,8 +1382,7 @@ function showRemovalUI(gameState, cardId) {
 
   const allValidCells = new Set();
   for (const match of matches) {
-    const patternCells = getAllPatternCells(card.pattern, match.row, match.col, match.rotation);
-    patternCells.forEach(cell => allValidCells.add(cell));
+    match.cells.forEach(cell => allValidCells.add(cell));
   }
 
   const ui = window._gameUI;

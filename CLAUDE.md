@@ -116,7 +116,8 @@ of its valid orientations.
 - At end game, each remaining cupcake is worth **1 VP**
 
 ### Central Market Board (1 total)
-- 6×6 recessed grid (36 cells)
+- **2 players:** 5×5 recessed grid (25 cells)
+- **3–4 players:** 6×6 recessed grid (36 cells)
 - Row and column coordinates printed on edges for clear sweep communication
 - Slightly tapered recesses — tiles can be dumped and slid into position
 
@@ -177,8 +178,10 @@ This bonus does not chain — it triggers at most once per turn.
 - Each move costs exactly 1 cupcake
 
 ### Step 4 — Refill Market Board
-- Count tiles remaining on the 6×6 market board
-- If **6 or fewer tiles** remain, dump tiles from the bag into the recesses to refill
+- Count tiles remaining on the market board
+- Refill threshold depends on player count:
+  - **2 players:** If **5 or fewer tiles** remain, dump tiles from the bag to refill
+  - **3–4 players:** If **6 or fewer tiles** remain, dump tiles from the bag to refill
 - If the bag is empty, do not refill — play continues with remaining tiles
 
 ---

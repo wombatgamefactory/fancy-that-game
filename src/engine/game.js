@@ -1,8 +1,17 @@
-import { BOARD_SIZE, MARKET_SIZE, CARD_MARKET_SIZE, TOTAL_GAME_CARDS, REWARD_CARDS, COLOURS, INGREDIENTS, createTileBag } from './tiles.js';
+import { BOARD_SIZE, CARD_MARKET_SIZE, TOTAL_GAME_CARDS, REWARD_CARDS, COLOURS, INGREDIENTS, createTileBag } from './tiles.js';
+
+function getMarketSize(playerCount) {
+  return playerCount === 2 ? 5 : 6;
+}
+
+function getRefillThreshold(playerCount) {
+  return playerCount === 2 ? 5 : 6;
+}
 
 export function createGame(playerConfigs, statsCollector = null) {
   const bag = createTileBag();
   const playerCount = playerConfigs.length;
+  const marketSize = getMarketSize(playerCount);
 
   const players = playerConfigs.map((config, index) => ({
     id: index,
@@ -17,7 +26,7 @@ export function createGame(playerConfigs, statsCollector = null) {
   }));
 
   const market = [];
-  for (let i = 0; i < MARKET_SIZE * MARKET_SIZE; i++) {
+  for (let i = 0; i < marketSize * marketSize; i++) {
     market.push(bag.shift());
   }
 
@@ -50,6 +59,8 @@ export function createGame(playerConfigs, statsCollector = null) {
     endGameReason: null, // 'cardMarket' or 'boardOverflow'
     remainingTurnsInEndGame: 0, // for boardOverflow end game
     cardsNeededToEnd,
+    playerCount,
+    marketSize,
     stats: {
       turnsPlayed: 0,
     },
@@ -66,25 +77,25 @@ export function initGameDeck(playerCount) {
   return { gameDeck, cardMarket };
 }
 
-function getRowTiles(market, rowIndex) {
+function getRowTiles(market, rowIndex, marketSize) {
   const tiles = [];
-  for (let col = 0; col < MARKET_SIZE; col++) {
-    tiles.push(market[rowIndex * MARKET_SIZE + col]);
+  for (let col = 0; col < marketSize; col++) {
+    tiles.push(market[rowIndex * marketSize + col]);
   }
   return tiles;
 }
 
-function getColumnTiles(market, colIndex) {
+function getColumnTiles(market, colIndex, marketSize) {
   const tiles = [];
-  for (let row = 0; row < MARKET_SIZE; row++) {
-    tiles.push(market[row * MARKET_SIZE + colIndex]);
+  for (let row = 0; row < marketSize; row++) {
+    tiles.push(market[row * marketSize + colIndex]);
   }
   return tiles;
 }
 
-function getTileIndex(rowOrCol, isRow) {
+function getTileIndex(rowOrCol, isRow, marketSize) {
   if (isRow) {
-    return (rowOrCol) * MARKET_SIZE;
+    return (rowOrCol) * marketSize;
   } else {
     return rowOrCol;
   }
@@ -93,7 +104,7 @@ function getTileIndex(rowOrCol, isRow) {
 export function sweep(gameState, rowOrCol, isRow, declaration, declarationType) {
   if (gameState.gamePhase !== 'sweep') throw new Error('Not in sweep phase');
 
-  const tiles = isRow ? getRowTiles(gameState.market, rowOrCol) : getColumnTiles(gameState.market, rowOrCol);
+  const tiles = isRow ? getRowTiles(gameState.market, rowOrCol, gameState.marketSize) : getColumnTiles(gameState.market, rowOrCol, gameState.marketSize);
 
   const sweptTiles = [];
   const sweptIndices = [];
@@ -105,7 +116,7 @@ export function sweep(gameState, rowOrCol, isRow, declaration, declarationType) 
     const matches = declarationType === 'colour' ? tile.colour === declaration : tile.ingredient === declaration;
     if (matches) {
       sweptTiles.push(tile);
-      sweptIndices.push(getTileIndex(rowOrCol, isRow) + (isRow ? i : i * MARKET_SIZE));
+      sweptIndices.push(getTileIndex(rowOrCol, isRow, gameState.marketSize) + (isRow ? i : i * gameState.marketSize));
     }
   }
 
@@ -118,8 +129,8 @@ export function sweep(gameState, rowOrCol, isRow, declaration, declarationType) 
   }
 
   const isLineClear = isRow
-    ? getRowTiles(gameState.market, rowOrCol).every(t => t === null)
-    : getColumnTiles(gameState.market, rowOrCol).every(t => t === null);
+    ? getRowTiles(gameState.market, rowOrCol, gameState.marketSize).every(t => t === null)
+    : getColumnTiles(gameState.market, rowOrCol, gameState.marketSize).every(t => t === null);
 
   gameState.bonusTileAvailable = isLineClear;
 
@@ -195,15 +206,19 @@ export function claim(gameState, cardId, removedBoardIndex) {
 
   const allValidCells = new Set();
   for (const match of matches) {
-    const patternCells = getAllPatternCells(card.pattern, match.row, match.col, match.rotation, match.isFlipped);
-    patternCells.forEach(cell => allValidCells.add(cell));
+    match.cells.forEach(cell => allValidCells.add(cell));
   }
 
   if (!allValidCells.has(removedBoardIndex)) {
     throw new Error('Removed tile not in any valid matching pattern');
   }
 
-  player.scoringPile.push(player.board[removedBoardIndex]);
+  const removedTile = player.board[removedBoardIndex];
+  if (!removedTile || removedTile.type === 'blocked') {
+    throw new Error('Cannot remove blocked or empty cell');
+  }
+
+  player.scoringPile.push(removedTile);
   player.board[removedBoardIndex] = { type: 'blocked' };
   player.claimedCards.push(cardId);
 
@@ -251,8 +266,9 @@ export function refill(gameState) {
   if (gameState.gamePhase !== 'refill') throw new Error('Not in refill phase');
 
   const tilesInMarket = gameState.market.filter(t => t !== null).length;
+  const refillThreshold = getRefillThreshold(gameState.playerCount);
 
-  if (tilesInMarket <= 6 && gameState.bag.length > 0) {
+  if (tilesInMarket <= refillThreshold && gameState.bag.length > 0) {
     for (let i = 0; i < gameState.market.length; i++) {
       if (gameState.market[i] === null && gameState.bag.length > 0) {
         gameState.market[i] = gameState.bag.shift();
@@ -295,9 +311,9 @@ export function refill(gameState) {
 export function getValidSweeps(gameState) {
   const sweeps = [];
 
-  for (let rowOrCol = 0; rowOrCol < MARKET_SIZE; rowOrCol++) {
+  for (let rowOrCol = 0; rowOrCol < gameState.marketSize; rowOrCol++) {
     for (const isRow of [true, false]) {
-      const tiles = isRow ? getRowTiles(gameState.market, rowOrCol) : getColumnTiles(gameState.market, rowOrCol);
+      const tiles = isRow ? getRowTiles(gameState.market, rowOrCol, gameState.marketSize) : getColumnTiles(gameState.market, rowOrCol, gameState.marketSize);
       const colours = new Set();
       const ingredients = new Set();
 
@@ -320,25 +336,56 @@ export function getValidSweeps(gameState) {
   return sweeps;
 }
 
-function rotatePattern(pattern, turns) {
-  let p = [...pattern];
-  for (let i = 0; i < turns % 4; i++) {
-    p = [p[2], p[0], p[3], p[1]];
+// Pattern matching for 3×2 grid patterns (also handles 2×3 via rotation)
+// Pattern grid representation:
+// 3×2: [0, 1, 2,  (top row)
+//       3, 4, 5]  (bottom row)
+// 2×3: [0, 1,
+//       2, 3,
+//       4, 5]
+
+function isSingleTilePattern(pattern) {
+  let count = 0;
+  for (let i = 0; i < 6; i++) {
+    if (pattern[i]) count++;
   }
-  return p;
+  return count === 1;
 }
 
-function reflectPatternHorizontal(pattern) {
-  return [pattern[1], pattern[0], pattern[3], pattern[2]];
+// Rotate a 3×2 pattern 90° clockwise to become 2×3
+function rotateTo2x3(pattern) {
+  // 3×2: [0, 1, 2,  2×3: [3, 0,
+  //       3, 4, 5]         4, 1,
+  //                         5, 2]
+  return [pattern[3], pattern[0], pattern[4], pattern[1], pattern[5], pattern[2]];
+}
+
+// Flip a 3×2 pattern horizontally
+function flipHorizontal3x2(pattern) {
+  return [pattern[2], pattern[1], pattern[0], pattern[5], pattern[4], pattern[3]];
+}
+
+// Flip a 2×3 pattern horizontally
+function flipHorizontal2x3(pattern) {
+  return [pattern[1], pattern[0], pattern[3], pattern[2], pattern[5], pattern[4]];
+}
+
+// Flip a 3×2 pattern vertically
+function flipVertical3x2(pattern) {
+  return [pattern[3], pattern[4], pattern[5], pattern[0], pattern[1], pattern[2]];
+}
+
+// Flip a 2×3 pattern vertically
+function flipVertical2x3(pattern) {
+  return [pattern[4], pattern[5], pattern[2], pattern[3], pattern[0], pattern[1]];
 }
 
 export function getPatternMatches(board, cardPattern) {
   const matches = [];
 
-  const isSingleTile = cardPattern[0] && !cardPattern[1];
-
-  if (isSingleTile) {
-    const colour = cardPattern[0];
+  if (isSingleTilePattern(cardPattern)) {
+    // Single tile pattern - find any matching colour
+    const colour = cardPattern.find(c => c);
     for (let i = 0; i < board.length; i++) {
       if (board[i] && board[i].colour === colour) {
         matches.push({ row: Math.floor(i / BOARD_SIZE), col: i % BOARD_SIZE, rotation: 0, isFlipped: false, cells: [i] });
@@ -347,40 +394,60 @@ export function getPatternMatches(board, cardPattern) {
     return matches;
   }
 
+  // Try 3×2 orientation (3 wide, 2 tall)
   for (let row = 0; row < BOARD_SIZE - 1; row++) {
+    for (let col = 0; col < BOARD_SIZE - 3; col++) {
+      // Original 3×2 pattern
+      tryPatternMatch(board, cardPattern, row, col, 3, 2, false, matches);
+      // Horizontal flip of 3×2
+      tryPatternMatch(board, flipHorizontal3x2(cardPattern), row, col, 3, 2, true, matches);
+      // Vertical flip of 3×2
+      tryPatternMatch(board, flipVertical3x2(cardPattern), row, col, 3, 2, true, matches);
+    }
+  }
+
+  // Try 2×3 orientation (2 wide, 3 tall) via rotation
+  const rotated = rotateTo2x3(cardPattern);
+  for (let row = 0; row < BOARD_SIZE - 2; row++) {
     for (let col = 0; col < BOARD_SIZE - 1; col++) {
-      for (let rotation = 0; rotation < 4; rotation++) {
-        for (let isFlipped = 0; isFlipped < 2; isFlipped++) {
-          const rotated = rotatePattern(cardPattern, rotation);
-          const pattern = isFlipped ? reflectPatternHorizontal(rotated) : rotated;
-
-          const boardCells = [
-            board[row * BOARD_SIZE + col],
-            board[row * BOARD_SIZE + col + 1],
-            board[(row + 1) * BOARD_SIZE + col],
-            board[(row + 1) * BOARD_SIZE + col + 1],
-          ];
-
-          const boardIndices = [
-            row * BOARD_SIZE + col,
-            row * BOARD_SIZE + col + 1,
-            (row + 1) * BOARD_SIZE + col,
-            (row + 1) * BOARD_SIZE + col + 1,
-          ];
-
-          if (patternMatches(boardCells, pattern)) {
-            matches.push({ row, col, rotation, isFlipped: isFlipped === 1, cells: boardIndices });
-          }
-        }
-      }
+      // Original rotated pattern
+      tryPatternMatch(board, rotated, row, col, 2, 3, false, matches);
+      // Horizontal flip of 2×3
+      tryPatternMatch(board, flipHorizontal2x3(rotated), row, col, 2, 3, true, matches);
+      // Vertical flip of 2×3
+      tryPatternMatch(board, flipVertical2x3(rotated), row, col, 2, 3, true, matches);
     }
   }
 
   return matches;
 }
 
+function tryPatternMatch(board, pattern, row, col, width, height, isFlipped, matches) {
+  const boardIndices = [];
+  const boardCells = [];
+
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      const boardIndex = (row + r) * BOARD_SIZE + (col + c);
+      boardIndices.push(boardIndex);
+      boardCells.push(board[boardIndex]);
+    }
+  }
+
+  if (patternMatches(boardCells, pattern)) {
+    // Collect non-null pattern cells
+    const cells = [];
+    for (let i = 0; i < boardIndices.length; i++) {
+      if (pattern[i]) {
+        cells.push(boardIndices[i]);
+      }
+    }
+    matches.push({ row, col, rotation: 0, isFlipped, cells });
+  }
+}
+
 function patternMatches(boardCells, pattern) {
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < boardCells.length; i++) {
     if (pattern[i]) {
       const cell = boardCells[i];
       if (!cell || isBlockedSpace(cell) || cell.colour !== pattern[i]) return false;
@@ -390,22 +457,25 @@ function patternMatches(boardCells, pattern) {
 }
 
 function getAllPatternCells(pattern, row, col, rotation, isFlipped = false) {
-  let p = rotatePattern(pattern, rotation);
-  if (isFlipped) {
-    p = reflectPatternHorizontal(p);
-  }
-
+  // For now, assuming we've already applied rotations/flips during pattern matching
+  // This is a simplified version - in practice, we'd reconstruct from the match info
   const cells = [];
-  const boardIndices = [
-    row * BOARD_SIZE + col,
-    row * BOARD_SIZE + col + 1,
-    (row + 1) * BOARD_SIZE + col,
-    (row + 1) * BOARD_SIZE + col + 1,
-  ];
 
-  for (let i = 0; i < 4; i++) {
-    if (p[i]) {
-      cells.push(boardIndices[i]);
+  // Try both 3×2 and 2×3 layouts
+  for (let width = 3; width >= 2; width--) {
+    const height = width === 3 ? 2 : 3;
+    const maxCol = BOARD_SIZE - width;
+    const maxRow = BOARD_SIZE - height;
+
+    if (col <= maxCol && row <= maxRow) {
+      for (let r = 0; r < height; r++) {
+        for (let c = 0; c < width; c++) {
+          if (pattern[r * width + c]) {
+            cells.push((row + r) * BOARD_SIZE + (col + c));
+          }
+        }
+      }
+      if (cells.length > 0) return cells;
     }
   }
 
