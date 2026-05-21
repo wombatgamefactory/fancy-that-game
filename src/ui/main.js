@@ -1,4 +1,4 @@
-import { createGame, sweep, takeBonusTile, place, claim, skipClaim, refill, moveTile, getValidSweeps, getValidPlacements, getPatternMatches, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
+import { createGame, sweep, takeBonusTile, place, claim, skipClaim, skipMove, refill, moveTile, getValidSweeps, getValidPlacements, getPatternMatches, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
 import { createStatsCollector } from '../engine/statsCollector.js';
 import { renderSetupScreen, renderGameScreen, updateGameDisplay, setThinkingState, renderEndScreen } from './board.js';
 import * as basicBot from '../bots/basicBot.js';
@@ -65,7 +65,7 @@ function onGameStart(playerConfigs) {
   autoPlayMode = playerConfigs.every(p => !p.isHuman);
 
   const app = document.getElementById('app');
-  renderGameScreen(app, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onMoveTile, onCupcakeClick);
+  renderGameScreen(app, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick);
 
   updateDisplay();
 
@@ -140,6 +140,17 @@ function onSkipClaim() {
   }
 }
 
+function onSkipMove() {
+  try {
+    pushUndoSnapshot();
+    skipMove(gameState);
+    updateDisplay();
+    checkAutoAdvance();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
 function onMoveTile(fromIndex, toIndex) {
   try {
     pushUndoSnapshot();
@@ -153,7 +164,7 @@ function onMoveTile(fromIndex, toIndex) {
 
 function onCupcakeClick() {
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-  if (currentPlayer.cupcakes > 0 && ['sweep', 'place', 'claim'].includes(gameState.gamePhase)) {
+  if (currentPlayer.cupcakes > 0 && gameState.gamePhase === 'move' && !gameState.cupcakesUsedThisTurn) {
     window._gameUI.cupcakeMode = !window._gameUI.cupcakeMode;
     updateDisplay();
   }

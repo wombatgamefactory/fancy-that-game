@@ -18,7 +18,7 @@ export function showRulesModal() {
 
         <div class="ft-rules__section">
           <div class="ft-rules__section-title">Cupcakes</div>
-          <div class="ft-rules__text">You start the game with 5 cupcakes. You may spend them during your turn to move tiles on your board. Each move costs 1 cupcake. At game end, each unspent cupcake is worth 1 point.</div>
+          <div class="ft-rules__text">You start the game with 5 cupcakes. Once per turn, after placing your swept tiles, you may spend 1 cupcake to move one tile on your board to a different cell. At game end, each unspent cupcake is worth 1 point.</div>
         </div>
 
         <div class="ft-rules__section">
@@ -36,19 +36,19 @@ export function showRulesModal() {
           </div>
 
           <div class="ft-rules__step">
-            <div class="ft-rules__step-title">3. Claim (Optional)</div>
+            <div class="ft-rules__step-title">3. Move Tiles (Optional)</div>
+            <div class="ft-rules__text">You may spend 1 cupcake to move one tile from its current cell to any other empty cell on your board. You can move at most one tile per turn.</div>
+          </div>
+
+          <div class="ft-rules__step">
+            <div class="ft-rules__step-title">4. Claim (Optional)</div>
             <div class="ft-rules__text">If tiles on your board match a card's colour pattern (in any rotation or reflection), you may claim it.</div>
             <div class="ft-rules__text">When claiming: remove 1 tile from the pattern, place it in your scoring pile, tuck the card under your board.</div>
             <div class="ft-rules__text"><strong>Blocked Spaces:</strong> The cell where you removed the tile becomes a permanently blocked space, marked by a croissant icon. No new tiles can be placed on blocked spaces, and they break pattern matching.</div>
           </div>
 
           <div class="ft-rules__step">
-            <div class="ft-rules__step-title">3.5 Move Tiles (Optional)</div>
-            <div class="ft-rules__text">You may spend a cupcake to move one tile from its current cell to any other empty cell on your board. You can do this during any phase of your turn.</div>
-          </div>
-
-          <div class="ft-rules__step">
-            <div class="ft-rules__step-title">4. Refill Market</div>
+            <div class="ft-rules__step-title">5. Refill Market</div>
             <div class="ft-rules__text">If 6 or fewer tiles remain on the market, refill from the bag.</div>
           </div>
         </div>
@@ -194,7 +194,7 @@ export function renderSetupScreen(container, onStart) {
   });
 }
 
-export function renderGameScreen(container, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onMoveTile, onCupcakeClick) {
+export function renderGameScreen(container, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick) {
   const playerCount = gameState.players.length;
 
   container.innerHTML = `
@@ -300,6 +300,7 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
     onPlacementSubmit,
     onClaimSubmit,
     onSkipClaim,
+    onSkipMove,
     onMoveTile,
     onCupcakeClick,
     gameState,
@@ -1169,7 +1170,7 @@ function updateStats(gameState) {
 
     const cupcakeCount = p.cupcakes;
     const isCurrentPlayer = gameState.currentPlayerIndex === playerIdx;
-    const canUseCupcakes = isCurrentPlayer && p.cupcakes > 0 && ['sweep', 'place', 'claim'].includes(gameState.gamePhase);
+    const canUseCupcakes = isCurrentPlayer && p.cupcakes > 0 && gameState.gamePhase === 'move' && !gameState.cupcakesUsedThisTurn;
     const cupcakeClass = window._gameUI.cupcakeMode ? 'ft-cupcake-supply--active' : '';
 
     html += `
@@ -1242,8 +1243,8 @@ function updatePhaseControls(gameState) {
   }
 
   controls.classList.remove('ft-hidden');
-  const hasCupcakes = player.cupcakes > 0 && ['sweep', 'place', 'claim'].includes(gameState.gamePhase);
-  const cupcakeHint = hasCupcakes ? `<div class="ft-phase-bar__cupcake-hint">💡 You have ${player.cupcakes} cupcake${player.cupcakes === 1 ? '' : 's'} available — click one to move tiles on your board!</div>` : '';
+  const hasCupcakes = player.cupcakes > 0 && gameState.gamePhase === 'move' && !gameState.cupcakesUsedThisTurn;
+  const cupcakeHint = hasCupcakes ? `<div class="ft-phase-bar__cupcake-hint">💡 You have ${player.cupcakes} cupcake${player.cupcakes === 1 ? '' : 's'} available — click one to move one tile on your board!</div>` : '';
   const ui = window._gameUI;
   const canUndo = ui?.canUndo === true;
   const undoBtn = canUndo ? `<button id="undoBtn" class="ft-btn ft-btn--secondary ft-btn--small">↩ Undo</button>` : '';
@@ -1272,6 +1273,21 @@ function updatePhaseControls(gameState) {
         <div class="ft-phase-bar__controls">
           ${undoBtn}
           <button id="placementDone" class="ft-btn ft-btn--primary ft-btn--small" ${!allPlaced ? 'disabled' : ''}>Done</button>
+        </div>
+      </div>
+    `;
+  } else if (gameState.gamePhase === 'move') {
+    const moveOptions = gameState.cupcakesUsedThisTurn
+      ? `<div class="ft-phase-bar__instruction">You've used your move for this turn</div><div class="ft-phase-bar__status">Click "Next" to continue</div>`
+      : `<div class="ft-phase-bar__instruction">Move one tile (optional)</div><div class="ft-phase-bar__status">Click a cupcake to move a tile, or skip</div>`;
+
+    html = `
+      <div class="ft-phase-bar">
+        ${moveOptions}
+        ${cupcakeHint}
+        <div class="ft-phase-bar__controls">
+          ${undoBtn}
+          <button id="movePhaseNext" class="ft-btn ft-btn--primary ft-btn--small">Next</button>
         </div>
       </div>
     `;
@@ -1351,6 +1367,11 @@ function updatePhaseControls(gameState) {
   const skipBtn = controls.querySelector('#skipClaim');
   if (skipBtn && gameState.gamePhase === 'claim') {
     skipBtn.addEventListener('click', () => window._gameUI.onSkipClaim());
+  }
+
+  const movePhaseNextBtn = controls.querySelector('#movePhaseNext');
+  if (movePhaseNextBtn && gameState.gamePhase === 'move') {
+    movePhaseNextBtn.addEventListener('click', () => window._gameUI.onSkipMove?.());
   }
 }
 

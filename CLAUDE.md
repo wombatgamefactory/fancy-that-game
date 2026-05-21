@@ -111,7 +111,8 @@ of its valid orientations.
 
 ### Cupcakes (5 per player)
 - Each player starts the game with exactly **5 cupcakes**
-- Cupcakes may be **spent to move a single tile** on your personal board from one empty cell to another (one cupcake per move)
+- Cupcakes may be **spent to move a single tile** on your personal board from one empty cell to another
+- **Once per turn only:** You may spend 1 cupcake to move 1 tile during the move phase (after placing tiles, before claiming)
 - Cupcakes are spent, never earned during play
 - At end game, each remaining cupcake is worth **1 VP**
 
@@ -160,7 +161,12 @@ This bonus does not chain — it triggers at most once per turn.
 - **No adjacency requirement** — tiles may go in any empty cells
 - All tiles taken must be placed this turn — no holding tiles between turns
 
-### Step 3 — Claim (optional, maximum 1 per turn)
+### Step 3 — Move Tiles (optional, using cupcakes)
+- You may spend 1 cupcake to move one tile from its current cell to any other empty cell on your board
+- **Once per turn only** — you may move at most 1 tile per turn
+- Each move costs exactly 1 cupcake
+
+### Step 4 — Claim (optional, maximum 1 per turn)
 - Examine your personal board
 - If tiles on your board form the colour pattern on any face-up card in the card
   market — in that exact shape or any **rotation or reflection** — you may claim it
@@ -172,12 +178,7 @@ This bonus does not chain — it triggers at most once per turn.
      refilling the card market back to 4 face-up cards
 - You may only claim **1 card per turn**, even if multiple patterns are complete
 
-### Step 3.5 — Move Tiles (optional, using cupcakes)
-- At any point during your turn (during sweep, place, or claim phases), you may spend a **cupcake** to move one tile on your personal board from its current cell to any other empty cell
-- You may move multiple tiles in a single turn if you have cupcakes to spend
-- Each move costs exactly 1 cupcake
-
-### Step 4 — Refill Market Board
+### Step 5 — Refill Market Board
 - Count tiles remaining on the market board
 - Refill threshold depends on player count:
   - **2 players:** If **5 or fewer tiles** remain, dump tiles from the bag to refill

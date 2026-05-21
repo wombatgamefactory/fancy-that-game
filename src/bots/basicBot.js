@@ -160,7 +160,7 @@ export function decideClaim(gameState) {
   const match = matches[0];
 
   // Choose which tile to remove: prefer tiles with ingredients we already have
-  const patternCells = getAllPatternCells(card.pattern, match.row, match.col, match.rotation, match.isFlipped);
+  const patternCells = match.cells;
   let bestRemoveIndex = patternCells[0];
   let bestRemoveScore = -1;
 
@@ -188,39 +188,4 @@ export function decideClaim(gameState) {
   }
 
   return { cardId: card.id, removedBoardIndex: bestRemoveIndex };
-}
-
-function getAllPatternCells(pattern, row, col, rotation, isFlipped = false) {
-  let p = rotatePattern(pattern, rotation);
-  if (isFlipped) {
-    p = reflectPatternHorizontal(p);
-  }
-
-  const cells = [];
-  const boardIndices = [
-    row * BOARD_SIZE + col,
-    row * BOARD_SIZE + col + 1,
-    (row + 1) * BOARD_SIZE + col,
-    (row + 1) * BOARD_SIZE + col + 1,
-  ];
-
-  for (let i = 0; i < 4; i++) {
-    if (p[i]) {
-      cells.push(boardIndices[i]);
-    }
-  }
-
-  return cells;
-}
-
-function reflectPatternHorizontal(pattern) {
-  return [pattern[1], pattern[0], pattern[3], pattern[2]];
-}
-
-function rotatePattern(pattern, turns) {
-  let p = [...pattern];
-  for (let i = 0; i < turns % 4; i++) {
-    p = [p[2], p[0], p[3], p[1]];
-  }
-  return p;
 }

@@ -61,6 +61,7 @@ export function createGame(playerConfigs, statsCollector = null) {
     cardsNeededToEnd,
     playerCount,
     marketSize,
+    cupcakesUsedThisTurn: false,
     stats: {
       turnsPlayed: 0,
     },
@@ -187,7 +188,7 @@ export function place(gameState, placements) {
   }
 
   gameState.pendingSweepTiles = [];
-  gameState.gamePhase = 'claim';
+  gameState.gamePhase = 'move';
 
   return gameState;
 }
@@ -242,9 +243,11 @@ export function claim(gameState, cardId, removedBoardIndex) {
 }
 
 export function moveTile(gameState, fromIndex, toIndex) {
-  const allowedPhases = ['sweep', 'place', 'claim'];
-  if (!allowedPhases.includes(gameState.gamePhase)) {
-    throw new Error('Cannot move tile in this phase');
+  if (gameState.gamePhase !== 'move') {
+    throw new Error('Can only move tiles in the move phase');
+  }
+  if (gameState.cupcakesUsedThisTurn) {
+    throw new Error('Can only move one tile per turn');
   }
   const player = gameState.players[gameState.currentPlayerIndex];
   if (player.cupcakes <= 0) throw new Error('No cupcakes available');
@@ -253,6 +256,13 @@ export function moveTile(gameState, fromIndex, toIndex) {
   player.board[toIndex] = player.board[fromIndex];
   player.board[fromIndex] = null;
   player.cupcakes--;
+  gameState.cupcakesUsedThisTurn = true;
+  return gameState;
+}
+
+export function skipMove(gameState) {
+  if (gameState.gamePhase !== 'move') throw new Error('Not in move phase');
+  gameState.gamePhase = 'claim';
   return gameState;
 }
 
@@ -288,6 +298,7 @@ export function refill(gameState) {
     } else {
       gameState.stats.turnsPlayed++;
       gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
+      gameState.cupcakesUsedThisTurn = false;
       gameState.gamePhase = 'sweep';
     }
   } else if (isGameOver(gameState)) {
@@ -302,6 +313,7 @@ export function refill(gameState) {
   } else {
     gameState.stats.turnsPlayed++;
     gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
+    gameState.cupcakesUsedThisTurn = false;
     gameState.gamePhase = 'sweep';
   }
 
