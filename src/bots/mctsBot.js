@@ -1,12 +1,12 @@
-import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, place, claim, skipClaim, refill, calculateFinalScores } from '../engine/game.js';
+import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, place, claim, skipClaim, skipMove, refill, calculateFinalScores, INGREDIENTS, REWARD_CARDS, BOARD_SIZE, getPatternMatches } from '../engine/game.js';
 import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacements, decideClaim as greedyClaim } from './basicBot.js';
 
 const ITERATIONS_MAP = {
   'basic': 0,
-  'mcts-1': 30,
-  'mcts-2': 100,
-  'mcts-3': 300,
-  'mcts-4': 600,
+  'mcts-1': 60,
+  'mcts-2': 200,
+  'mcts-3': 600,
+  'mcts-4': 1200,
 };
 
 const CHUNK_SIZE = 20;
@@ -72,6 +72,141 @@ function select(node) {
   return node;
 }
 
+function ingredientPlacements(state) {
+  const currentPlayer = state.players[state.currentPlayerIndex];
+  const validPositions = getValidPlacements(currentPlayer.board);
+  const tilesToPlace = state.pendingSweepTiles;
+
+  if (validPositions.length < tilesToPlace.length) {
+    return [];
+  }
+
+  // Find ingredient with highest claimed symbols
+  let bestIngredient = null;
+  let bestSymbols = -1;
+  for (const ingredient of INGREDIENTS) {
+    let symbols = 0;
+    for (const cardId of currentPlayer.claimedCards) {
+      const card = REWARD_CARDS.find(c => c.id === cardId);
+      if (card && card.ingredient === ingredient) {
+        symbols += card.symbolCount;
+      }
+    }
+    if (symbols > bestSymbols) {
+      bestSymbols = symbols;
+      bestIngredient = ingredient;
+    }
+  }
+
+  // Sort tiles so best ingredient tiles go first
+  const sortedTiles = [...tilesToPlace].sort((a, b) => {
+    const aIsBest = a.ingredient === bestIngredient ? 1 : 0;
+    const bIsBest = b.ingredient === bestIngredient ? 1 : 0;
+    return bIsBest - aIsBest;
+  });
+
+  const placements = [];
+  const usedPositions = new Set();
+
+  for (const tile of sortedTiles) {
+    let bestPos = null;
+    let bestScore = -Infinity;
+
+    // Prefer positions adjacent to same-ingredient tiles
+    for (const pos of validPositions) {
+      if (usedPositions.has(pos)) continue;
+
+      let score = 0;
+
+      // Check for adjacent same-ingredient tiles
+      const row = Math.floor(pos / BOARD_SIZE);
+      const col = pos % BOARD_SIZE;
+      const adjacent = [
+        (row - 1) * BOARD_SIZE + col,
+        (row + 1) * BOARD_SIZE + col,
+        row * BOARD_SIZE + (col - 1),
+        row * BOARD_SIZE + (col + 1),
+      ];
+
+      for (const adjPos of adjacent) {
+        if (adjPos >= 0 && adjPos < BOARD_SIZE * BOARD_SIZE) {
+          const adjTile = currentPlayer.board[adjPos];
+          if (adjTile && adjTile.ingredient === tile.ingredient) {
+            score += 10;
+          }
+        }
+      }
+
+      if (score === 0) {
+        score = Math.random(); // Fallback to greedy
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestPos = pos;
+      }
+    }
+
+    if (bestPos === null) bestPos = validPositions[0];
+    placements.push(bestPos);
+    usedPositions.add(bestPos);
+  }
+
+  return placements;
+}
+
+function spreadPlacements(state) {
+  const currentPlayer = state.players[state.currentPlayerIndex];
+  const validPositions = getValidPlacements(currentPlayer.board);
+  const tilesToPlace = state.pendingSweepTiles;
+
+  if (validPositions.length < tilesToPlace.length) {
+    return [];
+  }
+
+  const placements = [];
+  const usedPositions = new Set();
+
+  for (const tile of tilesToPlace) {
+    let bestPos = null;
+    let bestScore = -Infinity;
+
+    // Score by count of empty orthogonal neighbours
+    for (const pos of validPositions) {
+      if (usedPositions.has(pos)) continue;
+
+      const row = Math.floor(pos / BOARD_SIZE);
+      const col = pos % BOARD_SIZE;
+      const adjacent = [
+        (row - 1) * BOARD_SIZE + col,
+        (row + 1) * BOARD_SIZE + col,
+        row * BOARD_SIZE + (col - 1),
+        row * BOARD_SIZE + (col + 1),
+      ];
+
+      let emptyNeighbours = 0;
+      for (const adjPos of adjacent) {
+        if (adjPos >= 0 && adjPos < BOARD_SIZE * BOARD_SIZE) {
+          if (!currentPlayer.board[adjPos]) {
+            emptyNeighbours++;
+          }
+        }
+      }
+
+      if (emptyNeighbours > bestScore) {
+        bestScore = emptyNeighbours;
+        bestPos = pos;
+      }
+    }
+
+    if (bestPos === null) bestPos = validPositions[0];
+    placements.push(bestPos);
+    usedPositions.add(bestPos);
+  }
+
+  return placements;
+}
+
 function getActionsForPhase(state) {
   const phase = state.gamePhase;
   if (phase === 'sweep') {
@@ -82,12 +217,12 @@ function getActionsForPhase(state) {
       return getValidSweeps(state);
     }
   } else if (phase === 'place') {
-    // For placement, we'll use heuristic strategies
+    // For placement, explore multiple strategies
     const positions = getValidPlacements(state.players[state.currentPlayerIndex].board);
     if (positions.length < state.pendingSweepTiles.length) {
       return [];
     }
-    return ['greedy']; // Single strategy for now
+    return ['greedy', 'ingredient', 'spread'];
   } else if (phase === 'claim') {
     const claimOptions = [];
     for (const card of state.cardMarket) {
@@ -119,7 +254,14 @@ function applyAction(state, action) {
       }
       return cloned;
     } else if (phase === 'place') {
-      const placements = greedyPlacements(cloned);
+      let placements;
+      if (action === 'ingredient') {
+        placements = ingredientPlacements(cloned);
+      } else if (action === 'spread') {
+        placements = spreadPlacements(cloned);
+      } else {
+        placements = greedyPlacements(cloned);
+      }
       place(cloned, placements);
       return cloned;
     } else if (phase === 'claim') {
@@ -148,6 +290,167 @@ function applyAction(state, action) {
   return cloned;
 }
 
+function getRowTilesFromMarket(market, row, size) {
+  return market.slice(row * size, row * size + size);
+}
+
+function getColTilesFromMarket(market, col, size) {
+  const out = [];
+  for (let r = 0; r < size; r++) out.push(market[r * size + col]);
+  return out;
+}
+
+function selectHeuristicSweep(state) {
+  const validSweeps = getValidSweeps(state);
+  if (validSweeps.length === 0) return null;
+
+  const marketSize = Math.sqrt(state.market.length);
+
+  // Build wanted colours set
+  const wantedColours = new Set();
+  for (const card of state.cardMarket) {
+    for (const colour of card.pattern) {
+      if (colour) wantedColours.add(colour);
+    }
+  }
+
+  let bestSweep = validSweeps[0];
+  let bestScore = -Infinity;
+  const tiedSweeps = [];
+
+  for (const sweep of validSweeps) {
+    let score = 0;
+
+    const tiles = sweep.isRow
+      ? getRowTilesFromMarket(state.market, sweep.rowOrCol, marketSize)
+      : getColTilesFromMarket(state.market, sweep.rowOrCol, marketSize);
+
+    for (const tile of tiles) {
+      if (!tile) continue;
+
+      if (sweep.declarationType === 'colour') {
+        // Count how many tiles match the declaration
+        if (tile.colour === sweep.declaration && wantedColours.has(tile.colour)) {
+          score += 1;
+        }
+      } else {
+        // Ingredient sweeps always score +1 per tile
+        if (tile.ingredient === sweep.declaration) {
+          score += 1;
+        }
+      }
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestSweep = sweep;
+      tiedSweeps.length = 0;
+      tiedSweeps.push(sweep);
+    } else if (score === bestScore) {
+      tiedSweeps.push(sweep);
+    }
+  }
+
+  // Random tie-break
+  if (tiedSweeps.length > 1) {
+    return tiedSweeps[Math.floor(Math.random() * tiedSweeps.length)];
+  }
+
+  return bestSweep;
+}
+
+function evaluateState(state, playerIndex) {
+  const player = state.players[playerIndex];
+  const opponents = state.players.filter((_, i) => i !== playerIndex);
+
+  // Player estimate
+  let playerCommitted = 0;
+  let playerBoardProgress = 0;
+  let playerTrajectory = 0;
+
+  // Committed score (from claimed cards + scoring pile)
+  const playerIngredientSymbols = {};
+  const playerIngredientInPile = {};
+  for (const ingredient of INGREDIENTS) {
+    playerIngredientSymbols[ingredient] = 0;
+    playerIngredientInPile[ingredient] = 0;
+  }
+
+  for (const cardId of player.claimedCards) {
+    const card = REWARD_CARDS.find(c => c.id === cardId);
+    if (card) {
+      playerIngredientSymbols[card.ingredient] += card.symbolCount;
+    }
+  }
+
+  for (const tile of player.scoringPile) {
+    if (tile && tile.ingredient) {
+      playerIngredientInPile[tile.ingredient] = (playerIngredientInPile[tile.ingredient] || 0) + 1;
+    }
+  }
+
+  for (const ingredient of INGREDIENTS) {
+    playerCommitted += playerIngredientSymbols[ingredient] * playerIngredientInPile[ingredient];
+  }
+  playerCommitted += (player.cupcakes || 0);
+
+  // Board progress
+  for (const card of state.cardMarket) {
+    const matches = getPatternMatches(player.board, card.pattern);
+    if (matches.length > 0) {
+      playerBoardProgress += card.symbolCount * 2;
+    } else {
+      // Fractional credit for partial patterns
+      const matchingTiles = player.board.filter(t => t && card.pattern.includes(t.colour)).length;
+      playerBoardProgress += (matchingTiles / BOARD_SIZE) * card.symbolCount * 0.5;
+    }
+  }
+
+  // Ingredient trajectory
+  for (const ingredient of INGREDIENTS) {
+    const marketSymbols = REWARD_CARDS
+      .filter(c => state.cardMarket.some(cm => cm && cm.id === c.id) && c.ingredient === ingredient)
+      .reduce((sum, c) => sum + c.symbolCount, 0);
+    playerTrajectory += (playerIngredientInPile[ingredient] || 0) * marketSymbols * 0.3;
+  }
+
+  const playerEstimate = playerCommitted + playerBoardProgress + playerTrajectory;
+
+  // Best opponent estimate (committed score only for simplicity)
+  let bestOpponentCommitted = 0;
+  for (const opponent of opponents) {
+    let committed = 0;
+    const oppIngredientSymbols = {};
+    const oppIngredientInPile = {};
+    for (const ingredient of INGREDIENTS) {
+      oppIngredientSymbols[ingredient] = 0;
+      oppIngredientInPile[ingredient] = 0;
+    }
+
+    for (const cardId of opponent.claimedCards) {
+      const card = REWARD_CARDS.find(c => c.id === cardId);
+      if (card) {
+        oppIngredientSymbols[card.ingredient] += card.symbolCount;
+      }
+    }
+
+    for (const tile of opponent.scoringPile) {
+      if (tile && tile.ingredient) {
+        oppIngredientInPile[tile.ingredient] = (oppIngredientInPile[tile.ingredient] || 0) + 1;
+      }
+    }
+
+    for (const ingredient of INGREDIENTS) {
+      committed += oppIngredientSymbols[ingredient] * oppIngredientInPile[ingredient];
+    }
+    committed += (opponent.cupcakes || 0);
+
+    bestOpponentCommitted = Math.max(bestOpponentCommitted, committed);
+  }
+
+  return playerEstimate - bestOpponentCommitted;
+}
+
 function rollout(state, playerIndex) {
   const cloned = cloneState(state);
   let iterations = 0;
@@ -172,12 +475,14 @@ function rollout(state, playerIndex) {
             cloned.gameOver = true;
             break;
           }
-          const action = validSweeps[Math.floor(Math.random() * validSweeps.length)];
+          const action = selectHeuristicSweep(cloned);
           sweep(cloned, action.rowOrCol, action.isRow, action.declaration, action.declarationType);
         }
       } else if (cloned.gamePhase === 'place') {
         const placements = greedyPlacements(cloned);
         place(cloned, placements);
+      } else if (cloned.gamePhase === 'move') {
+        skipMove(cloned);
       } else if (cloned.gamePhase === 'claim') {
         const claimDec = greedyClaim(cloned);
         if (claimDec) {
@@ -194,17 +499,17 @@ function rollout(state, playerIndex) {
     }
   }
 
-  if (!cloned.gameOver) {
+  if (cloned.gameOver) {
     calculateFinalScores(cloned);
+    const playerScore = cloned.players[playerIndex].score;
+    const maxOpponentScore = Math.max(
+      ...cloned.players
+        .map((p, i) => i !== playerIndex ? p.score : -Infinity)
+    );
+    return playerScore - maxOpponentScore;
+  } else {
+    return evaluateState(cloned, playerIndex);
   }
-
-  const playerScore = cloned.players[playerIndex].score;
-  const maxOpponentScore = Math.max(
-    ...cloned.players
-      .map((p, i) => i !== playerIndex ? p.score : -Infinity)
-  );
-
-  return playerScore - maxOpponentScore;
 }
 
 function backpropagate(node, value) {
@@ -298,8 +603,25 @@ export async function decidePlacements(gameState, difficulty) {
     return greedyPlacements(gameState);
   }
 
-  // Use greedy for placement to keep speed reasonable
-  return greedyPlacements(gameState);
+  // Run MCTS on placement strategies
+  const iterations = Math.floor((ITERATIONS_MAP[difficulty] || 100) / 3);
+  const playerIndex = gameState.currentPlayerIndex;
+
+  try {
+    const bestAction = await mctsSearch(gameState, playerIndex, iterations);
+
+    // Dispatch to correct placement strategy
+    if (bestAction === 'ingredient') {
+      return ingredientPlacements(gameState);
+    } else if (bestAction === 'spread') {
+      return spreadPlacements(gameState);
+    } else {
+      return greedyPlacements(gameState);
+    }
+  } catch (e) {
+    console.error('Error in MCTS decidePlacements:', e);
+    return greedyPlacements(gameState);
+  }
 }
 
 export async function decideClaim(gameState, difficulty) {

@@ -1,4 +1,4 @@
-import { createGame, sweep, takeBonusTile, place, claim, skipClaim, refill, getValidSweeps, getValidPlacements } from './src/engine/game.js';
+import { createGame, sweep, takeBonusTile, place, claim, skipClaim, skipMove, refill, getValidSweeps, getValidPlacements } from './src/engine/game.js';
 import { createStatsCollector } from './src/engine/statsCollector.js';
 import * as fastBot from './src/bots/fastBot.js';
 import * as basicBot from './src/bots/basicBot.js';
@@ -40,6 +40,10 @@ function runGame(playerConfigs, botStrategy) {
             gameState = place(gameState, placements);
           }
         }
+        break;
+      }
+      case 'move': {
+        gameState = skipMove(gameState);
         break;
       }
       case 'claim': {
