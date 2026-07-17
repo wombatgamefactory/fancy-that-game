@@ -1,0 +1,40 @@
+# =============================================================
+# Fancy That! — public repo serves the web game via GitHub Pages.
+# Everything ignored here stays on the local machine (and Dropbox)
+# but is excluded from the public repository.
+# =============================================================
+
+# --- internal design & working documents ---
+CLAUDE.md
+fancy-that.md
+RULES_SUMMARY.txt
+UNDO_FEATURE.md
+build-changes-*.md
+DESIGN_UPDATE_*.md
+implementation-plan.md
+simulation-results-*.md
+.claude/
+
+# --- debug & scratch scripts ---
+debug-*.js
+test_patterns.js
+
+# --- print / Tabletop Simulator production assets (web game uses
+#     the combined sprite sheet images/reward_card_layout.png only) ---
+*.indd
+images/20mm_square.csv
+images/reward_cards_ingredients.csv
+images/reward_card_layout_ingredients.png
+images/pixel_board_*.png
+images/cake-stand.png
+images/patisserie_*.png
+images/patesserie_*.png
+images/tile_*.png
+images/card_back.png
+images/reward_bg.png
+images/place_cake.png
+
+# --- OS / editor noise ---
+Thumbs.db
+.DS_Store
+*.backup
