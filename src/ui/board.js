@@ -813,7 +813,7 @@ function updateCardMarket(gameState) {
     const clickable = isClaimable && gameState.gamePhase === 'claim' ? 'cursor: pointer;' : '';
 
     return `
-      <div data-card-id="${cardId}" class="card-market-sprite ${cardClass}" style="position: relative; width: ${DISPLAY_WIDTH}px; height: ${DISPLAY_HEIGHT}px; background-image: url('images/reward_card_layout.png'); background-position: ${bgPosX}px ${bgPosY}px; background-size: ${bgSizeW}px ${bgSizeH}px; background-repeat: no-repeat; ${clickable}">
+      <div data-card-id="${cardId}" class="card-market-sprite ${cardClass}" style="position: relative; width: ${DISPLAY_WIDTH}px; height: ${DISPLAY_HEIGHT}px; background-image: url('images/reward_card_layout.png?v=2'); background-position: ${bgPosX}px ${bgPosY}px; background-size: ${bgSizeW}px ${bgSizeH}px; background-repeat: no-repeat; ${clickable}">
         <div class="ft-card__vp" title="${card.vp} victory point${card.vp === 1 ? '' : 's'}">${card.vp}</div>
       </div>
     `;
