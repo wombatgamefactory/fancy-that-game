@@ -418,6 +418,199 @@ label {
   color: var(--color-accent);
 }
 
+/* ======= Score Breakdown ======= */
+
+.ft-score-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: #FAFAFA;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+
+.ft-score-breakdown__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+  color: var(--color-text-secondary);
+}
+
+.ft-score-breakdown__item strong {
+  color: var(--color-text-primary);
+  font-weight: 700;
+}
+
+/* ======= Cake Stand ======= */
+
+.ft-stand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-xs) var(--spacing-md);
+  background: linear-gradient(180deg, #FFFFFF 0%, #FBF5EC 100%);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.ft-stand__prompt {
+  margin-top: var(--spacing-sm);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-accent);
+  text-align: center;
+}
+
+.ft-stand__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  padding: 2px var(--spacing-xs);
+  border-radius: var(--radius-sm);
+  border: 2px solid transparent;
+}
+
+.ft-stand__row--legal {
+  cursor: pointer;
+  border-color: var(--color-accent-gold);
+  background: rgba(212, 175, 55, 0.12);
+  box-shadow: 0 0 8px rgba(212, 175, 55, 0.4);
+}
+
+.ft-stand__row--legal:hover {
+  background: rgba(212, 175, 55, 0.25);
+}
+
+.ft-stand__lock {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+
+.ft-stand__lock--empty {
+  width: 18px;
+  height: 18px;
+  margin-top: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px dashed var(--color-border);
+  opacity: 0.5;
+}
+
+.ft-stand__plates {
+  display: flex;
+  gap: 3px;
+}
+
+.ft-stand__slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.ft-stand__plate {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-border);
+}
+
+.ft-stand__plate--empty {
+  background: #FFFFFF;
+  border-style: dashed;
+  border-color: #E0D3BC;
+}
+
+.ft-stand__plate--filled {
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.ft-stand__symbol {
+  width: 60%;
+  height: 60%;
+  object-fit: contain;
+}
+
+.ft-stand__value {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  line-height: 1;
+}
+
+.ft-stand__value--earned {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.ft-stand__crumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  background: #FFFFFF;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.ft-stand__crumbs strong {
+  color: var(--color-text-primary);
+}
+
+.ft-stand__crumbs-note {
+  font-size: 10px;
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.ft-stand__crumbs--legal {
+  cursor: pointer;
+  border-color: var(--color-accent-gold);
+  background: rgba(212, 175, 55, 0.12);
+  box-shadow: 0 0 8px rgba(212, 175, 55, 0.4);
+}
+
+.ft-stand__crumbs--legal:hover {
+  background: rgba(212, 175, 55, 0.25);
+}
+
+/* ======= Card VP Badge ======= */
+
+.ft-card__vp {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Fraunces', serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  background: radial-gradient(circle at 50% 40%, #FBE7B8 0%, var(--color-accent-gold) 100%);
+  border: 2px solid #FFFFFF;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(61, 43, 31, 0.4);
+  pointer-events: none;
+  z-index: 2;
+}
+
 /* ======= Cupcake Supply ======= */
 
 .ft-cupcake-supply {

@@ -14,7 +14,10 @@ const INGREDIENT_MAP = {
 };
 
 function parseCSV(filePath) {
-  let content = fs.readFileSync(filePath, 'utf-8');
+  // The CSV is cp1252-encoded (card names contain é/û, e.g. "praliné", "brûlée").
+  // latin1 is byte-identical to cp1252 for every character these names use;
+  // reading as utf-8 corrupts those bytes to the replacement character.
+  let content = fs.readFileSync(filePath, 'latin1');
   // Remove BOM if present
   if (content.charCodeAt(0) === 0xFEFF) {
     content = content.slice(1);
@@ -59,14 +62,20 @@ function parseCSV(filePath) {
     const patternCells = pattern.map(p => p === '' || p === null ? null : p);
 
     const scoringIngredient = row['Scoring']?.toLowerCase() || '';
-    const score = parseInt(row['score'] || 0) || 0;
+
+    // Victory points: flat 1–4 value from the CSV `vp` column. Fail loudly on bad data
+    // rather than silently defaulting.
+    const vp = parseInt(row['vp'], 10);
+    if (isNaN(vp) || vp < 1 || vp > 4) {
+      throw new Error(`Card ${cardNum} (${row['Title']}) has invalid vp "${row['vp']}" — must be an integer 1–4.`);
+    }
 
     cards.push({
       id: cardNum,
       name: row['Title'] || `Card ${cardNum}`,
-      ingredient: INGREDIENT_MAP[row['Scoring']] || scoringIngredient,
+      family: INGREDIENT_MAP[row['Scoring']] || scoringIngredient,
       pattern: patternCells,
-      symbolCount: score
+      vp
     });
   }
 
@@ -76,17 +85,17 @@ function parseCSV(filePath) {
 function generateTilesJS(cards) {
   const cardDefs = cards.map(card => {
     const patternStr = JSON.stringify(card.pattern);
-    return `  { id: ${card.id}, name: '${card.name.replace(/'/g, "\\'")}', ingredient: '${card.ingredient}', pattern: ${patternStr}, symbolCount: ${card.symbolCount} }`;
+    return `  { id: ${card.id}, name: '${card.name.replace(/'/g, "\\'")}', family: '${card.family}', pattern: ${patternStr}, vp: ${card.vp} }`;
   }).join(',\n');
 
   return `// Card definitions (from reward_cards.csv)
-// Each card: id, name, ingredient (for end-game scoring), pattern (3×2 grid with nulls),
-// symbolCount (number of ingredient symbols on card)
+// Each card: id, name, family (cosmetic ingredient family — art/grouping only, no
+// mechanical effect), pattern (3×2 grid with nulls), vp (1–4 victory points)
 export const REWARD_CARDS = [
 ${cardDefs}
 ];
 
-// Tile system: 5 colours × 5 ingredients = 100 unique tiles, 4 copies each = 400 tiles
+// Tile system: 5 colours × 5 ingredients = 25 unique tile types, 4 copies each = 100 tiles
 export const COLOURS = ['yellow', 'pink', 'green', 'blue', 'orange'];
 export const INGREDIENTS = ['lemon', 'chocolate', 'caramel', 'strawberry', 'almond'];
 

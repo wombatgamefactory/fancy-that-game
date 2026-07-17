@@ -1,5 +1,58 @@
-import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, place, claim, skipClaim, skipMove, refill, calculateFinalScores, INGREDIENTS, REWARD_CARDS, BOARD_SIZE, getPatternMatches } from '../engine/game.js';
-import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacements, decideClaim as greedyClaim } from './basicBot.js';
+import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, moveTile, refill, calculateFinalScores, getLegalDestinations, ROW_VALUES, REWARD_CARDS, BOARD_SIZE, getPatternMatches, getPatternWindows } from '../engine/game.js';
+import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacements, decideClaim as greedyClaim, decideMove as greedyMove, rankSweeps, rankBonusTiles } from './basicBot.js';
+
+// Action-space pruning: with a few hundred iterations, spreading visits over
+// 40+ sweep options drowns the search in rollout noise. Concentrate on the
+// heuristically best candidates instead.
+const MAX_SWEEP_ACTIONS = 8;
+const MAX_BONUS_ACTIONS = 5;
+
+// Committed (already-banked) score: mirror of calculateFinalScores on a live
+// state — stand row values + 1/crumb + Σ claimed card vp + unspent cupcakes.
+function committedScore(player) {
+  let s = 0;
+  for (const row of player.stand) {
+    if (row.tiles.length > 0) s += ROW_VALUES[row.tiles.length - 1];
+  }
+  s += player.crumbTray.length;
+  for (const cardId of player.claimedCards) {
+    const card = REWARD_CARDS.find(c => c.id === cardId);
+    if (card) s += card.vp;
+  }
+  s += player.cupcakes || 0;
+  return s;
+}
+
+// Which tile the removal heuristic would sacrifice from a matched pattern:
+// prefer a tile that extends a locked stand row, avoid breaking the last tile
+// of a colour still wanted by the card market.
+function pickRemovalIndex(player, cardMarket, patternCells) {
+  const coloursNeeded = new Set();
+  for (const c of cardMarket) {
+    for (const colour of c.pattern) if (colour) coloursNeeded.add(colour);
+  }
+  const lockedUnfilled = new Set();
+  for (const row of player.stand) {
+    if (row.ingredient !== null && row.tiles.length < row.capacity) lockedUnfilled.add(row.ingredient);
+  }
+  let best = patternCells[0];
+  let bestScore = -Infinity;
+  for (const cellIndex of patternCells) {
+    const tile = player.board[cellIndex];
+    if (!tile) continue;
+    let score = 0;
+    if (lockedUnfilled.has(tile.ingredient)) score += 5;
+    if (coloursNeeded.has(tile.colour)) {
+      const others = player.board.filter((t, i) => i !== cellIndex && t && t.colour === tile.colour);
+      if (others.length === 0) score -= 10;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = cellIndex;
+    }
+  }
+  return best;
+}
 
 const ITERATIONS_MAP = {
   'basic': 0,
@@ -17,7 +70,8 @@ function cloneState(state) {
     players: state.players.map(p => ({
       ...p,
       board: [...p.board],
-      scoringPile: [...p.scoringPile],
+      stand: p.stand.map(r => ({ ...r, tiles: [...r.tiles] })),
+      crumbTray: [...p.crumbTray],
       claimedCards: [...p.claimedCards],
     })),
     market: [...state.market],
@@ -81,34 +135,45 @@ function ingredientPlacements(state) {
     return [];
   }
 
-  // Find ingredient with highest claimed symbols
+  // Target ingredient: the ingredient of a locked, unfilled stand row (those
+  // rows can only ever grow with that ingredient). Fall back to the most-common
+  // ingredient already on the board if nothing is locked yet.
   let bestIngredient = null;
-  let bestSymbols = -1;
-  for (const ingredient of INGREDIENTS) {
-    let symbols = 0;
-    for (const cardId of currentPlayer.claimedCards) {
-      const card = REWARD_CARDS.find(c => c.id === cardId);
-      if (card && card.ingredient === ingredient) {
-        symbols += card.symbolCount;
-      }
+  for (const row of currentPlayer.stand) {
+    if (row.ingredient !== null && row.tiles.length < row.capacity) {
+      bestIngredient = row.ingredient;
+      break;
     }
-    if (symbols > bestSymbols) {
-      bestSymbols = symbols;
-      bestIngredient = ingredient;
+  }
+  if (bestIngredient === null) {
+    const counts = {};
+    for (const cell of currentPlayer.board) {
+      if (cell && cell.ingredient) counts[cell.ingredient] = (counts[cell.ingredient] || 0) + 1;
+    }
+    let bestCount = -1;
+    for (const ing in counts) {
+      if (counts[ing] > bestCount) {
+        bestCount = counts[ing];
+        bestIngredient = ing;
+      }
     }
   }
 
-  // Sort tiles so best ingredient tiles go first
-  const sortedTiles = [...tilesToPlace].sort((a, b) => {
-    const aIsBest = a.ingredient === bestIngredient ? 1 : 0;
-    const bIsBest = b.ingredient === bestIngredient ? 1 : 0;
-    return bIsBest - aIsBest;
-  });
+  // Process best-ingredient tiles first, but keep each chosen position paired
+  // with its tile's ORIGINAL index — place() zips placements[i] with
+  // pendingSweepTiles[i] by index.
+  const sortedEntries = tilesToPlace
+    .map((tile, index) => ({ tile, index }))
+    .sort((a, b) => {
+      const aIsBest = a.tile.ingredient === bestIngredient ? 1 : 0;
+      const bIsBest = b.tile.ingredient === bestIngredient ? 1 : 0;
+      return bIsBest - aIsBest;
+    });
 
-  const placements = [];
+  const placements = new Array(tilesToPlace.length).fill(-1);
   const usedPositions = new Set();
 
-  for (const tile of sortedTiles) {
+  for (const { tile, index } of sortedEntries) {
     let bestPos = null;
     let bestScore = -Infinity;
 
@@ -147,8 +212,8 @@ function ingredientPlacements(state) {
       }
     }
 
-    if (bestPos === null) bestPos = validPositions[0];
-    placements.push(bestPos);
+    if (bestPos === null) bestPos = validPositions.find(p => !usedPositions.has(p));
+    placements[index] = bestPos;
     usedPositions.add(bestPos);
   }
 
@@ -199,7 +264,7 @@ function spreadPlacements(state) {
       }
     }
 
-    if (bestPos === null) bestPos = validPositions[0];
+    if (bestPos === null) bestPos = validPositions.find(p => !usedPositions.has(p));
     placements.push(bestPos);
     usedPositions.add(bestPos);
   }
@@ -211,10 +276,10 @@ function getActionsForPhase(state) {
   const phase = state.gamePhase;
   if (phase === 'sweep') {
     if (state.bonusTileAvailable) {
-      const tiles = state.market.map((t, i) => t ? i : null).filter(i => i !== null);
-      return tiles.length > 0 ? tiles : [null];
+      const ranked = rankBonusTiles(state).slice(0, MAX_BONUS_ACTIONS);
+      return ranked.length > 0 ? ranked : [null];
     } else {
-      return getValidSweeps(state);
+      return rankSweeps(state).slice(0, MAX_SWEEP_ACTIONS);
     }
   } else if (phase === 'place') {
     // For placement, explore multiple strategies
@@ -224,12 +289,24 @@ function getActionsForPhase(state) {
     }
     return ['greedy', 'ingredient', 'spread'];
   } else if (phase === 'move') {
-    // For move phase, just skip (moving costs cupcakes and is rarely optimal)
-    return [null];
+    // Offer the heuristic cupcake move (complete a card we couldn't otherwise
+    // claim) alongside skipping; the search decides if it pays off.
+    const suggestion = greedyMove(state);
+    return suggestion ? [suggestion, null] : [null];
   } else if (phase === 'claim') {
+    // Only actually claimable cards, and for each give MCTS a real plate-vs-crumb
+    // choice: one action per legal destination of the tile the removal heuristic
+    // would pick, plus null to skip.
+    const player = state.players[state.currentPlayerIndex];
     const claimOptions = [];
     for (const card of state.cardMarket) {
-      claimOptions.push({ cardId: card.id });
+      const matches = getPatternMatches(player.board, card.pattern);
+      if (matches.length === 0) continue;
+      const removedBoardIndex = pickRemovalIndex(player, state.cardMarket, matches[0].cells);
+      const removedTile = player.board[removedBoardIndex];
+      for (const destination of getLegalDestinations(player, removedTile)) {
+        claimOptions.push({ cardId: card.id, removedBoardIndex, destination });
+      }
     }
     claimOptions.push(null); // Skip
     return claimOptions;
@@ -248,8 +325,7 @@ function applyAction(state, action) {
         if (action !== null && action !== undefined) {
           takeBonusTile(cloned, action);
         } else {
-          cloned.bonusTileAvailable = false;
-          cloned.gamePhase = 'place';
+          declineBonusTile(cloned);
         }
       } else if (action && action.rowOrCol !== undefined) {
         // Action is a sweep move
@@ -268,18 +344,18 @@ function applyAction(state, action) {
       place(cloned, placements);
       return cloned;
     } else if (phase === 'move') {
+      // A move action carries {fromIndex, toIndex}; either way the phase then
+      // advances (only one cupcake move is allowed per turn).
+      if (action && typeof action.fromIndex === 'number') {
+        moveTile(cloned, action.fromIndex, action.toIndex);
+      }
       skipMove(cloned);
       return cloned;
     } else if (phase === 'claim') {
-      if (action === null) {
-        skipClaim(cloned);
-      } else if (action && action.cardId) {
-        const claimDec = greedyClaim(cloned);
-        if (claimDec) {
-          claim(cloned, claimDec.cardId, claimDec.removedBoardIndex);
-        } else {
-          skipClaim(cloned);
-        }
+      // Execute the action's OWN chosen card/removal/destination — do not
+      // re-derive it from a heuristic (that discarded the search's choice).
+      if (action && action.cardId) {
+        claim(cloned, action.cardId, action.removedBoardIndex, action.destination);
       } else {
         skipClaim(cloned);
       }
@@ -296,162 +372,60 @@ function applyAction(state, action) {
   return cloned;
 }
 
-function getRowTilesFromMarket(market, row, size) {
-  return market.slice(row * size, row * size + size);
-}
-
-function getColTilesFromMarket(market, col, size) {
-  const out = [];
-  for (let r = 0; r < size; r++) out.push(market[r * size + col]);
-  return out;
-}
-
+// Rollout sweep policy: the window-aware heuristic ranking with a little
+// randomness (pick among the top 3) so playouts stay diverse.
 function selectHeuristicSweep(state) {
-  const validSweeps = getValidSweeps(state);
-  if (validSweeps.length === 0) return null;
-
-  const marketSize = Math.sqrt(state.market.length);
-
-  // Build wanted colours set
-  const wantedColours = new Set();
-  for (const card of state.cardMarket) {
-    for (const colour of card.pattern) {
-      if (colour) wantedColours.add(colour);
-    }
-  }
-
-  let bestSweep = validSweeps[0];
-  let bestScore = -Infinity;
-  const tiedSweeps = [];
-
-  for (const sweep of validSweeps) {
-    let score = 0;
-
-    const tiles = sweep.isRow
-      ? getRowTilesFromMarket(state.market, sweep.rowOrCol, marketSize)
-      : getColTilesFromMarket(state.market, sweep.rowOrCol, marketSize);
-
-    for (const tile of tiles) {
-      if (!tile) continue;
-
-      if (sweep.declarationType === 'colour') {
-        // Count how many tiles match the declaration
-        if (tile.colour === sweep.declaration && wantedColours.has(tile.colour)) {
-          score += 1;
-        }
-      } else {
-        // Ingredient sweeps always score +1 per tile
-        if (tile.ingredient === sweep.declaration) {
-          score += 1;
-        }
-      }
-    }
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestSweep = sweep;
-      tiedSweeps.length = 0;
-      tiedSweeps.push(sweep);
-    } else if (score === bestScore) {
-      tiedSweeps.push(sweep);
-    }
-  }
-
-  // Random tie-break
-  if (tiedSweeps.length > 1) {
-    return tiedSweeps[Math.floor(Math.random() * tiedSweeps.length)];
-  }
-
-  return bestSweep;
+  const ranked = rankSweeps(state);
+  if (ranked.length === 0) return null;
+  const k = Math.min(3, ranked.length);
+  // Weight toward the top choice: 1st twice as likely as 2nd, etc.
+  const r = Math.random();
+  const pick = r < 0.6 ? 0 : r < 0.85 ? 1 : 2;
+  return ranked[Math.min(pick, k - 1)];
 }
 
 function evaluateState(state, playerIndex) {
   const player = state.players[playerIndex];
   const opponents = state.players.filter((_, i) => i !== playerIndex);
 
-  // Player estimate
-  let playerCommitted = 0;
+  // Already-banked score.
+  const playerCommitted = committedScore(player);
+
+  // Board progress: a completed pattern is worth vp*2 (claimable now); an
+  // incomplete one gets credit for its best viable window, quadratic in
+  // progress so tiles actually ARRANGED toward a pattern count, not scattered
+  // colour-matching tiles anywhere on the board.
   let playerBoardProgress = 0;
-  let playerTrajectory = 0;
-
-  // Committed score (from claimed cards + scoring pile)
-  const playerIngredientSymbols = {};
-  const playerIngredientInPile = {};
-  for (const ingredient of INGREDIENTS) {
-    playerIngredientSymbols[ingredient] = 0;
-    playerIngredientInPile[ingredient] = 0;
-  }
-
-  for (const cardId of player.claimedCards) {
-    const card = REWARD_CARDS.find(c => c.id === cardId);
-    if (card) {
-      playerIngredientSymbols[card.ingredient] += card.symbolCount;
-    }
-  }
-
-  for (const tile of player.scoringPile) {
-    if (tile && tile.ingredient) {
-      playerIngredientInPile[tile.ingredient] = (playerIngredientInPile[tile.ingredient] || 0) + 1;
-    }
-  }
-
-  for (const ingredient of INGREDIENTS) {
-    playerCommitted += playerIngredientSymbols[ingredient] * playerIngredientInPile[ingredient];
-  }
-  playerCommitted += (player.cupcakes || 0);
-
-  // Board progress
   for (const card of state.cardMarket) {
-    const matches = getPatternMatches(player.board, card.pattern);
-    if (matches.length > 0) {
-      playerBoardProgress += card.symbolCount * 2;
-    } else {
-      // Fractional credit for partial patterns
-      const matchingTiles = player.board.filter(t => t && card.pattern.includes(t.colour)).length;
-      playerBoardProgress += (matchingTiles / BOARD_SIZE) * card.symbolCount * 0.5;
+    let best = 0;
+    for (const win of getPatternWindows(player.board, card.pattern)) {
+      if (win.missing.length === 0) {
+        best = 2;
+        break;
+      }
+      const progress = win.matched / win.need;
+      if (progress * progress > best) best = progress * progress;
     }
+    playerBoardProgress += best * card.vp;
   }
 
-  // Ingredient trajectory
-  for (const ingredient of INGREDIENTS) {
-    const marketSymbols = REWARD_CARDS
-      .filter(c => state.cardMarket.some(cm => cm && cm.id === c.id) && c.ingredient === ingredient)
-      .reduce((sum, c) => sum + c.symbolCount, 0);
-    playerTrajectory += (playerIngredientInPile[ingredient] || 0) * marketSymbols * 0.3;
+  // Stand trajectory: small credit for board tiles whose ingredient matches a
+  // locked, unfilled stand row (they can grow that row when sacrificed).
+  const lockedUnfilled = new Set();
+  for (const row of player.stand) {
+    if (row.ingredient !== null && row.tiles.length < row.capacity) lockedUnfilled.add(row.ingredient);
+  }
+  let playerTrajectory = 0;
+  for (const cell of player.board) {
+    if (cell && cell.ingredient && lockedUnfilled.has(cell.ingredient)) playerTrajectory += 0.3;
   }
 
   const playerEstimate = playerCommitted + playerBoardProgress + playerTrajectory;
 
-  // Best opponent estimate (committed score only for simplicity)
+  // Opponents: committed score only.
   let bestOpponentCommitted = 0;
   for (const opponent of opponents) {
-    let committed = 0;
-    const oppIngredientSymbols = {};
-    const oppIngredientInPile = {};
-    for (const ingredient of INGREDIENTS) {
-      oppIngredientSymbols[ingredient] = 0;
-      oppIngredientInPile[ingredient] = 0;
-    }
-
-    for (const cardId of opponent.claimedCards) {
-      const card = REWARD_CARDS.find(c => c.id === cardId);
-      if (card) {
-        oppIngredientSymbols[card.ingredient] += card.symbolCount;
-      }
-    }
-
-    for (const tile of opponent.scoringPile) {
-      if (tile && tile.ingredient) {
-        oppIngredientInPile[tile.ingredient] = (oppIngredientInPile[tile.ingredient] || 0) + 1;
-      }
-    }
-
-    for (const ingredient of INGREDIENTS) {
-      committed += oppIngredientSymbols[ingredient] * oppIngredientInPile[ingredient];
-    }
-    committed += (opponent.cupcakes || 0);
-
-    bestOpponentCommitted = Math.max(bestOpponentCommitted, committed);
+    bestOpponentCommitted = Math.max(bestOpponentCommitted, committedScore(opponent));
   }
 
   return playerEstimate - bestOpponentCommitted;
@@ -472,8 +446,7 @@ function rollout(state, playerIndex) {
           if (tiles.length > 0 && Math.random() > 0.5) {
             takeBonusTile(cloned, tiles[Math.floor(Math.random() * tiles.length)]);
           } else {
-            cloned.bonusTileAvailable = false;
-            cloned.gamePhase = 'place';
+            declineBonusTile(cloned);
           }
         } else {
           const validSweeps = getValidSweeps(cloned);
@@ -485,14 +458,28 @@ function rollout(state, playerIndex) {
           sweep(cloned, action.rowOrCol, action.isRow, action.declaration, action.declarationType);
         }
       } else if (cloned.gamePhase === 'place') {
-        const placements = greedyPlacements(cloned);
-        place(cloned, placements);
+        // Mirror the engine's board-overflow handling so rollouts don't throw
+        // (and end the game) when the board can't accept all swept tiles.
+        const board = cloned.players[cloned.currentPlayerIndex].board;
+        const empty = getValidPlacements(board).length;
+        if (cloned.pendingSweepTiles.length > empty) {
+          cloned.endGameReason = 'boardOverflow';
+          cloned.remainingTurnsInEndGame = cloned.players.length - 1;
+          cloned.pendingSweepTiles = [];
+          cloned.gamePhase = 'refill';
+        } else {
+          place(cloned, greedyPlacements(cloned));
+        }
       } else if (cloned.gamePhase === 'move') {
+        // Use the cupcake move in playouts too — completing an otherwise
+        // unclaimable card is a real part of both players' strength.
+        const mv = greedyMove(cloned);
+        if (mv) moveTile(cloned, mv.fromIndex, mv.toIndex);
         skipMove(cloned);
       } else if (cloned.gamePhase === 'claim') {
         const claimDec = greedyClaim(cloned);
         if (claimDec) {
-          claim(cloned, claimDec.cardId, claimDec.removedBoardIndex);
+          claim(cloned, claimDec.cardId, claimDec.removedBoardIndex, claimDec.destination);
         } else {
           skipClaim(cloned);
         }
@@ -624,4 +611,10 @@ export async function decideClaim(gameState, difficulty) {
 
   // Use greedy for claim
   return greedyClaim(gameState);
+}
+
+export async function decideMove(gameState, difficulty) {
+  // Cupcake move: complete a card this turn if it strictly beats what is
+  // already claimable (same heuristic the MCTS tree explores).
+  return greedyMove(gameState);
 }

@@ -1,5 +1,5 @@
-import { BOARD_SIZE, CARD_MARKET_SIZE, REWARD_CARDS, INGREDIENTS } from '../engine/tiles.js';
-import { getPatternMatches } from '../engine/game.js';
+import { BOARD_SIZE, CARD_MARKET_SIZE, REWARD_CARDS } from '../engine/tiles.js';
+import { getPatternMatches, getLegalDestinations, ROW_VALUES } from '../engine/game.js';
 
 const DIFFICULTY_LABELS = {
   'basic': 'Basic',
@@ -25,16 +25,11 @@ export function showRulesModal() {
       <div class="ft-rules">
         <div class="ft-rules__section">
           <div class="ft-rules__section-title">Goal</div>
-          <div class="ft-rules__text">Collect patisserie reward cards by building colour patterns on your board, then score points by multiplying the ingredient symbols on your cards by the matching ingredient tiles you've collected.</div>
+          <div class="ft-rules__text">Collect patisserie reward cards by building colour patterns on your board. Each card is worth victory points, and every card you claim lets you move one tile onto your tiered cake stand, where filling a row scores escalating points.</div>
         </div>
 
         <div class="ft-rules__section">
-          <div class="ft-rules__section-title">Cupcakes</div>
-          <div class="ft-rules__text">You start the game with 5 cupcakes. Once per turn, after placing your swept tiles, you may spend 1 cupcake to move one tile on your board to a different cell. At game end, each unspent cupcake is worth 1 point.</div>
-        </div>
-
-        <div class="ft-rules__section">
-          <div class="ft-rules__section-title">Your Turn (4 Steps)</div>
+          <div class="ft-rules__section-title">Your Turn (5 Steps)</div>
 
           <div class="ft-rules__step">
             <div class="ft-rules__step-title">1. Sweep</div>
@@ -49,13 +44,13 @@ export function showRulesModal() {
 
           <div class="ft-rules__step">
             <div class="ft-rules__step-title">3. Move Tiles (Optional)</div>
-            <div class="ft-rules__text">You may spend 1 cupcake to move one tile from its current cell to any other empty cell on your board. You can move at most one tile per turn.</div>
+            <div class="ft-rules__text">You may spend 1 cupcake to move one tile — or one tart token (a blocked space) — from its current cell to any other empty cell on your board. You can move at most one tile or tart per turn.</div>
           </div>
 
           <div class="ft-rules__step">
             <div class="ft-rules__step-title">4. Claim (Optional)</div>
             <div class="ft-rules__text">If tiles on your board match a card's colour pattern (in any rotation or reflection), you may claim it.</div>
-            <div class="ft-rules__text">When claiming: remove 1 tile from the pattern, place it in your scoring pile, tuck the card under your board.</div>
+            <div class="ft-rules__text">When claiming: remove 1 tile from the pattern, then place it on your cake stand or in your crumb tray. Each ingredient can only ever be placed on ONE stand row — the first tile you plate locks that ingredient to that row, and no other row can ever hold it. Once that row is full (or if you choose not to extend it), any further tiles of that ingredient must go to the crumb tray. The crumb tray always accepts any tile and is worth 1 point each.</div>
             <div class="ft-rules__text"><strong>Blocked Spaces:</strong> The cell where you removed the tile becomes a permanently blocked space, marked by a croissant icon. No new tiles can be placed on blocked spaces, and they break pattern matching.</div>
           </div>
 
@@ -66,18 +61,24 @@ export function showRulesModal() {
         </div>
 
         <div class="ft-rules__section">
+          <div class="ft-rules__section-title">Cupcakes</div>
+          <div class="ft-rules__text">You start the game with 4 cupcakes. Once per turn (step 3), you may spend 1 cupcake to move one tile or tart token on your board to a different empty cell. At game end, each unspent cupcake is worth 1 point.</div>
+        </div>
+
+        <div class="ft-rules__section">
           <div class="ft-rules__section-title">Scoring</div>
-          <div class="ft-rules__text">At game end, for each ingredient:</div>
-          <div class="ft-rules__text"><strong>(symbols on your cards) × (tiles in your scoring pile)</strong></div>
-          <div class="ft-rules__text">Sum all five ingredients for your base score.</div>
-          <div class="ft-rules__text"><strong>Cupcakes:</strong> Add 1 point for each remaining cupcake.</div>
-          <div class="ft-rules__text">Your final score = base score + cupcakes.</div>
+          <div class="ft-rules__text">Your final score adds up four things:</div>
+          <div class="ft-rules__text"><strong>Cake stand:</strong> each row scores by how many plates it fills — bottom row 3 / 6 / 10 / 15, and shorter rows top out sooner (their values are printed under the plates).</div>
+          <div class="ft-rules__text"><strong>Crumb tray:</strong> 1 point per tile.</div>
+          <div class="ft-rules__text"><strong>Card VP:</strong> the victory-point value shown on each claimed card.</div>
+          <div class="ft-rules__text"><strong>Cupcakes:</strong> 1 point for each remaining cupcake.</div>
         </div>
 
         <div class="ft-rules__section">
           <div class="ft-rules__section-title">Game Ends When</div>
           <div class="ft-rules__text">• The last card is claimed from the card market, OR</div>
-          <div class="ft-rules__text">• A player sweeps and can't fit all tiles on their board, OR</div>
+          <div class="ft-rules__text">• A player's board is completely full (tiles + tarts) at the start of their turn — the game ends immediately, OR</div>
+          <div class="ft-rules__text">• A player sweeps more tiles than their board can hold (every other player then takes one final turn), OR</div>
           <div class="ft-rules__text">• All market tiles are gone and the bag is empty</div>
         </div>
       </div>
@@ -250,7 +251,7 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
         <div id="playerScore3" style="flex-shrink: 0; min-width: 200px; overflow-y: auto; max-height: 550px;"></div>
         <div style="display: flex; flex-direction: column; align-items: center; flex: 1;">
           <div class="ft-panel__header" style="width: 100%; padding: 0 0 var(--spacing-sm) 0; border-bottom: 1px solid var(--color-border); margin-bottom: var(--spacing-sm);">
-            <h2 class="ft-panel__title">🤖 Player 3</h2>
+            <h2 class="ft-panel__title">${gameState.players[2]?.isHuman ? '🧑' : '🤖'} Player 3</h2>
           </div>
           <div id="workingArea3" class="ft-working-area ft-hidden"></div>
           <div id="playerBoard3" class="ft-board-grid"></div>
@@ -262,7 +263,7 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
         <div id="playerScore2" style="flex-shrink: 0; min-width: 200px; overflow-y: auto; max-height: 550px;"></div>
         <div style="display: flex; flex-direction: column; align-items: center; flex: 1;">
           <div class="ft-panel__header" style="width: 100%; padding: 0 0 var(--spacing-sm) 0; border-bottom: 1px solid var(--color-border); margin-bottom: var(--spacing-sm);">
-            <h2 class="ft-panel__title">🤖 Player 2</h2>
+            <h2 class="ft-panel__title">${gameState.players[1]?.isHuman ? '🧑' : '🤖'} Player 2</h2>
           </div>
           <div id="workingArea2" class="ft-working-area ft-hidden"></div>
           <div id="playerBoard2" class="ft-board-grid"></div>
@@ -302,7 +303,7 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
         <div id="playerScore4" style="flex-shrink: 0; min-width: 200px; overflow-y: auto; max-height: 550px;"></div>
         <div style="display: flex; flex-direction: column; align-items: center; flex: 1;">
           <div class="ft-panel__header" style="width: 100%; padding: 0 0 var(--spacing-sm) 0; border-bottom: 1px solid var(--color-border); margin-bottom: var(--spacing-sm);">
-            <h2 class="ft-panel__title">🤖 Player 4</h2>
+            <h2 class="ft-panel__title">${gameState.players[3]?.isHuman ? '🧑' : '🤖'} Player 4</h2>
           </div>
           <div id="workingArea4" class="ft-working-area ft-hidden"></div>
           <div id="playerBoard4" class="ft-board-grid"></div>
@@ -325,6 +326,8 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
     placementMap: {},
     removableTiles: [],
     claimingCardId: null,
+    removedBoardIndex: null,
+    destinationChoices: null,
     dragSetupDone: false,
     cupcakeMode: false,
     lastPlayerIndex: -1,
@@ -339,48 +342,9 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
 }
 
 export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup, gameStats) {
-  const cardSymbols = {};
-  const tileSymbols = {};
-  const playerScores = [];
-
-  for (const ingredient of INGREDIENTS) {
-    cardSymbols[ingredient] = 0;
-    tileSymbols[ingredient] = 0;
-  }
-
   const playerResults = gameState.players.map(player => {
-    const pCardSymbols = {};
-    const pTileSymbols = {};
-    for (const ingredient of INGREDIENTS) {
-      pCardSymbols[ingredient] = 0;
-      pTileSymbols[ingredient] = 0;
-    }
-
-    for (const cardId of player.claimedCards) {
-      const card = REWARD_CARDS.find(c => c.id === cardId);
-      if (card) {
-        pCardSymbols[card.ingredient] += card.symbolCount;
-      }
-    }
-
-    for (const tile of player.scoringPile) {
-      pTileSymbols[tile.ingredient]++;
-    }
-
-    let totalScore = 0;
-    const ingredientScores = {};
-    for (const ingredient of INGREDIENTS) {
-      ingredientScores[ingredient] = (pCardSymbols[ingredient] || 0) * (pTileSymbols[ingredient] || 0);
-      totalScore += ingredientScores[ingredient];
-    }
-
-    return {
-      player,
-      cardSymbols: pCardSymbols,
-      tileSymbols: pTileSymbols,
-      ingredientScores,
-      totalScore,
-    };
+    const breakdown = getScoreBreakdown(player);
+    return { player, breakdown, totalScore: breakdown.total };
   });
 
   const winnerResult = playerResults.reduce((max, result) =>
@@ -405,7 +369,10 @@ export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup
               <tr>
                 <th>Player</th>
                 <th>Cards</th>
-                <th colspan="5">Ingredients</th>
+                <th>Cake Stand</th>
+                <th>Crumbs</th>
+                <th>Card VP</th>
+                <th>Cupcakes</th>
                 <th>Score</th>
               </tr>
             </thead>
@@ -414,21 +381,15 @@ export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup
 
   for (const result of playerResults) {
     const isWinner = result === winnerResult ? 'winner' : '';
+    const bd = result.breakdown;
     html += `
       <tr class="${isWinner}">
         <td style="font-weight: 600;">${result.player.name}</td>
         <td>${result.player.claimedCards.length}</td>
-        <td colspan="5" style="display: flex; gap: var(--spacing-xs); justify-content: center;">
-    `;
-
-    for (const ingredient of INGREDIENTS) {
-      const score = result.ingredientScores[ingredient];
-      const title = `${ingredient}: ${result.cardSymbols[ingredient]} × ${result.tileSymbols[ingredient]} = ${score}`;
-      html += `<div style="width: 28px; text-align: center; font-weight: 600; color: ${score > 0 ? 'var(--color-success)' : 'var(--color-text-secondary)'}; font-size: 12px;" title="${title}">${score}</div>`;
-    }
-
-    html += `
-        </td>
+        <td>${bd.standTotal}</td>
+        <td>${bd.crumbs}</td>
+        <td>${bd.cardVP}</td>
+        <td>${bd.cupcakes}</td>
         <td class="ft-end-screen__score ${result.totalScore === 0 ? 'zero' : ''}">${result.totalScore}</td>
       </tr>
     `;
@@ -810,10 +771,12 @@ function updateCardMarket(gameState) {
   const cardMarket = document.getElementById('cardMarket');
   if (!cardMarket) return;
 
-  const SPRITE_WIDTH = 3751;
-  const SPRITE_HEIGHT = 2598;
+  // reward_card_layout.png is a TTS-style 10×7 sheet; cards 1–50 fill the
+  // first 5 rows, the last 2 rows are blank.
+  const SPRITE_WIDTH = 7501;
+  const SPRITE_HEIGHT = 7277;
   const CARDS_PER_ROW = 10;
-  const CARDS_PER_COL = 5;
+  const CARDS_PER_COL = 7;
   const CARD_WIDTH = SPRITE_WIDTH / CARDS_PER_ROW;
   const CARD_HEIGHT = SPRITE_HEIGHT / CARDS_PER_COL;
   const DISPLAY_HEIGHT = 260;
@@ -850,7 +813,9 @@ function updateCardMarket(gameState) {
     const clickable = isClaimable && gameState.gamePhase === 'claim' ? 'cursor: pointer;' : '';
 
     return `
-      <div data-card-id="${cardId}" class="card-market-sprite ${cardClass}" style="width: ${DISPLAY_WIDTH}px; height: ${DISPLAY_HEIGHT}px; background-image: url('images/reward_card_layout.png'); background-position: ${bgPosX}px ${bgPosY}px; background-size: ${bgSizeW}px ${bgSizeH}px; background-repeat: no-repeat; ${clickable}"></div>
+      <div data-card-id="${cardId}" class="card-market-sprite ${cardClass}" style="position: relative; width: ${DISPLAY_WIDTH}px; height: ${DISPLAY_HEIGHT}px; background-image: url('images/reward_card_layout.png'); background-position: ${bgPosX}px ${bgPosY}px; background-size: ${bgSizeW}px ${bgSizeH}px; background-repeat: no-repeat; ${clickable}">
+        <div class="ft-card__vp" title="${card.vp} victory point${card.vp === 1 ? '' : 's'}">${card.vp}</div>
+      </div>
     `;
   }).join('');
 
@@ -886,7 +851,9 @@ function updatePlayerBoards(gameState) {
       const isDropTarget = isCurrentPlayer && isPlacingPhase && player.isHuman;
       const isRemovable = isCurrentPlayer && ui.removableTiles && ui.removableTiles.includes(idx);
       const isInCupcakeMode = isCurrentPlayer && player.isHuman && ui.cupcakeMode;
-      const isMovableInCupcakeMode = isInCupcakeMode && tile !== null && !isBlockedCell;
+      // A cupcake may relocate either a tile OR a tart token (blocked cell) — any
+      // non-empty cell is a valid move source. Only empty cells are move targets.
+      const isMovableInCupcakeMode = isInCupcakeMode && tile !== null;
       const isMoveTarget = isInCupcakeMode && tile === null;
 
       let pendingTile = null;
@@ -906,6 +873,7 @@ function updatePlayerBoards(gameState) {
       let tileClass = 'ft-tile board-tile';
       if (isBlockedCell) {
         tileClass += ' ft-tile--blocked';
+        if (isMovableInCupcakeMode) tileClass += ' ft-tile--movable';
       } else if (!displayTile) {
         tileClass += ' ft-tile--empty';
         if (isMoveTarget) tileClass += ' ft-tile--move-target';
@@ -950,10 +918,14 @@ function updatePlayerBoards(gameState) {
         const tileEl = boardEl.querySelector(`[data-index="${idx}"]`);
         if (tileEl) {
           tileEl.addEventListener('click', () => {
-            const cardId = ui.claimingCardId;
+            // Step 2 → 3: a tile is chosen for removal. Move to the destination
+            // step rather than committing — the player must now pick where the
+            // removed tile goes (a stand row or the crumb tray).
+            const tile = player.board[idx];
+            ui.removedBoardIndex = idx;
+            ui.destinationChoices = getLegalDestinations(player, tile);
             ui.removableTiles = [];
-            ui.claimingCardId = null;
-            ui.onClaimSubmit(cardId, idx);
+            updateGameDisplay(gameState);
           });
         }
       });
@@ -1129,99 +1101,141 @@ function setupDragAndDrop(gameState) {
   }, false);
 }
 
-function getSymbolsFromCards(player) {
-  const symbols = {};
-  for (const ingredient of INGREDIENTS) {
-    symbols[ingredient] = 0;
+// New-world scoring breakdown for a player: cake-stand rows (cumulative value
+// by tile count), crumb tray (1/tile), claimed card VP, and unspent cupcakes.
+function getScoreBreakdown(player) {
+  let standTotal = 0;
+  for (const row of player.stand) {
+    if (row.tiles.length > 0) standTotal += ROW_VALUES[row.tiles.length - 1];
   }
-
+  const crumbs = player.crumbTray.length;
+  let cardVP = 0;
   for (const cardId of player.claimedCards) {
     const card = REWARD_CARDS.find(c => c.id === cardId);
-    if (card) {
-      symbols[card.ingredient] += card.symbolCount;
+    if (card) cardVP += card.vp;
+  }
+  const cupcakes = player.cupcakes;
+  return { standTotal, crumbs, cardVP, cupcakes, total: standTotal + crumbs + cardVP + cupcakes };
+}
+
+// Render a player's tiered cake stand plus their crumb tray. Rows are drawn top
+// (1 plate) to bottom (4 plates) so it reads as a widening tier. Cumulative row
+// values are printed under each plate position. When `interactive` is set (the
+// current human is choosing a claim destination), legal rows and the crumb tray
+// are marked with data-attributes so click handlers can be attached.
+function renderStand(player, opts = {}) {
+  const { interactive = false, legalRows = null } = opts;
+
+  let rowsHtml = '';
+  for (let rowIndex = player.stand.length - 1; rowIndex >= 0; rowIndex--) {
+    const row = player.stand[rowIndex];
+    const isLegal = interactive && legalRows && legalRows.has(rowIndex);
+
+    let slots = '';
+    for (let k = 0; k < row.capacity; k++) {
+      const tile = row.tiles[k];
+      const filled = k < row.tiles.length;
+      const plate = tile
+        ? `<div class="ft-stand__plate ft-stand__plate--filled" style="background-color: ${getColourCSS(tile.colour)};"><img src="images/symbol_${tile.ingredient}.png" class="ft-stand__symbol" alt="${tile.ingredient}"></div>`
+        : `<div class="ft-stand__plate ft-stand__plate--empty"></div>`;
+      slots += `
+        <div class="ft-stand__slot">
+          ${plate}
+          <div class="ft-stand__value ${filled ? 'ft-stand__value--earned' : ''}">${ROW_VALUES[k]}</div>
+        </div>`;
     }
+
+    const marker = row.ingredient
+      ? `<img src="images/symbol_${row.ingredient}.png" class="ft-stand__lock" alt="${row.ingredient}" title="Row locked to ${row.ingredient}">`
+      : `<div class="ft-stand__lock ft-stand__lock--empty" title="Row not yet locked"></div>`;
+
+    rowsHtml += `
+      <div class="ft-stand__row ${isLegal ? 'ft-stand__row--legal' : ''}" ${isLegal ? `data-dest-row="${rowIndex}"` : ''}>
+        ${marker}
+        <div class="ft-stand__plates">${slots}</div>
+      </div>`;
   }
 
-  return symbols;
+  // The crumb tray is always a legal destination during a claim.
+  const crumbHtml = `
+    <div class="ft-stand__crumbs ${interactive ? 'ft-stand__crumbs--legal' : ''}" ${interactive ? 'data-dest-crumb="1"' : ''}>
+      <span class="ft-stand__crumbs-icon">🍪</span>
+      <span>Crumb tray: <strong>${player.crumbTray.length}</strong></span>
+      <span class="ft-stand__crumbs-note">1 pt each</span>
+    </div>`;
+
+  return `<div class="ft-stand">${rowsHtml}${crumbHtml}</div>`;
 }
 
-function getSymbolsFromTiles(player) {
-  const symbols = {};
-  for (const ingredient of INGREDIENTS) {
-    symbols[ingredient] = 0;
-  }
-
-  for (const tile of player.scoringPile) {
-    symbols[tile.ingredient]++;
-  }
-
-  return symbols;
+// Step 3 → commit: a destination was clicked, so submit the whole claim.
+function commitClaimDestination(destination) {
+  const ui = window._gameUI;
+  if (!ui || ui.removedBoardIndex === null || ui.removedBoardIndex === undefined) return;
+  const cardId = ui.claimingCardId;
+  const removedBoardIndex = ui.removedBoardIndex;
+  ui.claimingCardId = null;
+  ui.removedBoardIndex = null;
+  ui.destinationChoices = null;
+  ui.removableTiles = [];
+  ui.onClaimSubmit(cardId, removedBoardIndex, destination);
 }
 
-function calculateScorePerIngredient(cardSymbols, tileSymbols) {
-  const scores = {};
-  for (const ingredient of INGREDIENTS) {
-    scores[ingredient] = (cardSymbols[ingredient] || 0) * (tileSymbols[ingredient] || 0);
-  }
-  return scores;
+// Cancel path for the claim flow: abandon the in-progress card/tile/destination
+// selection and return to the claim phase's card-choosing state.
+function cancelClaim() {
+  const ui = window._gameUI;
+  if (!ui) return;
+  ui.claimingCardId = null;
+  ui.removedBoardIndex = null;
+  ui.destinationChoices = null;
+  ui.removableTiles = [];
+  updateGameDisplay(ui.gameState);
 }
 
 function updateStats(gameState) {
+  const ui = window._gameUI || {};
+
   gameState.players.forEach((p, playerIdx) => {
     const statsEl = document.getElementById(`playerScore${playerIdx + 1}`);
     if (!statsEl) return;
 
-    const cardSymbols = getSymbolsFromCards(p);
-    const tileSymbols = getSymbolsFromTiles(p);
-    const scores = calculateScorePerIngredient(cardSymbols, tileSymbols);
-    const totalScore = Object.values(scores).reduce((a, b) => a + b, 0);
+    const isCurrentPlayer = gameState.currentPlayerIndex === playerIdx;
+    const bd = getScoreBreakdown(p);
+
+    // The current human is picking a destination for a removed tile when
+    // destinationChoices is set — make their own stand's legal spots clickable.
+    const destinationMode = isCurrentPlayer && p.isHuman && Array.isArray(ui.destinationChoices);
+    const legalRows = destinationMode
+      ? new Set(ui.destinationChoices.filter(d => d.type === 'row').map(d => d.rowIndex))
+      : null;
 
     let html = `
-      <div class="ft-score-total">Total: ${totalScore}</div>
-      <div class="ft-score-table">
-        <div class="ft-score-table__header">
-          <div class="ft-score-table__header-cell" style="grid-column: 1;"></div>
-          <div class="ft-score-table__header-cell">Ingredients</div>
-          <div class="ft-score-table__header-cell">Cards</div>
-          <div class="ft-score-table__header-cell">Tiles</div>
-          <div class="ft-score-table__header-cell">Score</div>
-        </div>
+      <div class="ft-score-total">Total: ${bd.total}</div>
+      <div class="ft-score-breakdown">
+        <div class="ft-score-breakdown__item"><span>🎂 Cake stand</span><strong>${bd.standTotal}</strong></div>
+        <div class="ft-score-breakdown__item"><span>🍪 Crumbs</span><strong>${bd.crumbs}</strong></div>
+        <div class="ft-score-breakdown__item"><span>🍰 Card VP</span><strong>${bd.cardVP}</strong></div>
+        <div class="ft-score-breakdown__item"><span>🧁 Cupcakes</span><strong>${bd.cupcakes}</strong></div>
+      </div>
+      ${destinationMode ? '<div class="ft-stand__prompt">Choose where this tile goes ↓</div>' : ''}
+      ${renderStand(p, { interactive: destinationMode, legalRows })}
     `;
 
-    for (const ingredient of INGREDIENTS) {
-      const cardCount = cardSymbols[ingredient] || 0;
-      const tileCount = tileSymbols[ingredient] || 0;
-      const score = scores[ingredient] || 0;
-
-      html += `
-        <div class="ft-score-table__row">
-          <img src="images/symbol_${ingredient}.png" class="ft-score-table__icon" alt="${ingredient}">
-          <div class="ft-score-table__cell" style="grid-column: 2; text-align: left;">${ingredient}</div>
-          <div class="ft-score-table__cell">${cardCount}</div>
-          <div class="ft-score-table__cell">${tileCount}</div>
-          <div class="ft-score-table__cell ft-score-table__score ${score === 0 ? 'zero' : ''}">${score}</div>
-        </div>
-      `;
-    }
-
-    html += `</div>`;
-
     const cupcakeCount = p.cupcakes;
-    const isCurrentPlayer = gameState.currentPlayerIndex === playerIdx;
     const canUseCupcakes = isCurrentPlayer && p.cupcakes > 0 && gameState.gamePhase === 'move' && !gameState.cupcakesUsedThisTurn;
-    const cupcakeClass = window._gameUI.cupcakeMode ? 'ft-cupcake-supply--active' : '';
+    const cupcakeClass = ui.cupcakeMode ? 'ft-cupcake-supply--active' : '';
 
     html += `
       <div class="ft-cupcake-supply ${cupcakeClass}" id="cupcakeSupply${playerIdx + 1}">
         <div class="ft-cupcake-header">
           <span class="ft-cupcake-label">🧁 Cupcakes</span>
-          <span class="ft-cupcake-help-text">Click to move tiles on your board</span>
+          <span class="ft-cupcake-help-text">Click to move tiles or tarts on your board</span>
         </div>
         <div class="ft-cupcake-icons">
           ${cupcakeCount > 0 ? Array(cupcakeCount).fill().map((_, i) => `
             <button class="ft-cupcake-btn ${!canUseCupcakes ? 'ft-cupcake-btn--disabled' : 'ft-cupcake-btn--active'}"
                     data-cupcake-index="${i}"
-                    title="Click to move a tile (${canUseCupcakes ? 'available' : 'unavailable'})"
+                    title="Click to move a tile or tart (${canUseCupcakes ? 'available' : 'unavailable'})"
                     ${!canUseCupcakes ? 'disabled' : ''}>
               <img src="images/cupcake.png" class="ft-cupcake-icon" alt="cupcake" />
             </button>
@@ -1233,11 +1247,23 @@ function updateStats(gameState) {
 
     statsEl.innerHTML = html;
 
-    if (isCurrentPlayer && canUseCupcakes && window._gameUI.onCupcakeClick) {
+    if (destinationMode) {
+      statsEl.querySelectorAll('[data-dest-row]').forEach(el => {
+        el.addEventListener('click', () => {
+          commitClaimDestination({ type: 'row', rowIndex: parseInt(el.dataset.destRow) });
+        });
+      });
+      const crumbEl = statsEl.querySelector('[data-dest-crumb]');
+      if (crumbEl) {
+        crumbEl.addEventListener('click', () => commitClaimDestination({ type: 'crumb' }));
+      }
+    }
+
+    if (isCurrentPlayer && canUseCupcakes && ui.onCupcakeClick) {
       const cupcakeBtns = statsEl.querySelectorAll('.ft-cupcake-btn--active');
       cupcakeBtns.forEach(btn => {
         btn.addEventListener('click', () => {
-          window._gameUI.onCupcakeClick();
+          ui.onCupcakeClick();
         });
       });
     }
@@ -1282,7 +1308,7 @@ function updatePhaseControls(gameState) {
 
   controls.classList.remove('ft-hidden');
   const hasCupcakes = player.cupcakes > 0 && gameState.gamePhase === 'move' && !gameState.cupcakesUsedThisTurn;
-  const cupcakeHint = hasCupcakes ? `<div class="ft-phase-bar__cupcake-hint">💡 You have ${player.cupcakes} cupcake${player.cupcakes === 1 ? '' : 's'} available — click one to move one tile on your board!</div>` : '';
+  const cupcakeHint = hasCupcakes ? `<div class="ft-phase-bar__cupcake-hint">💡 You have ${player.cupcakes} cupcake${player.cupcakes === 1 ? '' : 's'} available — click one to move one tile or tart on your board!</div>` : '';
   const ui = window._gameUI;
   const canUndo = ui?.canUndo === true;
   const undoBtn = canUndo ? `<button id="undoBtn" class="ft-btn ft-btn--secondary ft-btn--small">↩ Undo</button>` : '';
@@ -1317,7 +1343,7 @@ function updatePhaseControls(gameState) {
   } else if (gameState.gamePhase === 'move') {
     const moveOptions = gameState.cupcakesUsedThisTurn
       ? `<div class="ft-phase-bar__instruction">You've used your move for this turn</div><div class="ft-phase-bar__status">Click "Next" to continue</div>`
-      : `<div class="ft-phase-bar__instruction">Move one tile (optional)</div><div class="ft-phase-bar__status">Click a cupcake to move a tile, or skip</div>`;
+      : `<div class="ft-phase-bar__instruction">Move one tile or tart (optional)</div><div class="ft-phase-bar__status">Click a cupcake to move a tile or tart, or skip</div>`;
 
     html = `
       <div class="ft-phase-bar">
@@ -1332,12 +1358,26 @@ function updatePhaseControls(gameState) {
   } else if (gameState.gamePhase === 'claim') {
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
-    if (ui.removableTiles && ui.removableTiles.length > 0) {
+    if (Array.isArray(ui.destinationChoices)) {
+      html = `
+        <div class="ft-phase-bar">
+          <div class="ft-phase-bar__instruction">Choose a destination for the removed tile</div>
+          <div class="ft-phase-bar__status success">Click a highlighted stand row or your crumb tray</div>
+          ${cupcakeHint}
+          <div class="ft-phase-bar__controls">
+            <button id="cancelClaim" class="ft-btn ft-btn--secondary ft-btn--small">Cancel</button>
+          </div>
+        </div>
+      `;
+    } else if (ui.removableTiles && ui.removableTiles.length > 0) {
       html = `
         <div class="ft-phase-bar">
           <div class="ft-phase-bar__instruction">Select a tile to remove</div>
           <div class="ft-phase-bar__status danger">Click a highlighted tile</div>
           ${cupcakeHint}
+          <div class="ft-phase-bar__controls">
+            <button id="cancelClaim" class="ft-btn ft-btn--secondary ft-btn--small">Cancel</button>
+          </div>
         </div>
       `;
     } else {
@@ -1407,6 +1447,11 @@ function updatePhaseControls(gameState) {
     skipBtn.addEventListener('click', () => window._gameUI.onSkipClaim());
   }
 
+  const cancelClaimBtn = controls.querySelector('#cancelClaim');
+  if (cancelClaimBtn && gameState.gamePhase === 'claim') {
+    cancelClaimBtn.addEventListener('click', cancelClaim);
+  }
+
   const movePhaseNextBtn = controls.querySelector('#movePhaseNext');
   if (movePhaseNextBtn && gameState.gamePhase === 'move') {
     movePhaseNextBtn.addEventListener('click', () => window._gameUI.onSkipMove?.());
@@ -1445,8 +1490,12 @@ function showRemovalUI(gameState, cardId) {
   }
 
   const ui = window._gameUI;
+  // Fresh card pick (Step 1): restart the removal → destination sub-flow clean,
+  // in case a prior in-progress claim left removed/destination state set.
   ui.removableTiles = Array.from(allValidCells);
   ui.claimingCardId = cardId;
+  ui.removedBoardIndex = null;
+  ui.destinationChoices = null;
 
   updateGameDisplay(gameState);
 }
@@ -1499,7 +1548,7 @@ export function renderGameEnd(container, data) {
         <td class="ft-stats__player-name">${idx === 0 ? '🏆 ' : ''}${p.name}</td>
         <td class="ft-stats__player-score">${p.score} pts</td>
         <td class="ft-stats__player-detail">${p.cardsWon} cards</td>
-        <td class="ft-stats__player-detail">${p.scoringPile} tiles</td>
+        <td class="ft-stats__player-detail">${p.crumbs ?? 0} crumbs</td>
       </tr>
     `)
     .join('');
@@ -1520,7 +1569,7 @@ export function renderGameEnd(container, data) {
                 <th>Player</th>
                 <th>Score</th>
                 <th>Cards</th>
-                <th>Tiles</th>
+                <th>Crumbs</th>
               </tr>
             </thead>
             <tbody>

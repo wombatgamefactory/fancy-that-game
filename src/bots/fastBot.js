@@ -1,4 +1,5 @@
 import { getValidSweeps, getValidPlacements, getPatternMatches } from '../engine/game.js';
+import { decideDestination } from './basicBot.js';
 
 export function decideSweep(gameState) {
   const validSweeps = getValidSweeps(gameState);
@@ -41,7 +42,9 @@ export function decideClaim(gameState) {
       const match = matches[0];
       const patternCells = match.cells;
       const removeIdx = patternCells[Math.floor(Math.random() * patternCells.length)];
-      return { cardId: card.id, removedBoardIndex: removeIdx };
+      const removedTile = currentPlayer.board[removeIdx];
+      const destination = decideDestination(currentPlayer, removedTile);
+      return { cardId: card.id, removedBoardIndex: removeIdx, destination };
     }
   }
 

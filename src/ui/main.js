@@ -1,4 +1,4 @@
-import { createGame, sweep, takeBonusTile, place, claim, skipClaim, skipMove, refill, moveTile, getValidSweeps, getValidPlacements, getPatternMatches, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, refill, moveTile, getValidSweeps, getValidPlacements, getPatternMatches, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
 import { createStatsCollector } from '../engine/statsCollector.js';
 import { renderSetupScreen, renderGameScreen, updateGameDisplay, setThinkingState, setThinkingProgress, renderEndScreen } from './board.js';
 import * as basicBot from '../bots/basicBot.js';
@@ -37,6 +37,8 @@ function undoAction() {
     window._gameUI.placementMap = {};
     window._gameUI.removableTiles = [];
     window._gameUI.claimingCardId = null;
+    window._gameUI.removedBoardIndex = null;
+    window._gameUI.destinationChoices = null;
     window._gameUI.cupcakeMode = false;
   }
   updateDisplay();
@@ -118,10 +120,10 @@ function onPlacementSubmit(placements) {
   }
 }
 
-function onClaimSubmit(cardId, removedBoardIndex) {
+function onClaimSubmit(cardId, removedBoardIndex, destination) {
   try {
     pushUndoSnapshot();
-    claim(gameState, cardId, removedBoardIndex);
+    claim(gameState, cardId, removedBoardIndex, destination);
     updateDisplay();
     checkAutoAdvance();
   } catch (e) {
@@ -216,9 +218,8 @@ async function autoPlayGame() {
             if (bonusTileIndex !== null) {
               takeBonusTile(gameState, bonusTileIndex);
             } else {
-              // Skip bonus and move to place phase
-              gameState.bonusTileAvailable = false;
-              gameState.gamePhase = 'place';
+              // Decline the bonus and move to place (may trigger board overflow).
+              declineBonusTile(gameState);
             }
           } else {
             setThinkingState(currentPlayer.name, true);
@@ -236,24 +237,22 @@ async function autoPlayGame() {
             sweep(gameState, sweepMove.rowOrCol, sweepMove.isRow, sweepMove.declaration, sweepMove.declarationType);
           }
         } else if (gameState.gamePhase === 'place') {
-          const emptyCount = getValidPlacements(currentPlayer.board).length;
+          // Board overflow is handled by the engine at the transition into this
+          // phase (checkBoardOverflowOnPlace), so any state seen here is placeable.
+          setThinkingState(currentPlayer.name, true);
+          updateDisplay();
+          const placements = await bot.decidePlacements(gameState, currentPlayer.aiDifficulty);
+          setThinkingState(currentPlayer.name, false);
+          updateDisplay();
 
-          // Check for board overflow - if not enough space, discard remaining tiles and move to refill
-          if (gameState.pendingSweepTiles.length > emptyCount) {
-            gameState.endGameReason = 'boardOverflow';
-            gameState.remainingTurnsInEndGame = gameState.players.length - 1;
-            gameState.pendingSweepTiles = [];
-            gameState.gamePhase = 'refill';
-          } else {
-            setThinkingState(currentPlayer.name, true);
-            updateDisplay();
-            const placements = await bot.decidePlacements(gameState, currentPlayer.aiDifficulty);
-            setThinkingState(currentPlayer.name, false);
-            updateDisplay();
-
-            place(gameState, placements);
-          }
+          place(gameState, placements);
         } else if (gameState.gamePhase === 'move') {
+          // Cupcake move: relocate one tile if it completes a card we could
+          // not otherwise claim this turn.
+          const moveDecision = bot.decideMove ? await bot.decideMove(gameState, currentPlayer.aiDifficulty) : null;
+          if (moveDecision) {
+            moveTile(gameState, moveDecision.fromIndex, moveDecision.toIndex);
+          }
           skipMove(gameState);
         } else if (gameState.gamePhase === 'claim') {
           setThinkingState(currentPlayer.name, true);
@@ -263,7 +262,7 @@ async function autoPlayGame() {
           updateDisplay();
 
           if (claimDecision) {
-            claim(gameState, claimDecision.cardId, claimDecision.removedBoardIndex);
+            claim(gameState, claimDecision.cardId, claimDecision.removedBoardIndex, claimDecision.destination);
           } else {
             skipClaim(gameState);
           }
