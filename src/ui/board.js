@@ -843,7 +843,7 @@ function updateCardMarket(gameState) {
     const clickable = isClaimable && gameState.gamePhase === 'claim' ? 'cursor: pointer;' : '';
 
     return `
-      <div data-card-id="${cardId}" class="card-market-sprite ${cardClass}" style="position: relative; width: ${DISPLAY_WIDTH}px; height: ${DISPLAY_HEIGHT}px; background-image: url('images/reward_card_layout.png?v=2'); background-position: ${bgPosX}px ${bgPosY}px; background-size: ${bgSizeW}px ${bgSizeH}px; background-repeat: no-repeat; ${clickable}">
+      <div data-card-id="${cardId}" class="card-market-sprite ${cardClass}" style="position: relative; width: ${DISPLAY_WIDTH}px; height: ${DISPLAY_HEIGHT}px; background-image: url('images/reward_card_layout.png?v=3'); background-position: ${bgPosX}px ${bgPosY}px; background-size: ${bgSizeW}px ${bgSizeH}px; background-repeat: no-repeat; ${clickable}">
         <div class="ft-card__vp" title="${card.vp} victory point${card.vp === 1 ? '' : 's'}">${card.vp}</div>
       </div>
     `;
@@ -1698,7 +1698,7 @@ function rotatePattern(pattern, turns) {
 // Render one reward card from the shared sprite sheet at an arbitrary display
 // height (the tile-market uses 260px inline; the "on order" reserve slot reuses
 // this at a smaller size). Mirrors the sprite maths in updateCardMarket and the
-// same cache-bust query-string (?v=2) used for reward_card_layout.png.
+// same cache-bust query-string (?v=3) used for reward_card_layout.png.
 function cardSpriteHTML(card, displayHeight, { extraClass = '', clickable = false, badge = false } = {}) {
   const SPRITE_WIDTH = 7501;
   const SPRITE_HEIGHT = 7277;
@@ -1716,7 +1716,7 @@ function cardSpriteHTML(card, displayHeight, { extraClass = '', clickable = fals
   const bgSizeH = SPRITE_HEIGHT * SCALE;
 
   return `
-    <div data-card-id="${card.id}" class="card-market-sprite ft-card ${extraClass}" style="position: relative; width: ${DISPLAY_WIDTH}px; height: ${displayHeight}px; background-image: url('images/reward_card_layout.png?v=2'); background-position: ${bgPosX}px ${bgPosY}px; background-size: ${bgSizeW}px ${bgSizeH}px; background-repeat: no-repeat; ${clickable ? 'cursor: pointer;' : ''}">
+    <div data-card-id="${card.id}" class="card-market-sprite ft-card ${extraClass}" style="position: relative; width: ${DISPLAY_WIDTH}px; height: ${displayHeight}px; background-image: url('images/reward_card_layout.png?v=3'); background-position: ${bgPosX}px ${bgPosY}px; background-size: ${bgSizeW}px ${bgSizeH}px; background-repeat: no-repeat; ${clickable ? 'cursor: pointer;' : ''}">
       <div class="ft-card__vp" title="${card.vp} victory point${card.vp === 1 ? '' : 's'}">${card.vp}</div>
       ${badge ? '<div class="ft-card__teacup" title="On order — not yet served">🫖</div>' : ''}
     </div>
