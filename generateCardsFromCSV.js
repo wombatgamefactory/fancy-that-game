@@ -63,11 +63,14 @@ function parseCSV(filePath) {
 
     const scoringIngredient = row['Scoring']?.toLowerCase() || '';
 
-    // Victory points: flat 1–4 value from the CSV `vp` column. Fail loudly on bad data
-    // rather than silently defaulting.
+    // Victory points: value from the CSV `vp` column — the CSV is authoritative,
+    // so per-card VP is fully data-driven and the band is NOT fixed here (it is
+    // being rebalanced away from 1–4 toward ~2–6). Validate only the real
+    // invariant: a positive integer. Fail loudly on bad data rather than
+    // silently defaulting.
     const vp = parseInt(row['vp'], 10);
-    if (isNaN(vp) || vp < 1 || vp > 4) {
-      throw new Error(`Card ${cardNum} (${row['Title']}) has invalid vp "${row['vp']}" — must be an integer 1–4.`);
+    if (isNaN(vp) || vp < 1 || !Number.isInteger(vp)) {
+      throw new Error(`Card ${cardNum} (${row['Title']}) has invalid vp "${row['vp']}" — must be a positive integer.`);
     }
 
     cards.push({
@@ -90,7 +93,8 @@ function generateTilesJS(cards) {
 
   return `// Card definitions (from reward_cards.csv)
 // Each card: id, name, family (cosmetic ingredient family — art/grouping only, no
-// mechanical effect), pattern (3×2 grid with nulls), vp (1–4 victory points)
+// mechanical effect), pattern (3×2 grid with nulls), vp (per-card victory points,
+// data-driven from reward_cards.csv — no fixed band)
 export const REWARD_CARDS = [
 ${cardDefs}
 ];
@@ -132,7 +136,11 @@ export function createTileBag() {
 
 export const BOARD_SIZE = 5;
 export const CARD_MARKET_SIZE = 4;
-export const TOTAL_GAME_CARDS = 16;
+// Cards a 2-player game must see claimed before the card-count end condition
+// fires (8 tarts × 2 players). This is NOT a deck size — the deck holds all 46
+// cards left after the market is dealt (see initGameDeck). 3p/4p scale this up
+// (24/32) in createGame.
+export const CARDS_TO_END_2P = 16;
 `;
 }
 

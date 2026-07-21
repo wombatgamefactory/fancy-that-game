@@ -4,6 +4,13 @@ export function createStatsCollector() {
     cardsClaimedCount: 0,
     marketFillCount: 0,
     cardMarketTracking: {}, // { cardId: { entered: turn, exited: turn } }
+    teaRoundTurns: [], // turn number of each tea round ordered (orderTea)
+    teaReserves: [], // Array of { playerId, cardId } for each card reserved
+    cupcakePlateGains: 0, // cupcakes gained by plating onto a cupcake plate (below cap)
+    cupcakeForfeits: 0, // cupcake-plate triggers wasted because the player was at cap
+    firstPlatingRow: {}, // playerId -> stand rowIndex of that player's FIRST plating
+                         // this game (top row = 3). Watches whether the 5-VP top
+                         // plate is becoming the automatic opening move.
 
     recordMarketFill() {
       this.marketFillCount = this.marketFillCount + 1;
@@ -33,6 +40,33 @@ export function createStatsCollector() {
         this.cardMarketTracking[cardId] = {};
       }
       this.cardMarketTracking[cardId].exited = parseInt(turn);
+    },
+
+    recordTeaRound(turn) {
+      this.teaRoundTurns.push(parseInt(turn));
+    },
+
+    recordTeaReserve(playerId, cardId) {
+      if (!cardId) return;
+      this.teaReserves.push({ playerId: playerId, cardId: cardId });
+    },
+
+    recordCupcakePlateGain() {
+      this.cupcakePlateGains = this.cupcakePlateGains + 1;
+    },
+
+    recordCupcakeForfeit() {
+      this.cupcakeForfeits = this.cupcakeForfeits + 1;
+    },
+
+    // Record a plating onto a stand row. Only the FIRST plating per player each
+    // game is kept (later platings are ignored), so firstPlatingRow captures
+    // which row each player opened their stand on.
+    recordPlating(playerId, rowIndex) {
+      if (playerId === undefined || playerId === null) return;
+      if (this.firstPlatingRow[playerId] === undefined) {
+        this.firstPlatingRow[playerId] = rowIndex;
+      }
     },
 
     getReport() {
@@ -80,6 +114,12 @@ export function createStatsCollector() {
         avgSweepSize: avgSweepSize,
         sweepCount: sweepCount,
         cardMarketAvgLifetime: avgCardMarketLife,
+        teaRoundCount: this.teaRoundTurns.length,
+        teaRoundTurns: this.teaRoundTurns.slice(),
+        teaReservesTaken: this.teaReserves.length,
+        cupcakePlateGains: this.cupcakePlateGains,
+        cupcakeForfeits: this.cupcakeForfeits,
+        firstPlatingRow: { ...this.firstPlatingRow },
       };
     },
   };

@@ -1,6 +1,7 @@
 // Card definitions (from reward_cards.csv)
 // Each card: id, name, family (cosmetic ingredient family — art/grouping only, no
-// mechanical effect), pattern (3×2 grid with nulls), vp (1–4 victory points)
+// mechanical effect), pattern (3×2 grid with nulls), vp (per-card victory points,
+// data-driven from reward_cards.csv — no fixed band)
 export const REWARD_CARDS = [
   { id: 1, name: 'Lemon madeleine', family: 'lemon', pattern: ["yellow","yellow",null,null,null,null], vp: 1 },
   { id: 2, name: 'Tarte au citron', family: 'lemon', pattern: ["yellow","yellow","yellow",null,null,null], vp: 2 },
@@ -91,4 +92,8 @@ export function createTileBag() {
 
 export const BOARD_SIZE = 5;
 export const CARD_MARKET_SIZE = 4;
-export const TOTAL_GAME_CARDS = 16;
+// Cards a 2-player game must see claimed before the card-count end condition
+// fires (8 tarts × 2 players). This is NOT a deck size — the deck holds all 46
+// cards left after the market is dealt (see initGameDeck). 3p/4p scale this up
+// (24/32) in createGame.
+export const CARDS_TO_END_2P = 16;

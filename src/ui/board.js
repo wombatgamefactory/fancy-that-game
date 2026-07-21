@@ -1,5 +1,5 @@
 import { BOARD_SIZE, CARD_MARKET_SIZE, REWARD_CARDS } from '../engine/tiles.js';
-import { getPatternMatches, getLegalDestinations, ROW_VALUES } from '../engine/game.js';
+import { getPatternMatches, getLegalDestinations, teaReserveMustPass, STAND_ROW_VALUES, CUPCAKE_PLATES } from '../engine/game.js';
 
 const DIFFICULTY_LABELS = {
   'basic': 'Basic',
@@ -61,14 +61,25 @@ export function showRulesModal() {
         </div>
 
         <div class="ft-rules__section">
+          <div class="ft-rules__section-title">🫖 Fresh Pot of Tea</div>
+          <div class="ft-rules__text"><strong>Instead of sweeping</strong> on your turn, you may order a fresh pot of tea:</div>
+          <div class="ft-rules__text">1. Take a cupcake from the supply (you can never hold more than 4).</div>
+          <div class="ft-rules__text">2. Starting with you, each player in clockwise order may take 1 card from the market into their personal reserve.</div>
+          <div class="ft-rules__text">3. Discard the remaining market cards and deal 4 new ones.</div>
+          <div class="ft-rules__text"><strong>Your reserve:</strong> you may hold at most 1 reserved card, kept face-up beside your board (marked "On order"). If your reserve is already full you simply pass at the reserve step — you still take the cupcake and refresh the market.</div>
+          <div class="ft-rules__text"><strong>Completing a reserved card</strong> works exactly like a normal claim (match the pattern on your board, remove a tile, place it, use your one claim for the turn) — it just does not refill the card market. An uncompleted reserved card scores nothing; a completed one counts as a claimed card, including for the tiebreaker.</div>
+          <img src="images/fresh_pot_of_tea_card.png?v=2" alt="Fresh Pot of Tea player aid" style="width: 100%; max-width: 220px; display: block; margin: var(--spacing-md) auto 0; border-radius: var(--radius-md); border: 1px solid var(--color-border);">
+        </div>
+
+        <div class="ft-rules__section">
           <div class="ft-rules__section-title">Cupcakes</div>
-          <div class="ft-rules__text">You start the game with 4 cupcakes. Once per turn (step 3), you may spend 1 cupcake to move one tile or tart token on your board to a different empty cell. At game end, each unspent cupcake is worth 1 point.</div>
+          <div class="ft-rules__text">You start the game with 2 cupcakes and can never hold more than 4 — you gain more by ordering a fresh pot of tea or by plating a tile onto a cupcake plate. Once per turn (step 3), you may spend 1 cupcake to move one tile or tart token on your board to a different empty cell. At game end, each unspent cupcake is worth 1 point.</div>
         </div>
 
         <div class="ft-rules__section">
           <div class="ft-rules__section-title">Scoring</div>
           <div class="ft-rules__text">Your final score adds up four things:</div>
-          <div class="ft-rules__text"><strong>Cake stand:</strong> each row scores by how many plates it fills — bottom row 3 / 6 / 10 / 15, and shorter rows top out sooner (their values are printed under the plates).</div>
+          <div class="ft-rules__text"><strong>Cake stand:</strong> each row scores by how many plates it fills — the bottom row climbs 2 / 6 / 14 / 26, and shorter rows have their own (lower) totals printed under the plates.</div>
           <div class="ft-rules__text"><strong>Crumb tray:</strong> 1 point per tile.</div>
           <div class="ft-rules__text"><strong>Card VP:</strong> the victory-point value shown on each claimed card.</div>
           <div class="ft-rules__text"><strong>Cupcakes:</strong> 1 point for each remaining cupcake.</div>
@@ -207,7 +218,7 @@ export function renderSetupScreen(container, onStart) {
   });
 }
 
-export function renderGameScreen(container, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick) {
+export function renderGameScreen(container, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick, onOrderTea, onTeaReserve) {
   const playerCount = gameState.players.length;
 
   container.innerHTML = `
@@ -321,6 +332,8 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
     onSkipMove,
     onMoveTile,
     onCupcakeClick,
+    onOrderTea,
+    onTeaReserve,
     gameState,
     selectedPlacements: [],
     placementMap: {},
@@ -545,31 +558,41 @@ function updateMarket(gameState) {
   const player = gameState.players[gameState.currentPlayerIndex];
   if (gameState.bonusTileAvailable && player.isHuman) {
     setupBonusUI(gameState);
-  } else if (gameState.gamePhase === 'sweep' && player.isHuman) {
-    setupMarketSelectButtons(gameState);
   }
+  // The row/column select buttons are ALWAYS re-rendered, enabled only while a
+  // human may actually sweep. They must be actively disabled outside that
+  // window: once rendered enabled they would otherwise linger clickable for the
+  // rest of the turn, letting a player "sweep" during the move/claim phases —
+  // e.g. after ordering tea (which replaces the sweep) — with the choice then
+  // silently discarded by onMarketClick's phase guard.
+  const canSweep = gameState.gamePhase === 'sweep' && !gameState.bonusTileAvailable && player.isHuman;
+  setupMarketSelectButtons(gameState, canSweep);
 }
 
-function setupMarketSelectButtons(gameState) {
+function setupMarketSelectButtons(gameState, enabled) {
   const marketRowButtons = document.getElementById('marketRowButtons');
   const marketColButtons = document.getElementById('marketColButtons');
   if (!marketRowButtons || !marketColButtons) return;
 
   const colLabels = ['A', 'B', 'C', 'D', 'E', 'F'].slice(0, gameState.marketSize);
 
+  const disabledAttr = enabled ? '' : 'disabled';
+
   marketColButtons.innerHTML = colLabels.map((label, col) => `
-    <button class="ft-btn ft-btn--sweep market-col-btn" data-col="${col}" style="width: var(--tile-size); height: var(--tile-size); display: flex; align-items: center; justify-content: center; gap: var(--spacing-xs); flex-shrink: 0;">
+    <button class="ft-btn ft-btn--sweep market-col-btn" data-col="${col}" ${disabledAttr} style="width: var(--tile-size); height: var(--tile-size); display: flex; align-items: center; justify-content: center; gap: var(--spacing-xs); flex-shrink: 0;">
       <img src="images/arrow_down.png" style="width: 16px; height: 16px; object-fit: contain;">
       <span style="font-weight: 600;">${label}</span>
     </button>
   `).join('');
 
   marketRowButtons.innerHTML = Array.from({ length: gameState.marketSize }, (_, row) => `
-    <button class="ft-btn ft-btn--sweep market-row-btn" data-row="${row}" style="width: var(--tile-size); height: var(--tile-size); display: flex; align-items: center; justify-content: center; gap: var(--spacing-xs); flex-shrink: 0;">
+    <button class="ft-btn ft-btn--sweep market-row-btn" data-row="${row}" ${disabledAttr} style="width: var(--tile-size); height: var(--tile-size); display: flex; align-items: center; justify-content: center; gap: var(--spacing-xs); flex-shrink: 0;">
       <img src="images/arrow_left.png" style="width: 16px; height: 16px; object-fit: contain;">
       <span style="font-weight: 600;">${row + 1}</span>
     </button>
   `).join('');
+
+  if (!enabled) return; // no listeners — the disabled buttons are inert visuals
 
   document.querySelectorAll('.market-row-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -599,6 +622,9 @@ function setupBonusUI(gameState) {
 }
 
 function showSweepOptionsForRow(gameState, row) {
+  // Defence in depth: never offer sweep choices outside a live human sweep
+  // phase (onMarketClick would silently drop them, which reads as a dead UI).
+  if (gameState.gamePhase !== 'sweep' || gameState.bonusTileAvailable) return;
   const tiles = [];
   for (let c = 0; c < gameState.marketSize; c++) {
     tiles.push(gameState.market[row * gameState.marketSize + c]);
@@ -683,6 +709,8 @@ function showSweepOptionsForRow(gameState, row) {
 }
 
 function showSweepOptionsForCol(gameState, col) {
+  // Defence in depth: mirrors showSweepOptionsForRow's phase guard.
+  if (gameState.gamePhase !== 'sweep' || gameState.bonusTileAvailable) return;
   const tiles = [];
   for (let r = 0; r < gameState.marketSize; r++) {
     tiles.push(gameState.market[r * gameState.marketSize + col]);
@@ -771,6 +799,8 @@ function updateCardMarket(gameState) {
   const cardMarket = document.getElementById('cardMarket');
   if (!cardMarket) return;
 
+  updateTeaReserveBanner(gameState, cardMarket);
+
   // reward_card_layout.png is a TTS-style 10×7 sheet; cards 1–50 fill the
   // first 5 rows, the last 2 rows are blank.
   const SPRITE_WIDTH = 7501;
@@ -830,6 +860,59 @@ function updateCardMarket(gameState) {
         });
       }
     });
+  }
+
+  // Tea round: the pending reserver (teaReserverIndex, NOT necessarily the
+  // current player) may click any market card to reserve it. Only wire this for
+  // a human reserver who is actually able to take a card.
+  if (gameState.gamePhase === 'teaReserve') {
+    const reserver = gameState.players[gameState.teaReserverIndex];
+    if (reserver.isHuman && !teaReserveMustPass(gameState)) {
+      // Scope to the card market only — the "On order" reserve slots in player
+      // panels also carry the .card-market-sprite class and must NOT be treated
+      // as reservable market cards.
+      cardMarket.querySelectorAll('.card-market-sprite').forEach(cardEl => {
+        cardEl.classList.add('ft-card--reservable');
+        const cardId = parseInt(cardEl.dataset.cardId);
+        cardEl.addEventListener('click', () => {
+          window._gameUI.onTeaReserve?.(cardId);
+        });
+      });
+    }
+  }
+}
+
+// The banner sits directly above the card market during a tea round, naming the
+// pending reserver (unmissable in hotseat — it is often NOT the current player)
+// and offering a "No, thank you" pass. Created/removed on demand so it costs
+// nothing when the feature is unused.
+function updateTeaReserveBanner(gameState, cardMarketEl) {
+  let banner = document.getElementById('teaReserveBanner');
+
+  if (gameState.gamePhase !== 'teaReserve') {
+    if (banner) banner.remove();
+    return;
+  }
+
+  const reserver = gameState.players[gameState.teaReserverIndex];
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'teaReserveBanner';
+    banner.className = 'ft-tea-banner';
+    cardMarketEl.insertAdjacentElement('beforebegin', banner);
+  }
+
+  const mustPass = teaReserveMustPass(gameState);
+  const passLabel = mustPass ? 'Pass (no card available)' : 'No, thank you';
+  banner.innerHTML = `
+    <div class="ft-tea-banner__title">🫖 Fresh pot of tea!</div>
+    <div class="ft-tea-banner__text"><strong>${reserver.name}</strong> may take a card</div>
+    ${reserver.isHuman ? `<button id="teaPassBtn" class="ft-btn ft-btn--secondary ft-btn--small">${passLabel}</button>` : '<div class="ft-tea-banner__waiting">…deciding</div>'}
+  `;
+
+  const passBtn = banner.querySelector('#teaPassBtn');
+  if (passBtn) {
+    passBtn.addEventListener('click', () => window._gameUI.onTeaReserve?.(null));
   }
 }
 
@@ -930,7 +1013,54 @@ function updatePlayerBoards(gameState) {
         }
       });
     }
+
+    renderOnOrderSlot(gameState, player, playerIdx, boardEl);
   });
+}
+
+// The "On order" slot shows a player's face-up reserved card (max 1) beside
+// their board, tagged with a teacup badge so it reads as ordered-not-yet-served.
+// During the OWNER's claim phase, if the reserved card's pattern is on their
+// board it becomes claimable exactly like a market card (click → showRemovalUI,
+// which claim() then resolves from the reserve). The container is created lazily
+// so it costs nothing until a card is actually reserved.
+function renderOnOrderSlot(gameState, player, playerIdx, boardEl) {
+  let slotEl = document.getElementById(`onOrder${playerIdx + 1}`);
+
+  if (!player.reservedCard) {
+    if (slotEl) slotEl.innerHTML = '';
+    return;
+  }
+
+  if (!slotEl) {
+    slotEl = document.createElement('div');
+    slotEl.id = `onOrder${playerIdx + 1}`;
+    slotEl.className = 'ft-on-order';
+    boardEl.insertAdjacentElement('afterend', slotEl);
+  }
+
+  const isCurrentPlayer = playerIdx === gameState.currentPlayerIndex;
+  const card = player.reservedCard;
+  const isClaimable = isCurrentPlayer && player.isHuman && gameState.gamePhase === 'claim'
+    && getPatternMatches(player.board, card.pattern).length > 0;
+
+  const cardHTML = cardSpriteHTML(card, 150, {
+    extraClass: isClaimable ? 'ft-card--claimable' : '',
+    clickable: isClaimable,
+    badge: true,
+  });
+
+  slotEl.innerHTML = `
+    <div class="ft-on-order__label">🫖 On order</div>
+    ${cardHTML}
+  `;
+
+  if (isClaimable) {
+    const cardEl = slotEl.querySelector('.card-market-sprite');
+    if (cardEl) {
+      cardEl.addEventListener('click', () => showRemovalUI(gameState, card.id));
+    }
+  }
 }
 
 function setupDragAndDrop(gameState) {
@@ -1105,8 +1235,9 @@ function setupDragAndDrop(gameState) {
 // by tile count), crumb tray (1/tile), claimed card VP, and unspent cupcakes.
 function getScoreBreakdown(player) {
   let standTotal = 0;
-  for (const row of player.stand) {
-    if (row.tiles.length > 0) standTotal += ROW_VALUES[row.tiles.length - 1];
+  for (let i = 0; i < player.stand.length; i++) {
+    const row = player.stand[i];
+    if (row.tiles.length > 0) standTotal += STAND_ROW_VALUES[i][row.tiles.length - 1];
   }
   const crumbs = player.crumbTray.length;
   let cardVP = 0;
@@ -1138,10 +1269,16 @@ function renderStand(player, opts = {}) {
       const plate = tile
         ? `<div class="ft-stand__plate ft-stand__plate--filled" style="background-color: ${getColourCSS(tile.colour)};"><img src="images/symbol_${tile.ingredient}.png" class="ft-stand__symbol" alt="${tile.ingredient}"></div>`
         : `<div class="ft-stand__plate ft-stand__plate--empty"></div>`;
+      // Cupcake plates (bottom[1], second[1], third[1], top[0]) grant a cupcake
+      // when plated onto; mark them on the board whether empty or filled.
+      const isCupcakePlate = CUPCAKE_PLATES.some(p => p.rowIndex === rowIndex && p.plateIndex === k);
+      const cupcakeMarker = isCupcakePlate
+        ? `<span class="ft-stand__cupcake-plate" title="Cupcake plate — plating here gains a cupcake">🧁</span>`
+        : '';
       slots += `
         <div class="ft-stand__slot">
-          ${plate}
-          <div class="ft-stand__value ${filled ? 'ft-stand__value--earned' : ''}">${ROW_VALUES[k]}</div>
+          <div class="ft-stand__plate-wrap">${plate}${cupcakeMarker}</div>
+          <div class="ft-stand__value ${filled ? 'ft-stand__value--earned' : ''}">${STAND_ROW_VALUES[rowIndex][k]}</div>
         </div>`;
     }
 
@@ -1325,6 +1462,18 @@ function updatePhaseControls(gameState) {
         </div>
       </div>
     `;
+  } else if (gameState.gamePhase === 'sweep') {
+    // Plain sweep: the market row/column buttons drive the sweep itself; here we
+    // offer the alternative — order a fresh pot of tea instead of sweeping.
+    html = `
+      <div class="ft-phase-bar">
+        <div class="ft-phase-bar__instruction">Sweep a row or column above — or order tea instead</div>
+        <div class="ft-phase-bar__controls">
+          ${undoBtn}
+          <button id="orderTeaBtn" class="ft-btn ft-btn--tea ft-btn--small" title="Order a fresh pot of tea instead of sweeping">🫖 Fresh Pot of Tea</button>
+        </div>
+      </div>
+    `;
   } else if (gameState.gamePhase === 'place') {
     const placementCount = ui.placementMap ? Object.keys(ui.placementMap).length : 0;
     const allPlaced = placementCount === gameState.pendingSweepTiles.length;
@@ -1388,6 +1537,13 @@ function updatePhaseControls(gameState) {
           claimableCards.push({ card, matches });
         }
       }
+      // The player's own reserved "on order" card is claimable the same way.
+      if (currentPlayer.reservedCard) {
+        const rMatches = getPatternMatches(currentPlayer.board, currentPlayer.reservedCard.pattern);
+        if (rMatches.length > 0) {
+          claimableCards.push({ card: currentPlayer.reservedCard, matches: rMatches });
+        }
+      }
 
       if (claimableCards.length === 0) {
         html = `
@@ -1430,6 +1586,11 @@ function updatePhaseControls(gameState) {
   const undoBtnEl = controls.querySelector('#undoBtn');
   if (undoBtnEl) {
     undoBtnEl.addEventListener('click', () => window._gameUI.onUndo?.());
+  }
+
+  const orderTeaBtn = controls.querySelector('#orderTeaBtn');
+  if (orderTeaBtn) {
+    orderTeaBtn.addEventListener('click', showTeaConfirm);
   }
 
   const confirmBtn = controls.querySelector('#confirmTurn');
@@ -1476,7 +1637,14 @@ function handlePlacementDone(e) {
 
 function showRemovalUI(gameState, cardId) {
   const player = gameState.players[gameState.currentPlayerIndex];
-  const card = gameState.cardMarket.find(c => c.id === cardId);
+  // Card lookup mirrors claim(): market first, then this player's reserve. A
+  // reserved "on order" card is claimed through exactly this path.
+  const card = gameState.cardMarket.find(c => c.id === cardId)
+    || (player.reservedCard && player.reservedCard.id === cardId ? player.reservedCard : null);
+  if (!card) {
+    alert('Card not found');
+    return;
+  }
   const matches = getPatternMatches(player.board, card.pattern);
 
   if (matches.length === 0) {
@@ -1525,6 +1693,66 @@ function rotatePattern(pattern, turns) {
     p = [p[2], p[0], p[3], p[1]];
   }
   return p;
+}
+
+// Render one reward card from the shared sprite sheet at an arbitrary display
+// height (the tile-market uses 260px inline; the "on order" reserve slot reuses
+// this at a smaller size). Mirrors the sprite maths in updateCardMarket and the
+// same cache-bust query-string (?v=2) used for reward_card_layout.png.
+function cardSpriteHTML(card, displayHeight, { extraClass = '', clickable = false, badge = false } = {}) {
+  const SPRITE_WIDTH = 7501;
+  const SPRITE_HEIGHT = 7277;
+  const CARDS_PER_ROW = 10;
+  const CARDS_PER_COL = 7;
+  const CARD_WIDTH = SPRITE_WIDTH / CARDS_PER_ROW;
+  const CARD_HEIGHT = SPRITE_HEIGHT / CARDS_PER_COL;
+  const SCALE = displayHeight / CARD_HEIGHT;
+  const DISPLAY_WIDTH = CARD_WIDTH * SCALE;
+  const col = (card.id - 1) % CARDS_PER_ROW;
+  const row = Math.floor((card.id - 1) / CARDS_PER_ROW);
+  const bgPosX = -(col * CARD_WIDTH * SCALE);
+  const bgPosY = -(row * CARD_HEIGHT * SCALE);
+  const bgSizeW = SPRITE_WIDTH * SCALE;
+  const bgSizeH = SPRITE_HEIGHT * SCALE;
+
+  return `
+    <div data-card-id="${card.id}" class="card-market-sprite ft-card ${extraClass}" style="position: relative; width: ${DISPLAY_WIDTH}px; height: ${displayHeight}px; background-image: url('images/reward_card_layout.png?v=2'); background-position: ${bgPosX}px ${bgPosY}px; background-size: ${bgSizeW}px ${bgSizeH}px; background-repeat: no-repeat; ${clickable ? 'cursor: pointer;' : ''}">
+      <div class="ft-card__vp" title="${card.vp} victory point${card.vp === 1 ? '' : 's'}">${card.vp}</div>
+      ${badge ? '<div class="ft-card__teacup" title="On order — not yet served">🫖</div>' : ''}
+    </div>
+  `;
+}
+
+// Confirm overlay for ordering a fresh pot of tea. Shows the player-aid card
+// (which doubles as the rules reference) with Order tea / Cancel. On confirm it
+// routes to the main.js onOrderTea() handler stored on window._gameUI.
+function showTeaConfirm() {
+  const modal = document.createElement('div');
+  modal.className = 'ft-modal';
+  modal.innerHTML = `
+    <div class="ft-modal__inner ft-tea-confirm">
+      <button class="ft-modal__close" aria-label="Cancel">✕</button>
+      <div class="ft-modal__title">
+        <h2>🫖 Fresh Pot of Tea</h2>
+        <p style="color: var(--color-text-secondary); margin: var(--spacing-sm) 0 0 0;">Order tea instead of sweeping this turn.</p>
+      </div>
+      <img src="images/fresh_pot_of_tea_card.png?v=2" alt="Fresh Pot of Tea player aid" class="ft-tea-confirm__image">
+      <div class="ft-tea-confirm__buttons">
+        <button class="ft-btn ft-btn--secondary" id="teaCancelBtn">Cancel</button>
+        <button class="ft-btn ft-btn--primary" id="teaOrderBtn">🫖 Order tea</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const close = () => modal.remove();
+  modal.querySelector('.ft-modal__close').addEventListener('click', close);
+  modal.querySelector('#teaCancelBtn').addEventListener('click', close);
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  modal.querySelector('#teaOrderBtn').addEventListener('click', () => {
+    close();
+    window._gameUI.onOrderTea?.();
+  });
 }
 
 function getColourCSS(colour) {

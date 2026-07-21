@@ -1,4 +1,4 @@
-import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, refill, moveTile, getValidSweeps, getValidPlacements, getPatternMatches, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, refill, moveTile, orderTea, teaReserve, teaReserveMustPass, getValidSweeps, getValidPlacements, getPatternMatches, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
 import { createStatsCollector } from '../engine/statsCollector.js';
 import { renderSetupScreen, renderGameScreen, updateGameDisplay, setThinkingState, setThinkingProgress, renderEndScreen } from './board.js';
 import * as basicBot from '../bots/basicBot.js';
@@ -67,7 +67,7 @@ function onGameStart(playerConfigs) {
   autoPlayMode = playerConfigs.every(p => !p.isHuman);
 
   const app = document.getElementById('app');
-  renderGameScreen(app, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick);
+  renderGameScreen(app, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick, onOrderTea, onTeaReserve);
 
   updateDisplay();
 
@@ -172,6 +172,91 @@ function onCupcakeClick() {
   }
 }
 
+// Human flusher orders a fresh pot of tea instead of sweeping. This is the ONLY
+// place a tea round pushes an undo snapshot — undo then rewinds the entire round
+// (the cupcake, every bot's reserve, the market flush) in one step. Individual
+// reserve steps in driveTeaReserves deliberately do NOT snapshot.
+function onOrderTea() {
+  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  if (gameState.gamePhase !== 'sweep' || !currentPlayer.isHuman || gameState.bonusTileAvailable) return;
+
+  try {
+    pushUndoSnapshot();
+    orderTea(gameState);
+    updateDisplay();
+    driveTeaReserves();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+// A human reserver resolves their tea-round decision: cardId to take a market
+// card into their reserve, or null to pass ("No, thank you"). The deciding
+// player is gameState.teaReserverIndex, NOT necessarily the current player
+// (hotseat: someone may act on the flusher's turn). No snapshot here — the whole
+// round is covered by the single snapshot taken in onOrderTea.
+function onTeaReserve(cardId) {
+  if (gameState.gamePhase !== 'teaReserve') return;
+  const reserver = gameState.players[gameState.teaReserverIndex];
+  if (!reserver.isHuman) return;
+
+  try {
+    teaReserve(gameState, cardId);
+    updateDisplay();
+    driveTeaReserves();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+// Resolve tea-round reserve decisions in clockwise order. Bots decide via their
+// decideTeaReserve heuristic (with the usual thinking affordance + ~500ms pacing);
+// a human who is forced to pass (reserve full or empty market) is auto-passed
+// without a click. The loop stops when a human reserver who CAN act is reached
+// (the banner/market UI then waits for onTeaReserve) or when the round ends. On
+// completion the phase is 'move' for the flusher; if that flusher is a bot the
+// normal autoplay loop is resumed.
+async function driveTeaReserves() {
+  while (gameState.gamePhase === 'teaReserve') {
+    const reserver = gameState.players[gameState.teaReserverIndex];
+
+    if (reserver.isHuman) {
+      if (teaReserveMustPass(gameState)) {
+        // Forced pass — no card can be taken, so resolve it without a click.
+        teaReserve(gameState, null);
+        updateDisplay();
+        continue;
+      }
+      // A human with a real choice: hand control to the UI and wait.
+      return;
+    }
+
+    // Bot reserver.
+    const isMCTS = reserver.aiDifficulty && reserver.aiDifficulty.startsWith('mcts');
+    const bot = isMCTS ? mctsBot : basicBot;
+    setThinkingState(reserver.name, true);
+    updateDisplay();
+    await new Promise(r => setTimeout(r, 500));
+
+    let cardId = null;
+    if (!teaReserveMustPass(gameState)) {
+      cardId = bot.decideTeaReserve ? bot.decideTeaReserve(gameState, gameState.teaReserverIndex) : null;
+    }
+    teaReserve(gameState, cardId);
+    setThinkingState(reserver.name, false);
+    updateDisplay();
+  }
+
+  // Round finished (gamePhase is now 'move'). If the flusher is a bot, keep the
+  // all-bot / bot-turn autoplay going; a human flusher just resumes their turn.
+  if (!gameState.gameOver) {
+    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+    if (!currentPlayer.isHuman) {
+      autoPlayGame();
+    }
+  }
+}
+
 function checkAutoAdvance() {
   if (gameState.gamePhase === 'refill') {
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
@@ -221,6 +306,11 @@ async function autoPlayGame() {
               // Decline the bonus and move to place (may trigger board overflow).
               declineBonusTile(gameState);
             }
+          } else if (bot.decideOrderTea?.(gameState)) {
+            // Same driver contract as simulate.js: offer a fresh pot of tea
+            // before sweeping. orderTea moves us into the teaReserve phase, which
+            // the branch below (and driveTeaReserves) resolves.
+            orderTea(gameState);
           } else {
             setThinkingState(currentPlayer.name, true);
             updateDisplay();
@@ -236,6 +326,12 @@ async function autoPlayGame() {
             }
             sweep(gameState, sweepMove.rowOrCol, sweepMove.isRow, sweepMove.declaration, sweepMove.declarationType);
           }
+        } else if (gameState.gamePhase === 'teaReserve') {
+          // Reservers are keyed on teaReserverIndex, not currentPlayerIndex, and
+          // may include hotseat humans — driveTeaReserves owns the whole round and
+          // resumes autoplay itself when the flusher (a bot here) regains control.
+          await driveTeaReserves();
+          return;
         } else if (gameState.gamePhase === 'place') {
           // Board overflow is handled by the engine at the transition into this
           // phase (checkBoardOverflowOnPlace), so any state seen here is placeable.

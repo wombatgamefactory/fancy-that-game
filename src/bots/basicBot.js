@@ -1,8 +1,47 @@
-import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, ROW_VALUES, BOARD_SIZE } from '../engine/game.js';
+import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, STAND_ROW_VALUES, CUPCAKE_PLATES, BOARD_SIZE, MAX_CUPCAKES } from '../engine/game.js';
 
 // Approximate value of a completed claim beyond the card's printed VP: the
-// sacrificed tile is banked on the stand or crumb tray (~2 VP on average).
+// sacrificed tile is banked on the stand or crumb tray. A conservative floor —
+// a crumb is 1 VP, a shallow plate 2-3 — kept low so the sweep/placement demand
+// weighting below stays a relative ranking, not an absolute score. (Realized
+// plate marginals under the escalating table average higher, ~4-5, but bumping
+// this would need TEA_WEAK_SWEEP_MAX and the pruning cutoffs re-tuned in lockstep,
+// so it is deliberately left as a stable floor.)
 const CLAIM_EXTRA = 2;
+
+// Value of gaining a cupcake by plating onto a cupcake plate, used only while
+// below the cap (a gain at cap is forfeited, so it is worth 0 then). A cupcake
+// is worth at least 1 VP if simply kept, and more in practice: it fuels a tile/
+// tart move or a mid-claim re-ice. +1.5 credits that upside without letting the
+// bonus dominate a whole row's marginal value.
+const CUPCAKE_PLATE_BONUS = 1.5;
+
+// Does plating onto (rowIndex, plateIndex) land on one of the stand's cupcake
+// plates? Mirrors the engine's isCupcakePlate (not exported) off the shared
+// CUPCAKE_PLATES table so the destination heuristic can price the cupcake.
+function isCupcakePlate(rowIndex, plateIndex) {
+  return CUPCAKE_PLATES.some(p => p.rowIndex === rowIndex && p.plateIndex === plateIndex);
+}
+
+// ── Tea-round tuning constants ─────────────────────────────────────────────
+// Ordering a fresh pot of tea (orderTea) forgoes the entire sweep, so the bot
+// only does it when its best sweep is weak AND the card market can either seed
+// a worthwhile reserve or is too stale to sweep toward. All of these are the
+// knobs tuned against simulate.js — see simulation-results-2026-07-*.md.
+//
+// TEA_WEAK_SWEEP_MAX: best rankSweeps() score at/below which the best available
+//   sweep counts as "weak" (worth trading for a flush). Higher = tea fires more.
+const TEA_WEAK_SWEEP_MAX = 2.5;
+// TEA_GOOD_WINDOW_MAX_MISSING: a market card is "good progress" for us when it
+//   has a viable window missing this many tiles or fewer on our board.
+const TEA_GOOD_WINDOW_MAX_MISSING = 2;
+// TEA_STALE_MARKET_MAX_MISSING: the market is "stale" for us when NO market card
+//   has a viable window missing this many tiles or fewer (nothing to build).
+const TEA_STALE_MARKET_MAX_MISSING = 3;
+// RESERVE_MAX_MISSING: a market card whose best window on THIS player's board is
+//   missing more than this many tiles is hopeless — never reserved.
+const RESERVE_MAX_MISSING = 4;
+// ───────────────────────────────────────────────────────────────────────────
 
 // Per-colour demand derived from viable pattern windows on this player's
 // board: how much claim progress one more tile of each colour buys. Windows
@@ -94,11 +133,13 @@ function getSweptTiles(market, sweep, marketSize) {
   return tiles;
 }
 
-// Marginal value of adding one more tile to a row that currently holds `len`
-// tiles: ROW_VALUES is the shared cumulative prefix, so the gain is
-// ROW_VALUES[len] - ROW_VALUES[len-1] (opening a row is worth ROW_VALUES[0]).
-function rowMarginalValue(len) {
-  return ROW_VALUES[len] - (len > 0 ? ROW_VALUES[len - 1] : 0);
+// Marginal value of adding one more tile to stand row `rowIndex` that currently
+// holds `len` tiles: each row has its own cumulative table, so the gain is
+// STAND_ROW_VALUES[rowIndex][len] - STAND_ROW_VALUES[rowIndex][len-1] (opening a
+// row is worth STAND_ROW_VALUES[rowIndex][0], e.g. bottom 2, top 5).
+function rowMarginalValue(rowIndex, len) {
+  const values = STAND_ROW_VALUES[rowIndex];
+  return values[len] - (len > 0 ? values[len - 1] : 0);
 }
 
 function countBoardIngredient(board, ingredient) {
@@ -110,15 +151,20 @@ function countBoardIngredient(board, ingredient) {
 }
 
 // Baseline destination policy for a tile removed while claiming a card.
-// Concentration only pays the marginal +3/+3/+4/+5 of a single row, so this
-// favours extending an existing locked row, then opens rows sized to how much
+// Concentration pays a row's per-tile marginal (the bottom row escalates
+// 2/4/8/12, short rows enter higher but cap out), so this favours extending an
+// existing locked row, then opens rows sized to how much
 // supply of that ingredient is still on the board (the source of future
 // sacrifices), and crumbs when committing a big row would be a blind gamble.
 //
 // ONE-ROW-PER-INGREDIENT RULE: an ingredient may only ever occupy one stand
 // row. Extending that row (step a) is the ONLY way to plate an already-locked
 // ingredient; once its row is full the tile must go to the crumb tray.
-export function decideDestination(player, tile) {
+//
+// `gameState` is optional: when supplied it lets the empty-row choice (step b)
+// read how many claims remain, discounting the deep bottom row late in the game
+// when it can no longer be filled.
+export function decideDestination(player, tile, gameState = null) {
   const stand = player.stand;
 
   // a. A locked row already matching this ingredient with spare capacity:
@@ -129,7 +175,7 @@ export function decideDestination(player, tile) {
   for (let i = 0; i < stand.length; i++) {
     const row = stand[i];
     if (row.ingredient === tile.ingredient && row.tiles.length < row.capacity) {
-      const marginal = rowMarginalValue(row.tiles.length);
+      const marginal = rowMarginalValue(i, row.tiles.length);
       if (marginal > bestMarginal) {
         bestMarginal = marginal;
         bestRow = i;
@@ -154,35 +200,61 @@ export function decideDestination(player, tile) {
   if (emptyRows.length > 0) {
     const boardCount = countBoardIngredient(player.board, tile.ingredient);
 
-    if (boardCount >= 2) {
-      // Confident supply: lock the LARGEST empty row.
-      let pick = emptyRows[0];
-      for (const i of emptyRows) {
-        if (stand[i].capacity > stand[pick].capacity) pick = i;
-      }
-      return { type: 'row', rowIndex: pick };
+    // How many more tiles of this ingredient we can plausibly plate into a
+    // freshly-opened row after the tile in hand. boardCount still includes the
+    // tile being plated (the board isn't mutated until after this call), so the
+    // remaining same-ingredient supply is boardCount - 1. It is further bounded
+    // by how many claims this player has left before the game ends: late-game,
+    // even ample board supply can't be converted, so the deep bottom row (which
+    // only pays off deep: 2/6/14/26) stops being worth opening and short high-
+    // entry rows (top 5, third 4) win — the redesign's "focus beats spread" intent.
+    let futureSacrifices = Math.max(0, boardCount - 1);
+    if (gameState) {
+      const claimed = getTotalCardsClaimed(gameState);
+      const myRemainingClaims = Math.ceil(
+        Math.max(0, gameState.cardsNeededToEnd - claimed) / gameState.playerCount
+      );
+      futureSacrifices = Math.min(futureSacrifices, myRemainingClaims);
     }
 
-    // Thin supply (0-1 on board): cheap experiment on the SMALLEST empty row,
-    // unless only large rows (capacity >= 3) remain and we have no supply at
-    // all — then take the guaranteed crumb point instead of a blind lock.
-    const hasSmallRow = emptyRows.some(i => stand[i].capacity < 3);
-    if (!hasSmallRow && boardCount === 0) return { type: 'crumb' };
-
-    let pick = emptyRows[0];
+    // Score each empty row by the cumulative value it can realistically reach
+    // (rows print cumulative totals, scored at the last filled plate), plus a
+    // bonus for any cupcake plate passed on the way while below the cap. This
+    // is value-sensitive where the old flat table left it near-neutral: with
+    // little support a short row's high entry (top 5) beats a deep row opened
+    // shallow (bottom 2); with real support the bottom row's escalating tail wins.
+    const belowCap = player.cupcakes < MAX_CUPCAKES;
+    let bestPick = -1;
+    let bestValue = -Infinity;
     for (const i of emptyRows) {
-      if (stand[i].capacity < stand[pick].capacity) pick = i;
+      const cap = stand[i].capacity;
+      const depth = Math.min(cap, 1 + futureSacrifices); // plates we can reach
+      let value = STAND_ROW_VALUES[i][depth - 1];
+      if (belowCap) {
+        for (let d = 0; d < depth; d++) {
+          if (isCupcakePlate(i, d)) value += CUPCAKE_PLATE_BONUS;
+        }
+      }
+      if (value > bestValue) {
+        bestValue = value;
+        bestPick = i;
+      }
     }
-    return { type: 'row', rowIndex: pick };
+
+    // Opening a row banks at least its entry value (>= 2), which clears the
+    // guaranteed 1-VP crumb; the check keeps the crumb fallback meaningful if
+    // the value table is ever retuned downward.
+    if (bestValue > 1) return { type: 'row', rowIndex: bestPick };
   }
 
   // c. No room anywhere: crumb.
   return { type: 'crumb' };
 }
 
-// All valid sweeps ranked best-first by the window-aware heuristic. Exported
-// so the MCTS bot can prune its search to the most promising candidates.
-export function rankSweeps(gameState) {
+// All valid sweeps scored best-first by the window-aware heuristic, returning
+// { sweep, score } pairs. Shared by rankSweeps (which drops the scores) and by
+// decideOrderTea (which needs the best score to judge whether tea beats sweep).
+function scoreSweeps(gameState) {
   const validSweeps = getValidSweeps(gameState);
   if (validSweeps.length === 0) return [];
 
@@ -226,12 +298,81 @@ export function rankSweeps(gameState) {
   });
 
   scored.sort((a, b) => b.score - a.score);
-  return scored.map(s => s.sweep);
+  return scored;
+}
+
+// All valid sweeps ranked best-first by the window-aware heuristic. Exported
+// so the MCTS bot can prune its search to the most promising candidates.
+export function rankSweeps(gameState) {
+  return scoreSweeps(gameState).map(s => s.sweep);
 }
 
 export function decideSweep(gameState) {
   const ranked = rankSweeps(gameState);
   return ranked.length > 0 ? ranked[0] : null;
+}
+
+// Fewest tiles missing across every viable window of `card` on `board`, or
+// Infinity when the card has no viable window at all (every placement collides
+// with a wrong-coloured tile or tart). A complete pattern reports 0.
+function minMissingForCard(board, card) {
+  let best = Infinity;
+  for (const win of getPatternWindows(board, card.pattern)) {
+    if (win.missing.length < best) best = win.missing.length;
+  }
+  return best;
+}
+
+// Whether to order a fresh pot of tea instead of sweeping. True only when ALL:
+//   (a) the current player is below the cupcake cap (tea grants +1, wasted at cap);
+//   (b) the best available sweep is weak (score <= TEA_WEAK_SWEEP_MAX), so little
+//       is given up by forgoing it;
+//   (c) EITHER our reserve is empty and some market card shows good window
+//       progress on our board (worth reserving before the flush), OR the market
+//       is stale for us (no card is completable-soon — flush it for fresh cards).
+export function decideOrderTea(gameState) {
+  const player = gameState.players[gameState.currentPlayerIndex];
+
+  // (a) cupcake headroom
+  if (player.cupcakes >= MAX_CUPCAKES) return false;
+
+  // (b) best sweep must be weak
+  const scored = scoreSweeps(gameState);
+  const bestSweepScore = scored.length > 0 ? scored[0].score : 0;
+  if (bestSweepScore > TEA_WEAK_SWEEP_MAX) return false;
+
+  // (c) reserve-progress or stale-market
+  let minMissingAny = Infinity;
+  for (const card of gameState.cardMarket) {
+    const mm = minMissingForCard(player.board, card);
+    if (mm < minMissingAny) minMissingAny = mm;
+  }
+  const goodProgress = player.reservedCard === null && minMissingAny <= TEA_GOOD_WINDOW_MAX_MISSING;
+  const staleMarket = minMissingAny > TEA_STALE_MARKET_MAX_MISSING;
+  return goodProgress || staleMarket;
+}
+
+// Which market card players[reserverIndex] should reserve during a tea round
+// (returns a cardId), or null to pass. Scores every market card by
+// vp / (1 + minMissingTiles) on THAT player's board (near-complete, high-vp
+// cards win); passes if the reserve is already full or every card is hopeless
+// (best window missing > RESERVE_MAX_MISSING, or no viable window at all).
+export function decideTeaReserve(gameState, reserverIndex) {
+  const player = gameState.players[reserverIndex];
+  if (player.reservedCard !== null) return null;
+
+  let bestId = null;
+  let bestScore = -Infinity;
+  for (const card of gameState.cardMarket) {
+    const mm = minMissingForCard(player.board, card);
+    if (mm === Infinity || mm > RESERVE_MAX_MISSING) continue; // hopeless
+    const score = (card.vp || 0) / (1 + mm);
+    if (score > bestScore) {
+      bestScore = score;
+      bestId = card.id;
+    }
+  }
+  return bestId;
 }
 
 // Market indices ranked best-first as bonus-tile picks. Exported so the MCTS
@@ -343,9 +484,15 @@ export function decideMove(gameState) {
   const player = gameState.players[gameState.currentPlayerIndex];
   if (gameState.cupcakesUsedThisTurn || player.cupcakes <= 0) return null;
 
+  // Claimable candidates are the market cards PLUS this player's reserved card
+  // (which completes as a normal claim). A cupcake move that finishes either is
+  // fair game.
+  const candidateCards = [...gameState.cardMarket];
+  if (player.reservedCard) candidateCards.push(player.reservedCard);
+
   let bestNowVp = 0;
   const matchedNow = new Set();
-  for (const card of gameState.cardMarket) {
+  for (const card of candidateCards) {
     if (getPatternMatches(player.board, card.pattern).length > 0) {
       matchedNow.add(card.id);
       bestNowVp = Math.max(bestNowVp, card.vp || 0);
@@ -356,7 +503,7 @@ export function decideMove(gameState) {
   // we are one tile away from finishing.
   const protectedCells = new Set();
   const windowsByCard = new Map();
-  for (const card of gameState.cardMarket) {
+  for (const card of candidateCards) {
     const windows = getPatternWindows(player.board, card.pattern);
     windowsByCard.set(card.id, windows);
     for (const win of windows) {
@@ -365,7 +512,7 @@ export function decideMove(gameState) {
   }
 
   let best = null;
-  for (const card of gameState.cardMarket) {
+  for (const card of candidateCards) {
     if (matchedNow.has(card.id)) continue;
     const vp = card.vp || 0;
     // Card vp + banked sacrifice tile (~CLAIM_EXTRA) must beat the spent
@@ -410,9 +557,14 @@ export function decideMove(gameState) {
 export function decideClaim(gameState) {
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
+  // Candidates are the market cards PLUS this player's reserved card, which
+  // completes as a normal claim (claim() resolves a reserved id transparently).
+  const candidateCards = [...gameState.cardMarket];
+  if (currentPlayer.reservedCard) candidateCards.push(currentPlayer.reservedCard);
+
   // Find all claimable cards.
   const claimableCards = [];
-  for (const card of gameState.cardMarket) {
+  for (const card of candidateCards) {
     const matches = getPatternMatches(currentPlayer.board, card.pattern);
     if (matches.length > 0) {
       claimableCards.push({ card, matches });
@@ -483,7 +635,7 @@ export function decideClaim(gameState) {
   }
 
   const removedTile = currentPlayer.board[bestRemoveIndex];
-  const destination = decideDestination(currentPlayer, removedTile);
+  const destination = decideDestination(currentPlayer, removedTile, gameState);
 
   return { cardId: card.id, removedBoardIndex: bestRemoveIndex, destination };
 }

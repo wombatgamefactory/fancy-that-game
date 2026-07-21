@@ -1,10 +1,64 @@
-import { BOARD_SIZE, CARD_MARKET_SIZE, TOTAL_GAME_CARDS, REWARD_CARDS, COLOURS, INGREDIENTS, createTileBag } from './tiles.js';
+import { BOARD_SIZE, CARD_MARKET_SIZE, CARDS_TO_END_2P, REWARD_CARDS, COLOURS, INGREDIENTS, createTileBag } from './tiles.js';
 
-// Cake-stand row scoring: cumulative value prefix shared by every row and
-// truncated by that row's capacity. A row holding N tiles scores ROW_VALUES[N-1]
-// (0 when empty). Bottom row (capacity 4) can reach the full 15; the top row
-// (capacity 1) tops out at 3.
-export const ROW_VALUES = [3, 6, 10, 15];
+// Cake-stand row scoring: each row has its OWN cumulative value table, indexed to
+// match the stand array (0 = bottom/4 plates, 3 = top/1 plate). A row holding N
+// tiles scores STAND_ROW_VALUES[rowIndex][N-1] (0 when empty). Per-tile values
+// escalate within the bottom row (2/4/8/12) but row entry falls with row length
+// (bottom 2, top 5): short rows are safe, the bottom row is a deep gamble. Max
+// stand score is 52 (26 + 12 + 9 + 5).
+export const STAND_ROW_VALUES = [[2, 6, 14, 26], [3, 7, 12], [4, 9], [5]];
+
+// Hard cap on cupcakes a player may hold. Players start with 2 (see createGame);
+// they gain more by ordering a fresh pot of tea (orderTea) or by plating a tile
+// onto a cupcake plate (plateTileOntoRow). Both gains are capped here — a gain
+// attempted at the cap is a no-op / silently forfeited.
+export const MAX_CUPCAKES = 4;
+
+// Cupcake plates: the (rowIndex, plateIndex) stand positions that grant a
+// cupcake the moment a tile is plated onto them. Indices are 0-based into the
+// stand array (rowIndex 0 = bottom/4-plate row … rowIndex 3 = top/1-plate row;
+// plateIndex counts plates left→right from the row's locking plate). These are
+// the SECOND plate of every multi-plate row plus the top row's single plate —
+// bottom[1], second[1], third[1], top[0] — the four plates the board art marks
+// with a cupcake icon (images/cake_stand.png). Plating onto one grants 1 cupcake
+// from the supply, but only while below MAX_CUPCAKES; a gain at cap is silently
+// forfeited (see plateTileOntoRow). The opening-plate variant was rejected in
+// playtesting, so no row's first plate (plateIndex 0, except the top) appears.
+export const CUPCAKE_PLATES = [
+  { rowIndex: 0, plateIndex: 1 },
+  { rowIndex: 1, plateIndex: 1 },
+  { rowIndex: 2, plateIndex: 1 },
+  { rowIndex: 3, plateIndex: 0 },
+];
+
+function isCupcakePlate(rowIndex, plateIndex) {
+  return CUPCAKE_PLATES.some(p => p.rowIndex === rowIndex && p.plateIndex === plateIndex);
+}
+
+// Plate a tile onto a stand row. This is the SINGLE code path that adds a tile
+// to a stand row's `tiles` array (claim's 'row' destination is its only caller),
+// so the cupcake-plate trigger lives here in one place. The plate the tile lands
+// on is the row's length BEFORE the push. On the first tile the row locks to the
+// tile's ingredient. If the landing plate is a cupcake plate, the player gains 1
+// cupcake — but only while below the cap; a gain attempted at cap is silently
+// forfeited (nothing owed later, the trigger is consumed) and recorded as such.
+function plateTileOntoRow(gameState, player, rowIndex, tile) {
+  const row = player.stand[rowIndex];
+  const plateIndex = row.tiles.length;
+  if (row.ingredient === null) row.ingredient = tile.ingredient; // permanent lock
+  row.tiles.push(tile);
+
+  // Metric: record which row each player opened their stand on (first plating).
+  if (gameState.statsCollector) gameState.statsCollector.recordPlating(player.id, rowIndex);
+
+  if (!isCupcakePlate(rowIndex, plateIndex)) return;
+  if (player.cupcakes < MAX_CUPCAKES) {
+    player.cupcakes++;
+    if (gameState.statsCollector) gameState.statsCollector.recordCupcakePlateGain();
+  } else if (gameState.statsCollector) {
+    gameState.statsCollector.recordCupcakeForfeit();
+  }
+}
 
 function getMarketSize(playerCount) {
   return playerCount === 2 ? 5 : 6;
@@ -33,7 +87,10 @@ export function createGame(playerConfigs, statsCollector = null) {
     ],
     crumbTray: [],
     claimedCards: [],
-    cupcakes: 4,
+    cupcakes: 2,
+    // Personal reserve for the tea round: a single face-up card object (or null).
+    // Filled by teaReserve, emptied by claim (completing it) or left to score 0.
+    reservedCard: null,
     score: 0,
   }));
 
@@ -46,12 +103,12 @@ export function createGame(playerConfigs, statsCollector = null) {
     statsCollector.recordMarketFill();
   }
 
-  const { gameDeck, cardMarket } = initGameDeck(playerCount);
+  const { gameDeck, cardMarket } = initGameDeck();
   // cardsNeededToEnd = 8 tarts × player count. This encodes the tabletop end
   // condition "the game ends when the last (8th) tart is placed" per player, and
   // is the primary live playtime-tuning lever (raise/lower to lengthen/shorten
-  // a game). TOTAL_GAME_CARDS is the 2-player value (16); 3p/4p scale it up.
-  let cardsNeededToEnd = TOTAL_GAME_CARDS;
+  // a game). CARDS_TO_END_2P is the 2-player value (16); 3p/4p scale it up.
+  let cardsNeededToEnd = CARDS_TO_END_2P;
   if (playerCount === 3) cardsNeededToEnd = 24;
   else if (playerCount === 4) cardsNeededToEnd = 32;
 
@@ -67,10 +124,20 @@ export function createGame(playerConfigs, statsCollector = null) {
     bag,
     gameDeck,
     cardMarket,
+    // Claimed/flushed cards accumulate here and are reshuffled back into an
+    // empty gameDeck by drawCard. Nothing feeds it yet — the tea round (a later
+    // phase) is what discards market cards; until then it simply stays empty.
+    cardDiscard: [],
     currentPlayerIndex: 0,
     gamePhase: 'sweep',
     pendingSweepTiles: [],
     bonusTileAvailable: false,
+    // Tea-round bookkeeping. teaReserverIndex is whose reserve decision is
+    // pending during the 'teaReserve' phase (NOT necessarily the current
+    // player); teaReservesRemaining counts down from playerCount. Both are
+    // dormant (null / 0) outside a tea round.
+    teaReserverIndex: null,
+    teaReservesRemaining: 0,
     gameOver: false,
     // endGameReason: 'cardMarket' | 'marketTiles' are the documented tabletop
     // end conditions. 'boardOverflow' is an implementation safety valve (a full
@@ -88,13 +155,43 @@ export function createGame(playerConfigs, statsCollector = null) {
   };
 }
 
-export function initGameDeck(playerCount) {
-  const shuffledCards = [...REWARD_CARDS].sort(() => Math.random() - 0.5);
+// Deal the reward deck for a new game: shuffle all 50 cards, seed the face-up
+// card market, and put EVERY remaining card (50 − CARD_MARKET_SIZE = 46) into
+// the draw deck. The whole deck must be reachable so the card-count end
+// condition (cardsNeededToEnd up to 32 at 4p) can actually fire — an earlier
+// version capped the deck at 16, which made 3p/4p games unable to end that way.
+export function initGameDeck() {
+  const shuffledCards = [...REWARD_CARDS];
+  // Fisher-Yates (matches createTileBag in tiles.js), replacing the weaker
+  // sort(() => Math.random() - 0.5) shuffle used previously.
+  for (let i = shuffledCards.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffledCards[i], shuffledCards[j]] = [shuffledCards[j], shuffledCards[i]];
+  }
 
   const cardMarket = shuffledCards.splice(0, CARD_MARKET_SIZE);
-  const gameDeck = shuffledCards.splice(0, TOTAL_GAME_CARDS);
+  const gameDeck = shuffledCards; // all remaining cards form the draw deck
 
   return { gameDeck, cardMarket };
+}
+
+// Draw the next reward card from the deck. When the deck is empty but cards have
+// been discarded, the discard pile is Fisher-Yates shuffled into a fresh deck
+// and emptied (the tabletop "reshuffle when the deck runs out" rule). Returns
+// the drawn card, or null when both deck and discard are exhausted so callers
+// can simply skip the market refill. Nothing populates cardDiscard until the
+// tea round lands, so today this only ever draws from the initial deck.
+export function drawCard(gameState) {
+  if (gameState.gameDeck.length === 0 && gameState.cardDiscard.length > 0) {
+    const reshuffled = gameState.cardDiscard;
+    for (let i = reshuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [reshuffled[i], reshuffled[j]] = [reshuffled[j], reshuffled[i]];
+    }
+    gameState.gameDeck = reshuffled;
+    gameState.cardDiscard = [];
+  }
+  return gameState.gameDeck.shift() ?? null;
 }
 
 function getRowTiles(market, rowIndex, marketSize) {
@@ -224,6 +321,109 @@ export function declineBonusTile(gameState) {
   return gameState;
 }
 
+// Order a fresh pot of tea instead of sweeping. This replaces the sweep+place
+// steps of the turn: the flusher gains a cupcake (capped at MAX_CUPCAKES), then
+// the turn enters the 'teaReserve' phase where each player, starting with the
+// flusher and proceeding clockwise, may reserve one market card. Only legal at
+// the very start of a turn (sweep phase, no pending bonus tile) — the cost of
+// forgoing the whole sweep is the design's only gate on the action.
+export function orderTea(gameState) {
+  if (gameState.gamePhase !== 'sweep') throw new Error('Can only order tea at the start of a turn (sweep phase)');
+  if (gameState.bonusTileAvailable) throw new Error('Cannot order tea while a bonus tile is pending');
+
+  const player = gameState.players[gameState.currentPlayerIndex];
+  player.cupcakes = Math.min(MAX_CUPCAKES, player.cupcakes + 1);
+
+  // The flusher reserves FIRST (deliberate — see design doc); every player gets
+  // exactly one reserve opportunity, so the countdown starts at playerCount.
+  gameState.teaReserverIndex = gameState.currentPlayerIndex;
+  gameState.teaReservesRemaining = gameState.playerCount;
+  gameState.gamePhase = 'teaReserve';
+
+  if (gameState.statsCollector) {
+    gameState.statsCollector.recordTeaRound(gameState.stats.turnsPlayed);
+  }
+
+  return gameState;
+}
+
+// True when the pending reserver (players[teaReserverIndex]) cannot legally take
+// any card — either they already hold a reserved card, or the market is empty.
+// Drivers/UI call this to auto-pass; the engine deliberately does NOT auto-pass
+// itself, so every reserve step stays an explicit, individually-undoable call.
+export function teaReserveMustPass(gameState) {
+  if (gameState.gamePhase !== 'teaReserve') throw new Error('Not in tea reserve phase');
+  const reserver = gameState.players[gameState.teaReserverIndex];
+  if (reserver.reservedCard !== null) return true;
+  return gameState.cardMarket.length === 0;
+}
+
+// Resolve one player's reserve decision during a tea round. Acts for
+// players[teaReserverIndex] — NOT necessarily the current player. cardId === null
+// is always a legal pass. A non-null cardId requires that this reserver's reserve
+// is empty and the card is present in the market. Taking splices the card out of
+// the market into the player's reserve; the market is NOT refilled per-take (the
+// whole market is discarded and redealt once every player has decided). Advances
+// clockwise to the next reserver; when all playerCount decisions are in, the tea
+// round finishes and the turn continues into the normal move phase.
+export function teaReserve(gameState, cardId) {
+  if (gameState.gamePhase !== 'teaReserve') throw new Error('Not in tea reserve phase');
+
+  const reserver = gameState.players[gameState.teaReserverIndex];
+
+  if (cardId !== null && cardId !== undefined) {
+    if (reserver.reservedCard !== null) throw new Error('Reserve is already full');
+    const marketIndex = gameState.cardMarket.findIndex(c => c.id === cardId);
+    if (marketIndex === -1) throw new Error('Card not in market');
+
+    const [card] = gameState.cardMarket.splice(marketIndex, 1);
+    reserver.reservedCard = card;
+
+    if (gameState.statsCollector) {
+      // The card leaves the market here (back when reserved), so a later claim
+      // from the reserve must NOT record another market exit for it.
+      gameState.statsCollector.recordCardMarketExit(card.id, gameState.stats.turnsPlayed);
+      gameState.statsCollector.recordTeaReserve(reserver.id, card.id);
+    }
+  }
+
+  // Advance to the next reserver clockwise; finish the round when everyone has
+  // had their single opportunity.
+  gameState.teaReserverIndex = (gameState.teaReserverIndex + 1) % gameState.playerCount;
+  gameState.teaReservesRemaining--;
+  if (gameState.teaReservesRemaining === 0) {
+    finishTeaRound(gameState);
+  }
+
+  return gameState;
+}
+
+// Discard whatever survived the reserve round and deal a fresh market, then hand
+// the turn back to its normal flow (move → claim → refill). Dealing fewer than
+// CARD_MARKET_SIZE cards is legal when deck+discard are exhausted, mirroring the
+// existing shrinking-market behaviour elsewhere.
+function finishTeaRound(gameState) {
+  while (gameState.cardMarket.length > 0) {
+    const discarded = gameState.cardMarket.shift();
+    gameState.cardDiscard.push(discarded);
+    if (gameState.statsCollector) {
+      gameState.statsCollector.recordCardMarketExit(discarded.id, gameState.stats.turnsPlayed);
+    }
+  }
+
+  while (gameState.cardMarket.length < CARD_MARKET_SIZE) {
+    const newCard = drawCard(gameState);
+    if (!newCard) break; // deck + discard exhausted — market simply stays short
+    gameState.cardMarket.push(newCard);
+    if (gameState.statsCollector) {
+      gameState.statsCollector.recordCardMarketEntry(newCard.id, gameState.stats.turnsPlayed);
+    }
+  }
+
+  gameState.teaReserverIndex = null;
+  gameState.gamePhase = 'move';
+}
+
 export function place(gameState, placements) {
   if (gameState.gamePhase !== 'place') throw new Error('Not in place phase');
 
@@ -286,10 +486,15 @@ export function claim(gameState, cardId, removedBoardIndex, destination) {
   if (gameState.gamePhase !== 'claim') throw new Error('Not in claim phase');
 
   const player = gameState.players[gameState.currentPlayerIndex];
+  // Card lookup order: the shared market first, then this player's personal
+  // reserve. A reserved card completes exactly like a market card except the
+  // market is neither spliced nor refilled (see the fromReserve branches below),
+  // since the card left the market when it was reserved.
   const cardIndex = gameState.cardMarket.findIndex(c => c.id === cardId);
-  if (cardIndex === -1) throw new Error('Card not in market');
+  const fromReserve = cardIndex === -1 && player.reservedCard && player.reservedCard.id === cardId;
+  if (cardIndex === -1 && !fromReserve) throw new Error('Card not in market');
 
-  const card = gameState.cardMarket[cardIndex];
+  const card = fromReserve ? player.reservedCard : gameState.cardMarket[cardIndex];
   const matches = getPatternMatches(player.board, card.pattern);
 
   if (matches.length === 0) throw new Error('Pattern not found on board');
@@ -338,9 +543,7 @@ export function claim(gameState, cardId, removedBoardIndex, destination) {
   }
 
   if (destination.type === 'row') {
-    const row = player.stand[destination.rowIndex];
-    if (row.ingredient === null) row.ingredient = removedTile.ingredient; // permanent lock
-    row.tiles.push(removedTile);
+    plateTileOntoRow(gameState, player, destination.rowIndex, removedTile);
   } else {
     player.crumbTray.push(removedTile);
   }
@@ -349,16 +552,28 @@ export function claim(gameState, cardId, removedBoardIndex, destination) {
 
   if (gameState.statsCollector) {
     gameState.statsCollector.recordCardClaimed(cardId, gameState.stats.turnsPlayed);
-    gameState.statsCollector.recordCardMarketExit(cardId, gameState.stats.turnsPlayed);
+    // A reserved card already recorded its market exit when it was reserved.
+    if (!fromReserve) {
+      gameState.statsCollector.recordCardMarketExit(cardId, gameState.stats.turnsPlayed);
+    }
   }
 
-  gameState.cardMarket.splice(cardIndex, 1);
+  if (fromReserve) {
+    // Completing a reserved card: clear the reserve and skip the market refill —
+    // the card was never in the market to leave a slot behind.
+    player.reservedCard = null;
+  } else {
+    gameState.cardMarket.splice(cardIndex, 1);
 
-  if (gameState.gameDeck.length > 0) {
-    const newCard = gameState.gameDeck.shift();
-    gameState.cardMarket.push(newCard);
-    if (gameState.statsCollector) {
-      gameState.statsCollector.recordCardMarketEntry(newCard.id, gameState.stats.turnsPlayed);
+    // Refill the vacated market slot from the deck (drawCard reshuffles the
+    // discard pile in when the deck empties, and returns null once both are gone —
+    // in which case the market simply shrinks, as before).
+    const newCard = drawCard(gameState);
+    if (newCard) {
+      gameState.cardMarket.push(newCard);
+      if (gameState.statsCollector) {
+        gameState.statsCollector.recordCardMarketEntry(newCard.id, gameState.stats.turnsPlayed);
+      }
     }
   }
 
@@ -686,10 +901,11 @@ export function calculateFinalScores(gameState) {
   for (const player of gameState.players) {
     let score = 0;
 
-    // Cake-stand rows: cumulative value by tile count, truncated by capacity.
-    for (const row of player.stand) {
+    // Cake-stand rows: per-row cumulative value by tile count.
+    for (let i = 0; i < player.stand.length; i++) {
+      const row = player.stand[i];
       if (row.tiles.length > 0) {
-        score += ROW_VALUES[row.tiles.length - 1];
+        score += STAND_ROW_VALUES[i][row.tiles.length - 1];
       }
     }
 

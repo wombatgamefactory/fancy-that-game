@@ -1,5 +1,21 @@
-import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, moveTile, refill, calculateFinalScores, getLegalDestinations, ROW_VALUES, REWARD_CARDS, BOARD_SIZE, getPatternMatches, getPatternWindows } from '../engine/game.js';
-import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacements, decideClaim as greedyClaim, decideMove as greedyMove, rankSweeps, rankBonusTiles } from './basicBot.js';
+import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, moveTile, refill, teaReserve, teaReserveMustPass, calculateFinalScores, getLegalDestinations, STAND_ROW_VALUES, REWARD_CARDS, BOARD_SIZE, getPatternMatches, getPatternWindows } from '../engine/game.js';
+import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacements, decideClaim as greedyClaim, decideMove as greedyMove, decideOrderTea as basicOrderTea, decideTeaReserve as basicTeaReserve, rankSweeps, rankBonusTiles } from './basicBot.js';
+
+// Tea-round decisions (v1): delegate to the basicBot heuristics rather than
+// expanding the MCTS move space. Adding orderTea/teaReserve as tree actions
+// would balloon branching and rollout cost for a rarely-optimal action; the
+// shared basicBot core makes this a clean two-function delegation. Known
+// limitation — revisit if simulation shows MCTS losing ground after the
+// feature. NOTE: rollouts never generate orderTea (selectHeuristicSweep only
+// returns real sweeps), so a 'teaReserve' phase never arises inside a playout;
+// the guard in rollout() below is purely defensive against future changes.
+export function decideOrderTea(gameState) {
+  return basicOrderTea(gameState);
+}
+
+export function decideTeaReserve(gameState, reserverIndex) {
+  return basicTeaReserve(gameState, reserverIndex);
+}
 
 // Action-space pruning: with a few hundred iterations, spreading visits over
 // 40+ sweep options drowns the search in rollout noise. Concentrate on the
@@ -11,8 +27,9 @@ const MAX_BONUS_ACTIONS = 5;
 // state — stand row values + 1/crumb + Σ claimed card vp + unspent cupcakes.
 function committedScore(player) {
   let s = 0;
-  for (const row of player.stand) {
-    if (row.tiles.length > 0) s += ROW_VALUES[row.tiles.length - 1];
+  for (let i = 0; i < player.stand.length; i++) {
+    const row = player.stand[i];
+    if (row.tiles.length > 0) s += STAND_ROW_VALUES[i][row.tiles.length - 1];
   }
   s += player.crumbTray.length;
   for (const cardId of player.claimedCards) {
@@ -483,6 +500,14 @@ function rollout(state, playerIndex) {
         } else {
           skipClaim(cloned);
         }
+      } else if (cloned.gamePhase === 'teaReserve') {
+        // Defensive only: rollouts never generate orderTea, so this phase is
+        // unreachable here today. If a future rollout policy adds tea, resolve
+        // each reserve with the basic heuristic (or a forced pass) so playouts
+        // can neither stall nor throw.
+        const idx = cloned.teaReserverIndex;
+        const cardId = teaReserveMustPass(cloned) ? null : basicTeaReserve(cloned, idx);
+        teaReserve(cloned, cardId);
       } else if (cloned.gamePhase === 'refill') {
         refill(cloned);
       }

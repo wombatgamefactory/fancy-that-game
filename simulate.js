@@ -1,11 +1,13 @@
-import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, moveTile, refill, getValidSweeps, getValidPlacements, calculateFinalScores, ROW_VALUES } from './src/engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, moveTile, refill, orderTea, teaReserve, teaReserveMustPass, getValidSweeps, getValidPlacements, calculateFinalScores, STAND_ROW_VALUES } from './src/engine/game.js';
 import { createStatsCollector } from './src/engine/statsCollector.js';
 import * as fastBot from './src/bots/fastBot.js';
 import * as basicBot from './src/bots/basicBot.js';
+import * as randomBot from './src/bots/randomBot.js';
 
 const BOT_STRATEGIES = {
   basic: basicBot,
   fast: fastBot,
+  random: randomBot,
 };
 
 function runGame(playerConfigs, botStrategy) {
@@ -15,6 +17,9 @@ function runGame(playerConfigs, botStrategy) {
   let gameState = createGame(playerConfigs, statsCollector);
   let turns = 0;
   const maxTurns = 1000;
+  // Cards a flush sweeps into the discard pile (counted at each tea round's last
+  // reserve decision, just before finishTeaRound clears the market remainder).
+  let cardsDiscardedByFlushes = 0;
 
   while (!gameState.gameOver && turns < maxTurns) {
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
@@ -32,6 +37,13 @@ function runGame(playerConfigs, botStrategy) {
           }
           break;
         }
+        // Driver contract: at the start of a turn, first offer the fresh-pot-of-
+        // tea flush; only if the strategy declines (or lacks the hook) do we
+        // sweep as before.
+        if (strategy.decideOrderTea && strategy.decideOrderTea(gameState)) {
+          gameState = orderTea(gameState);
+          break;
+        }
         const decision = strategy.decideSweep(gameState);
         if (decision) {
           gameState = sweep(gameState, decision.rowOrCol, decision.isRow, decision.declaration, decision.declarationType);
@@ -40,6 +52,24 @@ function runGame(playerConfigs, botStrategy) {
           // its end-of-game check instead of spinning in the sweep phase.
           gameState.gamePhase = 'place';
         }
+        break;
+      }
+      case 'teaReserve': {
+        // The DECIDING player is teaReserverIndex, not currentPlayerIndex. Fast-
+        // path a forced pass (reserve full or market empty) without consulting
+        // the bot, otherwise ask THAT player's strategy which card to reserve.
+        const reserverIndex = gameState.teaReserverIndex;
+        let cardId = null;
+        if (!teaReserveMustPass(gameState)) {
+          cardId = strategy.decideTeaReserve ? strategy.decideTeaReserve(gameState, reserverIndex) : null;
+        }
+        // On the final reserve decision, whatever is left in the market (minus a
+        // card this reserver takes) is about to be flushed to the discard.
+        if (gameState.teaReservesRemaining === 1) {
+          const taken = (cardId !== null && cardId !== undefined) ? 1 : 0;
+          cardsDiscardedByFlushes += Math.max(0, gameState.cardMarket.length - taken);
+        }
+        gameState = teaReserve(gameState, cardId);
         break;
       }
       case 'place': {
@@ -87,10 +117,13 @@ function runGame(playerConfigs, botStrategy) {
   const perPlayer = gameState.players.map(p => {
     let standScore = 0;
     let standTiles = 0;
-    for (const row of p.stand) {
+    for (let i = 0; i < p.stand.length; i++) {
+      const row = p.stand[i];
       standTiles += row.tiles.length;
-      if (row.tiles.length > 0) standScore += ROW_VALUES[row.tiles.length - 1];
+      if (row.tiles.length > 0) standScore += STAND_ROW_VALUES[i][row.tiles.length - 1];
     }
+    // First-plating row (top row = index 3). undefined => player never plated.
+    const firstPlatingRow = statsCollector.firstPlatingRow[p.id];
     return {
       score: p.score,
       claims: p.claimedCards.length,
@@ -99,15 +132,39 @@ function runGame(playerConfigs, botStrategy) {
       crumbs: p.crumbTray.length,
       cupcakes: p.cupcakes,
       cardVp: p.score - standScore - p.crumbTray.length - p.cupcakes,
+      plated: firstPlatingRow !== undefined,
+      topRowFirst: firstPlatingRow === 3,
     };
   });
+
+  // Blowout check: the winner-vs-last score gap this game (per-game concentration
+  // premium is back by design; a runaway gap is the knob to watch).
+  const gameScores = perPlayer.map(p => p.score);
+  const scoreSpread = Math.max(...gameScores) - Math.min(...gameScores);
+
+  // Tea-round metrics. A reserve is "completed" when the reserving player's
+  // claimedCards contains the reserved card's id (claim() pushes it there).
+  const reserves = statsCollector.teaReserves; // [{ playerId, cardId }]
+  let reservesCompleted = 0;
+  for (const r of reserves) {
+    if (gameState.players[r.playerId].claimedCards.includes(r.cardId)) reservesCompleted++;
+  }
+  const report = statsCollector.getReport();
+  const teaStats = {
+    teaRounds: report.teaRoundCount,
+    reservesTaken: report.teaReservesTaken,
+    reservesCompleted,
+    cardsDiscarded: cardsDiscardedByFlushes,
+  };
 
   return {
     gameState,
     turns,
     endReason: gameState.endGameReason,
     perPlayer,
-    stats: statsCollector.getReport(),
+    scoreSpread,
+    stats: report,
+    teaStats,
   };
 }
 
@@ -120,6 +177,8 @@ function aggregateStats(allGameStats) {
     maxSweepSize: { total: 0, avg: 0, min: Infinity, max: 0 },
     avgSweepSize: { total: 0, avg: 0, min: Infinity, max: 0 },
     sweepCount: { total: 0, avg: 0, min: Infinity, max: 0 },
+    cupcakePlateGains: { total: 0, avg: 0, min: Infinity, max: 0 },
+    cupcakeForfeits: { total: 0, avg: 0, min: Infinity, max: 0 },
   };
 
   for (const stats of allGameStats) {
@@ -146,6 +205,14 @@ function aggregateStats(allGameStats) {
     aggregate.sweepCount.total += stats.sweepCount;
     aggregate.sweepCount.min = Math.min(aggregate.sweepCount.min, stats.sweepCount);
     aggregate.sweepCount.max = Math.max(aggregate.sweepCount.max, stats.sweepCount);
+
+    aggregate.cupcakePlateGains.total += stats.cupcakePlateGains;
+    aggregate.cupcakePlateGains.min = Math.min(aggregate.cupcakePlateGains.min, stats.cupcakePlateGains);
+    aggregate.cupcakePlateGains.max = Math.max(aggregate.cupcakePlateGains.max, stats.cupcakePlateGains);
+
+    aggregate.cupcakeForfeits.total += stats.cupcakeForfeits;
+    aggregate.cupcakeForfeits.min = Math.min(aggregate.cupcakeForfeits.min, stats.cupcakeForfeits);
+    aggregate.cupcakeForfeits.max = Math.max(aggregate.cupcakeForfeits.max, stats.cupcakeForfeits);
   }
 
   aggregate.marketFills.avg = (aggregate.marketFills.total / allGameStats.length).toFixed(2);
@@ -154,6 +221,8 @@ function aggregateStats(allGameStats) {
   aggregate.maxSweepSize.avg = (aggregate.maxSweepSize.total / allGameStats.length).toFixed(2);
   aggregate.avgSweepSize.avg = (aggregate.avgSweepSize.total / allGameStats.length).toFixed(2);
   aggregate.sweepCount.avg = (aggregate.sweepCount.total / allGameStats.length).toFixed(2);
+  aggregate.cupcakePlateGains.avg = (aggregate.cupcakePlateGains.total / allGameStats.length).toFixed(2);
+  aggregate.cupcakeForfeits.avg = (aggregate.cupcakeForfeits.total / allGameStats.length).toFixed(2);
 
   return aggregate;
 }
@@ -166,6 +235,8 @@ function formatAggregateStats(aggregate) {
   console.log(`Max Sweep Size:      avg=${aggregate.maxSweepSize.avg}, min=${aggregate.maxSweepSize.min}, max=${aggregate.maxSweepSize.max}`);
   console.log(`Avg Sweep Size:      avg=${aggregate.avgSweepSize.avg}, min=${aggregate.avgSweepSize.min}, max=${aggregate.avgSweepSize.max}`);
   console.log(`Sweep Count:         avg=${aggregate.sweepCount.avg}, min=${aggregate.sweepCount.min}, max=${aggregate.sweepCount.max}`);
+  console.log(`Cupcake Plate Gains: avg=${aggregate.cupcakePlateGains.avg}, min=${aggregate.cupcakePlateGains.min}, max=${aggregate.cupcakePlateGains.max}`);
+  console.log(`Cupcake Forfeits:    avg=${aggregate.cupcakeForfeits.avg}, min=${aggregate.cupcakeForfeits.min}, max=${aggregate.cupcakeForfeits.max}`);
 }
 
 const gamesPerConfig = parseInt(process.argv[2]) || 10;
@@ -176,6 +247,9 @@ console.log(`Running ${gamesPerConfig} games with ${playerCount} players (${botS
 
 const allGameStats = [];
 const allPlayerMetrics = [];
+const allTeaStats = [];
+const allTurns = [];
+const allScoreSpreads = [];
 const endReasonCounts = {};
 const startTime = Date.now();
 
@@ -186,8 +260,11 @@ for (let i = 0; i < gamesPerConfig; i++) {
     isHuman: false,
   }));
 
-  const { turns, stats, perPlayer, endReason } = runGame(playerConfigs, botStrategy);
+  const { turns, stats, perPlayer, endReason, teaStats, scoreSpread } = runGame(playerConfigs, botStrategy);
   allGameStats.push(stats);
+  allTeaStats.push(teaStats);
+  allTurns.push(turns);
+  allScoreSpreads.push(scoreSpread);
   for (const pm of perPlayer) allPlayerMetrics.push(pm);
   endReasonCounts[endReason || 'none'] = (endReasonCounts[endReason || 'none'] || 0) + 1;
 
@@ -206,14 +283,48 @@ const sum = (f) => allPlayerMetrics.reduce((a, m) => a + f(m), 0);
 const scores = allPlayerMetrics.map(m => m.score);
 const totalStandTiles = sum(m => m.standTiles);
 const totalCrumbs = sum(m => m.crumbs);
+const totalStandScore = sum(m => m.standScore);
+const totalCardVp = sum(m => m.cardVp);
 console.log(`\n=== FINAL SCORE / STAND REPORT (${n} player-results) ===\n`);
 console.log(`Final score:   mean=${(sum(m => m.score) / n).toFixed(1)}, min=${Math.min(...scores)}, max=${Math.max(...scores)}`);
 console.log(`Claims/player: mean=${(sum(m => m.claims) / n).toFixed(2)}`);
 console.log(`Stand score:   mean=${(sum(m => m.standScore) / n).toFixed(1)}`);
 console.log(`Card vp:       mean=${(sum(m => m.cardVp) / n).toFixed(1)}`);
+// Card VP vs stand VP realized split (design target ~50/50 once card values are
+// rebalanced; today's card data is still the stale 1-4 band, so expect card-light).
+const cardStandTotal = totalCardVp + totalStandScore;
+console.log(`Card:Stand VP  = ${totalCardVp.toFixed(0)}:${totalStandScore.toFixed(0)} (card share ${(100 * totalCardVp / (cardStandTotal || 1)).toFixed(1)}%)`);
 console.log(`Cupcakes left: mean=${(sum(m => m.cupcakes) / n).toFixed(2)}`);
 console.log(`Plate tiles:   total=${totalStandTiles} (mean/player=${(totalStandTiles / n).toFixed(2)})`);
 console.log(`Crumb tiles:   total=${totalCrumbs} (mean/player=${(totalCrumbs / n).toFixed(2)})`);
 console.log(`Plate:Crumb    = ${totalStandTiles}:${totalCrumbs} (crumb share ${(100 * totalCrumbs / (totalStandTiles + totalCrumbs || 1)).toFixed(1)}%)`);
+// Blowout check: per-game winner-vs-last score gap.
+const meanSpread = allScoreSpreads.reduce((a, s) => a + s, 0) / allScoreSpreads.length;
+console.log(`Score spread:  mean=${meanSpread.toFixed(1)}, min=${Math.min(...allScoreSpreads)}, max=${Math.max(...allScoreSpreads)} (winner-vs-last, per game)`);
+// Top-row-first-plating rate: of players who plated at all, how often their FIRST
+// plating was the top row (5 VP + cupcake). Watch for it becoming automatic (->1).
+const platedCount = allPlayerMetrics.filter(m => m.plated).length;
+const topFirstCount = allPlayerMetrics.filter(m => m.topRowFirst).length;
+console.log(`Top-row first: ${topFirstCount}/${platedCount} platings started top (rate ${platedCount > 0 ? (topFirstCount / platedCount).toFixed(3) : '0.000'})`);
 console.log(`\nEnd reasons: ${JSON.stringify(endReasonCounts)}`);
+
+// Game-length (turns) distribution.
+const meanTurns = allTurns.reduce((a, t) => a + t, 0) / allTurns.length;
+console.log(`\n=== GAME LENGTH (${allTurns.length} games) ===\n`);
+console.log(`Turns: mean=${meanTurns.toFixed(1)}, min=${Math.min(...allTurns)}, max=${Math.max(...allTurns)}`);
+
+// Tea-round report.
+const teaRoundsPerGame = allTeaStats.map(t => t.teaRounds);
+const totalReserves = allTeaStats.reduce((a, t) => a + t.reservesTaken, 0);
+const totalReservesCompleted = allTeaStats.reduce((a, t) => a + t.reservesCompleted, 0);
+const totalDiscarded = allTeaStats.reduce((a, t) => a + t.cardsDiscarded, 0);
+const meanTeaRounds = teaRoundsPerGame.reduce((a, t) => a + t, 0) / teaRoundsPerGame.length;
+const gamesWithTea = teaRoundsPerGame.filter(t => t > 0).length;
+console.log(`\n=== TEA ROUND REPORT (${allTeaStats.length} games) ===\n`);
+console.log(`Tea rounds/game:    mean=${meanTeaRounds.toFixed(2)}, min=${Math.min(...teaRoundsPerGame)}, max=${Math.max(...teaRoundsPerGame)}`);
+console.log(`Games with >=1 tea: ${gamesWithTea}/${allTeaStats.length} (${(100 * gamesWithTea / allTeaStats.length).toFixed(1)}%)`);
+console.log(`Reserves taken:     total=${totalReserves} (mean/game=${(totalReserves / allTeaStats.length).toFixed(2)})`);
+console.log(`Reserves completed: total=${totalReservesCompleted} (completion rate ${totalReserves > 0 ? (100 * totalReservesCompleted / totalReserves).toFixed(1) : '0.0'}%)`);
+console.log(`Cards discarded by flushes: total=${totalDiscarded} (mean/game=${(totalDiscarded / allTeaStats.length).toFixed(2)})`);
+
 console.log(`\nCompleted ${gamesPerConfig} games in ${elapsed}ms (${(elapsed / gamesPerConfig).toFixed(1)}ms/game)`);
