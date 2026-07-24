@@ -172,10 +172,11 @@ function onCupcakeClick() {
   }
 }
 
-// Human flusher orders a fresh pot of tea instead of sweeping. This is the ONLY
-// place a tea round pushes an undo snapshot — undo then rewinds the entire round
-// (the cupcake, every bot's reserve, the market flush) in one step. Individual
-// reserve steps in driveTeaReserves deliberately do NOT snapshot.
+// Human player orders a fresh pot of tea at the start of their turn (they still
+// take their full turn afterwards). This is the ONLY place a tea round pushes an
+// undo snapshot — undo then rewinds the entire round (every player's reserve, the
+// market flush, the cupcake pot, the tile refill) in one step. Individual reserve
+// steps in driveTeaReserves deliberately do NOT snapshot.
 function onOrderTea() {
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   if (gameState.gamePhase !== 'sweep' || !currentPlayer.isHuman || gameState.bonusTileAvailable) return;
@@ -214,7 +215,8 @@ function onTeaReserve(cardId) {
 // a human who is forced to pass (reserve full or empty market) is auto-passed
 // without a click. The loop stops when a human reserver who CAN act is reached
 // (the banner/market UI then waits for onTeaReserve) or when the round ends. On
-// completion the phase is 'move' for the flusher; if that flusher is a bot the
+// completion the phase is 'sweep' for the tea player, who now takes their FULL
+// normal turn (tea no longer replaces the sweep); if that player is a bot the
 // normal autoplay loop is resumed.
 async function driveTeaReserves() {
   while (gameState.gamePhase === 'teaReserve') {
@@ -247,8 +249,9 @@ async function driveTeaReserves() {
     updateDisplay();
   }
 
-  // Round finished (gamePhase is now 'move'). If the flusher is a bot, keep the
-  // all-bot / bot-turn autoplay going; a human flusher just resumes their turn.
+  // Round finished (gamePhase is now 'sweep' — the tea player takes their full
+  // turn). If that player is a bot, keep the all-bot / bot-turn autoplay going; a
+  // human just resumes their turn (their tea button is now disabled, teaCardUsed).
   if (!gameState.gameOver) {
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
     if (!currentPlayer.isHuman) {

@@ -3,17 +3,22 @@
 // policy) plus its own chaotic tea decisions — used to exercise the tea path
 // under maximum noise in simulate.js.
 
-import { getValidPlacements, getValidSweeps } from '../engine/game.js';
+import { getValidPlacements, getTotalCardsClaimed } from '../engine/game.js';
 
 // Reuse the fast bot's random legal-move policy for the ordinary phases (its
 // decideClaim already treats a reserved card as a claim candidate).
 export { decideSweep, decideBonusTile, decidePlacements, decideClaim } from './fastBot.js';
 
-// Order a fresh pot of tea 5% of the time. If no valid sweep exists, tea is the
-// only way to make progress, so always take it then (orderTea is always legal
-// in the sweep phase).
+// Order a fresh pot of tea (once per game) with a small random chance each turn
+// while the card is unused, and force it in the late game so it never goes to
+// waste. NOTE: the old "no valid sweep -> tea" escape hatch is gone — the engine
+// backstop now auto-refreshes a completely empty tile market, so tea is no longer
+// the only way to make progress.
 export function decideOrderTea(gameState) {
-  if (getValidSweeps(gameState).length === 0) return true;
+  const player = gameState.players[gameState.currentPlayerIndex];
+  if (player.teaCardUsed) return false;
+  const cardsLeft = Math.max(0, gameState.cardsNeededToEnd - getTotalCardsClaimed(gameState));
+  if (cardsLeft <= gameState.playerCount) return true; // late game — use it
   return Math.random() < 0.05;
 }
 

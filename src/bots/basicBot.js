@@ -1,4 +1,4 @@
-import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, STAND_ROW_VALUES, CUPCAKE_PLATES, BOARD_SIZE, MAX_CUPCAKES } from '../engine/game.js';
+import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleCupcakeSymbols, STAND_ROW_VALUES, CUPCAKE_PLATES, BOARD_SIZE } from '../engine/game.js';
 
 // Approximate value of a completed claim beyond the card's printed VP: the
 // sacrificed tile is banked on the stand or crumb tray. A conservative floor —
@@ -9,11 +9,10 @@ import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacement
 // so it is deliberately left as a stable floor.)
 const CLAIM_EXTRA = 2;
 
-// Value of gaining a cupcake by plating onto a cupcake plate, used only while
-// below the cap (a gain at cap is forfeited, so it is worth 0 then). A cupcake
-// is worth at least 1 VP if simply kept, and more in practice: it fuels a tile/
-// tart move or a mid-claim re-ice. +1.5 credits that upside without letting the
-// bonus dominate a whole row's marginal value.
+// Value of gaining a cupcake by plating onto a cupcake plate. There is no cap,
+// so this gain always pays. A cupcake is worth at least 1 VP if simply kept, and
+// more in practice: it fuels a tile/tart move or a mid-claim re-ice. +1.5 credits
+// that upside without letting the bonus dominate a whole row's marginal value.
 const CUPCAKE_PLATE_BONUS = 1.5;
 
 // Does plating onto (rowIndex, plateIndex) land on one of the stand's cupcake
@@ -24,20 +23,24 @@ function isCupcakePlate(rowIndex, plateIndex) {
 }
 
 // ── Tea-round tuning constants ─────────────────────────────────────────────
-// Ordering a fresh pot of tea (orderTea) forgoes the entire sweep, so the bot
-// only does it when its best sweep is weak AND the card market can either seed
-// a worthwhile reserve or is too stale to sweep toward. All of these are the
-// knobs tuned against simulate.js — see simulation-results-2026-07-*.md.
+// Ordering a fresh pot of tea (orderTea) NO LONGER costs the sweep — the player
+// takes their full turn afterwards — so tea is pure upside gated by timing. The
+// bot weighs three things: the cupcake pot on offer (visible symbols), whether a
+// fresh tile market would help it (the tea player sweeps the fresh market first),
+// and preemption/late-game risk (a never-fired tea is 0 value, and an opponent
+// may fire first and take the pot). Knobs tuned against simulate.js.
 //
-// TEA_WEAK_SWEEP_MAX: best rankSweeps() score at/below which the best available
-//   sweep counts as "weak" (worth trading for a flush). Higher = tea fires more.
+// TEA_STRONG_POT: a cupcake pot this size (or larger) fires tea on its own.
+const TEA_STRONG_POT = 3;
+// TEA_MODEST_POT: a pot this size fires tea only when the market is ALSO poor for
+//   us (so the fresh market we sweep first is the real prize alongside the pot).
+const TEA_MODEST_POT = 2;
+// TEA_WEAK_SWEEP_MAX: best scoreSweeps() score at/below which the current market
+//   counts as "poor" for us (little lost, much gained from a fresh market).
 const TEA_WEAK_SWEEP_MAX = 2.5;
-// TEA_GOOD_WINDOW_MAX_MISSING: a market card is "good progress" for us when it
-//   has a viable window missing this many tiles or fewer on our board.
-const TEA_GOOD_WINDOW_MAX_MISSING = 2;
-// TEA_STALE_MARKET_MAX_MISSING: the market is "stale" for us when NO market card
-//   has a viable window missing this many tiles or fewer (nothing to build).
-const TEA_STALE_MARKET_MAX_MISSING = 3;
+// TEA_LATEGAME_CARDS_LEFT: once this few cards remain before the game ends, fire
+//   an unused tea regardless — hoarding it to 0 value is the worst outcome.
+const TEA_LATEGAME_CARDS_LEFT = 4;
 // RESERVE_MAX_MISSING: a market card whose best window on THIS player's board is
 //   missing more than this many tiles is hopeless — never reserved.
 const RESERVE_MAX_MISSING = 4;
@@ -219,21 +222,18 @@ export function decideDestination(player, tile, gameState = null) {
 
     // Score each empty row by the cumulative value it can realistically reach
     // (rows print cumulative totals, scored at the last filled plate), plus a
-    // bonus for any cupcake plate passed on the way while below the cap. This
-    // is value-sensitive where the old flat table left it near-neutral: with
+    // bonus for any cupcake plate passed on the way (always paid now — no cap).
+    // This is value-sensitive where the old flat table left it near-neutral: with
     // little support a short row's high entry (top 5) beats a deep row opened
     // shallow (bottom 2); with real support the bottom row's escalating tail wins.
-    const belowCap = player.cupcakes < MAX_CUPCAKES;
     let bestPick = -1;
     let bestValue = -Infinity;
     for (const i of emptyRows) {
       const cap = stand[i].capacity;
       const depth = Math.min(cap, 1 + futureSacrifices); // plates we can reach
       let value = STAND_ROW_VALUES[i][depth - 1];
-      if (belowCap) {
-        for (let d = 0; d < depth; d++) {
-          if (isCupcakePlate(i, d)) value += CUPCAKE_PLATE_BONUS;
-        }
+      for (let d = 0; d < depth; d++) {
+        if (isCupcakePlate(i, d)) value += CUPCAKE_PLATE_BONUS;
       }
       if (value > bestValue) {
         bestValue = value;
@@ -323,33 +323,39 @@ function minMissingForCard(board, card) {
   return best;
 }
 
-// Whether to order a fresh pot of tea instead of sweeping. True only when ALL:
-//   (a) the current player is below the cupcake cap (tea grants +1, wasted at cap);
-//   (b) the best available sweep is weak (score <= TEA_WEAK_SWEEP_MAX), so little
-//       is given up by forgoing it;
-//   (c) EITHER our reserve is empty and some market card shows good window
-//       progress on our board (worth reserving before the flush), OR the market
-//       is stale for us (no card is completable-soon — flush it for fresh cards).
+// Whether to order a fresh pot of tea at the start of this turn. Tea is now pure
+// upside (the player still takes their full turn after), gated only by timing:
+//   - never twice: teaCardUsed blocks a second use;
+//   - a STRONG pot (>= TEA_STRONG_POT visible cupcake symbols) fires on its own;
+//   - a MODEST pot (>= TEA_MODEST_POT) fires when the current market is ALSO poor
+//     for us, since the tea refill hands us a fresh market to sweep first;
+//   - late game (few cards left to end), fire an unused tea regardless — hoarding
+//     it to a never-fired 0-value card, or letting an opponent take the pot, is
+//     the worst outcome.
 export function decideOrderTea(gameState) {
   const player = gameState.players[gameState.currentPlayerIndex];
 
-  // (a) cupcake headroom
-  if (player.cupcakes >= MAX_CUPCAKES) return false;
+  // Once per game.
+  if (player.teaCardUsed) return false;
 
-  // (b) best sweep must be weak
-  const scored = scoreSweeps(gameState);
-  const bestSweepScore = scored.length > 0 ? scored[0].score : 0;
-  if (bestSweepScore > TEA_WEAK_SWEEP_MAX) return false;
+  const potSize = getVisibleCupcakeSymbols(gameState);
 
-  // (c) reserve-progress or stale-market
-  let minMissingAny = Infinity;
-  for (const card of gameState.cardMarket) {
-    const mm = minMissingForCard(player.board, card);
-    if (mm < minMissingAny) minMissingAny = mm;
+  // A strong pot alone justifies tea.
+  if (potSize >= TEA_STRONG_POT) return true;
+
+  // A modest pot plus a market that is poor for us (a fresh market is the prize
+  // alongside the pot — we sweep it first).
+  if (potSize >= TEA_MODEST_POT) {
+    const scored = scoreSweeps(gameState);
+    const bestSweepScore = scored.length > 0 ? scored[0].score : 0;
+    if (bestSweepScore <= TEA_WEAK_SWEEP_MAX) return true;
   }
-  const goodProgress = player.reservedCard === null && minMissingAny <= TEA_GOOD_WINDOW_MAX_MISSING;
-  const staleMarket = minMissingAny > TEA_STALE_MARKET_MAX_MISSING;
-  return goodProgress || staleMarket;
+
+  // Late game: don't leave the tea card unused.
+  const cardsLeft = Math.max(0, gameState.cardsNeededToEnd - getTotalCardsClaimed(gameState));
+  if (cardsLeft <= TEA_LATEGAME_CARDS_LEFT) return true;
+
+  return false;
 }
 
 // Which market card players[reserverIndex] should reserve during a tea round

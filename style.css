@@ -832,6 +832,22 @@ label {
   object-fit: contain;
 }
 
+/* Cupcake symbol printed on the tile-market board. Rendered only on the four
+   symbol cells while they are EMPTY (see CUPCAKE_SYMBOL_CELLS / updateMarket).
+   Small and dimmed — a printed-on-board marker, not a collectible tile — showing
+   what the tea player would collect into the cupcake pot. */
+.ft-market-cupcake-symbol {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 55%;
+  height: 55%;
+  object-fit: contain;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 .ft-tile.drag-over {
   background: rgba(193, 123, 92, 0.15);
   border-color: var(--color-accent);

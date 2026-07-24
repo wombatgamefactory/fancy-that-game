@@ -1,5 +1,5 @@
 import { BOARD_SIZE, CARD_MARKET_SIZE, REWARD_CARDS } from '../engine/tiles.js';
-import { getPatternMatches, getLegalDestinations, teaReserveMustPass, STAND_ROW_VALUES, CUPCAKE_PLATES } from '../engine/game.js';
+import { getPatternMatches, getLegalDestinations, teaReserveMustPass, STAND_ROW_VALUES, CUPCAKE_PLATES, CUPCAKE_SYMBOL_CELLS, getVisibleCupcakeSymbols } from '../engine/game.js';
 
 const DIFFICULTY_LABELS = {
   'basic': 'Basic',
@@ -55,25 +55,27 @@ export function showRulesModal() {
           </div>
 
           <div class="ft-rules__step">
-            <div class="ft-rules__step-title">5. Refill Market</div>
-            <div class="ft-rules__text">If 6 or fewer tiles remain on the market, refill from the bag.</div>
+            <div class="ft-rules__step-title">5. Market Refresh</div>
+            <div class="ft-rules__text">The tile market is <strong>not</strong> refilled every turn. It refreshes only when someone plays a Fresh Pot of Tea (see below) — or, as a rare safety net, automatically from the bag if it ever becomes completely empty at the start of a turn.</div>
           </div>
         </div>
 
         <div class="ft-rules__section">
           <div class="ft-rules__section-title">🫖 Fresh Pot of Tea</div>
-          <div class="ft-rules__text"><strong>Instead of sweeping</strong> on your turn, you may order a fresh pot of tea:</div>
-          <div class="ft-rules__text">1. Take a cupcake from the supply (you can never hold more than 4).</div>
-          <div class="ft-rules__text">2. Starting with you, each player in clockwise order may take 1 card from the market into their personal reserve.</div>
-          <div class="ft-rules__text">3. Discard the remaining market cards and deal 4 new ones.</div>
-          <div class="ft-rules__text"><strong>Your reserve:</strong> you may hold at most 1 reserved card, kept face-up beside your board (marked "On order"). If your reserve is already full you simply pass at the reserve step — you still take the cupcake and refresh the market.</div>
+          <div class="ft-rules__text"><strong>At the start of your turn, before you sweep,</strong> you may play your Fresh Pot of Tea card — <strong>once per game</strong>. You still take your full normal turn afterwards. Playing it:</div>
+          <div class="ft-rules__text">1. Starting with you, each player in clockwise order may take 1 card from the market into their personal reserve.</div>
+          <div class="ft-rules__text">2. Discard the remaining market cards and deal 4 new ones.</div>
+          <div class="ft-rules__text">3. <strong>Cupcake pot:</strong> gain 1 cupcake for every cupcake symbol still visible (uncovered) on the tile market.</div>
+          <div class="ft-rules__text">4. Refill the tile market — fill every empty space from the bag.</div>
+          <div class="ft-rules__text">Then take your normal turn (sweep, place, move, claim). An unused Fresh Pot of Tea card is worth nothing at game end.</div>
+          <div class="ft-rules__text"><strong>Your reserve:</strong> you may hold at most 1 reserved card, kept face-up beside your board (marked "On order"). If your reserve is already full you simply pass at the reserve step.</div>
           <div class="ft-rules__text"><strong>Completing a reserved card</strong> works exactly like a normal claim (match the pattern on your board, remove a tile, place it, use your one claim for the turn) — it just does not refill the card market. An uncompleted reserved card scores nothing; a completed one counts as a claimed card, including for the tiebreaker.</div>
           <img src="images/fresh_pot_of_tea_card.png?v=2" alt="Fresh Pot of Tea player aid" style="width: 100%; max-width: 220px; display: block; margin: var(--spacing-md) auto 0; border-radius: var(--radius-md); border: 1px solid var(--color-border);">
         </div>
 
         <div class="ft-rules__section">
           <div class="ft-rules__section-title">Cupcakes</div>
-          <div class="ft-rules__text">You start the game with 2 cupcakes and can never hold more than 4 — you gain more by ordering a fresh pot of tea or by plating a tile onto a cupcake plate. Once per turn (step 3), you may spend 1 cupcake to move one tile or tart token on your board to a different empty cell. At game end, each unspent cupcake is worth 1 point.</div>
+          <div class="ft-rules__text">You start the game with 2 cupcakes — you gain more from the cupcake pot when you order a fresh pot of tea, or by plating a tile onto a cupcake plate. There is no limit on how many you may hold. Once per turn (step 3), you may spend 1 cupcake to move one tile or tart token on your board to a different empty cell. At game end, each unspent cupcake is worth 1 point.</div>
         </div>
 
         <div class="ft-rules__section">
@@ -543,14 +545,22 @@ function updateMarket(gameState) {
   const market = document.getElementById('market');
   if (!market) return;
 
+  // Cells carrying a printed cupcake symbol for this market size. The symbol shows
+  // through only while the cell is EMPTY (uncovered) — it is what the tea player
+  // collects into the cupcake pot. It is a printed-on-board marker, so it renders
+  // dimmed/small under where a tile would sit.
+  const symbolCells = new Set(CUPCAKE_SYMBOL_CELLS[gameState.marketSize] || []);
+
   market.innerHTML = gameState.market.map((tile, idx) => {
     const isEmpty = !tile;
     const isBonusAvailable = tile && gameState.bonusTileAvailable;
     const tileClass = isEmpty ? 'ft-tile ft-tile--empty' : 'ft-tile ft-tile--placed';
+    const showCupcakeSymbol = isEmpty && symbolCells.has(idx);
 
     return `
       <div class="${tileClass} market-tile" data-index="${idx}" style="${isEmpty ? 'opacity: 0.3;' : ''} ${isBonusAvailable ? 'cursor: pointer;' : ''} background-color: ${tile ? getColourCSS(tile.colour) : 'white'};">
         ${tile ? `<img src="images/symbol_${tile.ingredient}.png" class="ft-tile__icon" alt="${tile.ingredient}">` : ''}
+        ${showCupcakeSymbol ? `<img src="images/cupcake.png" class="ft-market-cupcake-symbol" alt="cupcake symbol" title="Cupcake symbol — the tea player collects 1 cupcake per visible symbol">` : ''}
       </div>
     `;
   }).join('');
@@ -1463,14 +1473,24 @@ function updatePhaseControls(gameState) {
       </div>
     `;
   } else if (gameState.gamePhase === 'sweep') {
-    // Plain sweep: the market row/column buttons drive the sweep itself; here we
-    // offer the alternative — order a fresh pot of tea instead of sweeping.
+    // Plain sweep: the market row/column buttons drive the sweep itself. The
+    // Fresh Pot of Tea button plays the tea card BEFORE the sweep (the player then
+    // still takes their full turn). It is offered only while the tea card is
+    // unused — once spent (teaCardUsed) it is disabled.
+    const teaUsed = player.teaCardUsed;
+    const potSize = getVisibleCupcakeSymbols(gameState);
+    const teaInstruction = teaUsed
+      ? 'Sweep a row or column above'
+      : 'Sweep a row or column above — or play your Fresh Pot of Tea first';
+    const teaTitle = teaUsed
+      ? 'Fresh Pot of Tea already used this game'
+      : `Play your Fresh Pot of Tea before sweeping (collects the ${potSize}-cupcake pot; you still take your full turn)`;
     html = `
       <div class="ft-phase-bar">
-        <div class="ft-phase-bar__instruction">Sweep a row or column above — or order tea instead</div>
+        <div class="ft-phase-bar__instruction">${teaInstruction}</div>
         <div class="ft-phase-bar__controls">
           ${undoBtn}
-          <button id="orderTeaBtn" class="ft-btn ft-btn--tea ft-btn--small" title="Order a fresh pot of tea instead of sweeping">🫖 Fresh Pot of Tea</button>
+          <button id="orderTeaBtn" class="ft-btn ft-btn--tea ft-btn--small" title="${teaTitle}" ${teaUsed ? 'disabled' : ''}>🫖 Fresh Pot of Tea</button>
         </div>
       </div>
     `;
@@ -1589,8 +1609,9 @@ function updatePhaseControls(gameState) {
   }
 
   const orderTeaBtn = controls.querySelector('#orderTeaBtn');
-  if (orderTeaBtn) {
-    orderTeaBtn.addEventListener('click', showTeaConfirm);
+  if (orderTeaBtn && !player.teaCardUsed) {
+    const potSize = getVisibleCupcakeSymbols(gameState);
+    orderTeaBtn.addEventListener('click', () => showTeaConfirm(potSize));
   }
 
   const confirmBtn = controls.querySelector('#confirmTurn');
@@ -1726,7 +1747,10 @@ function cardSpriteHTML(card, displayHeight, { extraClass = '', clickable = fals
 // Confirm overlay for ordering a fresh pot of tea. Shows the player-aid card
 // (which doubles as the rules reference) with Order tea / Cancel. On confirm it
 // routes to the main.js onOrderTea() handler stored on window._gameUI.
-function showTeaConfirm() {
+function showTeaConfirm(potSize = 0) {
+  const potText = potSize > 0
+    ? `You will collect a pot of <strong>${potSize} cupcake${potSize === 1 ? '' : 's'}</strong>, refresh both markets, then take your full turn. Once per game.`
+    : `No cupcake symbols are uncovered, so the pot is empty this turn — but you will still refresh both markets and reserve a card, then take your full turn. Once per game.`;
   const modal = document.createElement('div');
   modal.className = 'ft-modal';
   modal.innerHTML = `
@@ -1734,7 +1758,7 @@ function showTeaConfirm() {
       <button class="ft-modal__close" aria-label="Cancel">✕</button>
       <div class="ft-modal__title">
         <h2>🫖 Fresh Pot of Tea</h2>
-        <p style="color: var(--color-text-secondary); margin: var(--spacing-sm) 0 0 0;">Order tea instead of sweeping this turn.</p>
+        <p style="color: var(--color-text-secondary); margin: var(--spacing-sm) 0 0 0;">${potText}</p>
       </div>
       <img src="images/fresh_pot_of_tea_card.png?v=2" alt="Fresh Pot of Tea player aid" class="ft-tea-confirm__image">
       <div class="ft-tea-confirm__buttons">

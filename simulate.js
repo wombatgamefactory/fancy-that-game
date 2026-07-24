@@ -10,6 +10,30 @@ const BOT_STRATEGIES = {
   random: randomBot,
 };
 
+// Largest single sweep currently available on the tile market: the max tiles a
+// single colour/ingredient declaration would take from any one row or column.
+// Cheap scan used for the late-game drought metric (a "drought" turn is one where
+// even the best sweep is a single junk tile once every player's tea is spent).
+function bestSweepTileCount(gameState) {
+  const { market, marketSize } = gameState;
+  let best = 0;
+  for (let i = 0; i < marketSize; i++) {
+    for (const isRow of [true, false]) {
+      const counts = {};
+      for (let j = 0; j < marketSize; j++) {
+        const tile = isRow ? market[i * marketSize + j] : market[j * marketSize + i];
+        if (!tile) continue;
+        const ck = 'c:' + tile.colour;
+        const ik = 'i:' + tile.ingredient;
+        counts[ck] = (counts[ck] || 0) + 1;
+        counts[ik] = (counts[ik] || 0) + 1;
+      }
+      for (const k in counts) if (counts[k] > best) best = counts[k];
+    }
+  }
+  return best;
+}
+
 function runGame(playerConfigs, botStrategy) {
   const statsCollector = createStatsCollector();
   const strategy = BOT_STRATEGIES[botStrategy] || fastBot;
@@ -20,6 +44,9 @@ function runGame(playerConfigs, botStrategy) {
   // Cards a flush sweeps into the discard pile (counted at each tea round's last
   // reserve decision, just before finishTeaRound clears the market remainder).
   let cardsDiscardedByFlushes = 0;
+  // Late-game droughts: sweep turns where the best available sweep is a single
+  // tile AND every player's tea card is already spent (no refresh left to fix it).
+  let lateDroughtTurns = 0;
 
   while (!gameState.gameOver && turns < maxTurns) {
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
@@ -46,6 +73,9 @@ function runGame(playerConfigs, botStrategy) {
         }
         const decision = strategy.decideSweep(gameState);
         if (decision) {
+          if (gameState.players.every(p => p.teaCardUsed) && bestSweepTileCount(gameState) <= 1) {
+            lateDroughtTurns++;
+          }
           gameState = sweep(gameState, decision.rowOrCol, decision.isRow, decision.declaration, decision.declarationType);
         } else {
           // No legal sweep (market emptied) — advance so the engine can reach
@@ -152,9 +182,16 @@ function runGame(playerConfigs, botStrategy) {
   const report = statsCollector.getReport();
   const teaStats = {
     teaRounds: report.teaRoundCount,
+    teaFirings: report.teaRounds, // [{ turn, potSize }] per firing
     reservesTaken: report.teaReservesTaken,
     reservesCompleted,
     cardsDiscarded: cardsDiscardedByFlushes,
+    backstopCount: report.backstopCount,
+    deckReshuffles: report.deckReshuffles,
+    reserveClaims: report.reserveClaims,
+    totalCardsClaimed: report.totalCardsClaimed,
+    lateDroughtTurns,
+    cupcakeInfluxTotals: report.cupcakeInfluxTotals,
   };
 
   return {
@@ -178,7 +215,6 @@ function aggregateStats(allGameStats) {
     avgSweepSize: { total: 0, avg: 0, min: Infinity, max: 0 },
     sweepCount: { total: 0, avg: 0, min: Infinity, max: 0 },
     cupcakePlateGains: { total: 0, avg: 0, min: Infinity, max: 0 },
-    cupcakeForfeits: { total: 0, avg: 0, min: Infinity, max: 0 },
   };
 
   for (const stats of allGameStats) {
@@ -209,10 +245,6 @@ function aggregateStats(allGameStats) {
     aggregate.cupcakePlateGains.total += stats.cupcakePlateGains;
     aggregate.cupcakePlateGains.min = Math.min(aggregate.cupcakePlateGains.min, stats.cupcakePlateGains);
     aggregate.cupcakePlateGains.max = Math.max(aggregate.cupcakePlateGains.max, stats.cupcakePlateGains);
-
-    aggregate.cupcakeForfeits.total += stats.cupcakeForfeits;
-    aggregate.cupcakeForfeits.min = Math.min(aggregate.cupcakeForfeits.min, stats.cupcakeForfeits);
-    aggregate.cupcakeForfeits.max = Math.max(aggregate.cupcakeForfeits.max, stats.cupcakeForfeits);
   }
 
   aggregate.marketFills.avg = (aggregate.marketFills.total / allGameStats.length).toFixed(2);
@@ -222,7 +254,6 @@ function aggregateStats(allGameStats) {
   aggregate.avgSweepSize.avg = (aggregate.avgSweepSize.total / allGameStats.length).toFixed(2);
   aggregate.sweepCount.avg = (aggregate.sweepCount.total / allGameStats.length).toFixed(2);
   aggregate.cupcakePlateGains.avg = (aggregate.cupcakePlateGains.total / allGameStats.length).toFixed(2);
-  aggregate.cupcakeForfeits.avg = (aggregate.cupcakeForfeits.total / allGameStats.length).toFixed(2);
 
   return aggregate;
 }
@@ -236,7 +267,6 @@ function formatAggregateStats(aggregate) {
   console.log(`Avg Sweep Size:      avg=${aggregate.avgSweepSize.avg}, min=${aggregate.avgSweepSize.min}, max=${aggregate.avgSweepSize.max}`);
   console.log(`Sweep Count:         avg=${aggregate.sweepCount.avg}, min=${aggregate.sweepCount.min}, max=${aggregate.sweepCount.max}`);
   console.log(`Cupcake Plate Gains: avg=${aggregate.cupcakePlateGains.avg}, min=${aggregate.cupcakePlateGains.min}, max=${aggregate.cupcakePlateGains.max}`);
-  console.log(`Cupcake Forfeits:    avg=${aggregate.cupcakeForfeits.avg}, min=${aggregate.cupcakeForfeits.min}, max=${aggregate.cupcakeForfeits.max}`);
 }
 
 const gamesPerConfig = parseInt(process.argv[2]) || 10;
@@ -326,5 +356,48 @@ console.log(`Games with >=1 tea: ${gamesWithTea}/${allTeaStats.length} (${(100 *
 console.log(`Reserves taken:     total=${totalReserves} (mean/game=${(totalReserves / allTeaStats.length).toFixed(2)})`);
 console.log(`Reserves completed: total=${totalReservesCompleted} (completion rate ${totalReserves > 0 ? (100 * totalReservesCompleted / totalReserves).toFixed(1) : '0.0'}%)`);
 console.log(`Cards discarded by flushes: total=${totalDiscarded} (mean/game=${(totalDiscarded / allTeaStats.length).toFixed(2)})`);
+
+// Tea timing + pot size across every firing (target: teas spread through the game
+// with healthy pots; failure modes are everyone hoarding to a tiny end-game sweep
+// or everyone firing early on a ~0 pot).
+const allFirings = allTeaStats.flatMap(t => t.teaFirings || []);
+if (allFirings.length > 0) {
+  const firingTurns = allFirings.map(f => f.turn);
+  const potSizes = allFirings.map(f => f.potSize);
+  const meanTurn = firingTurns.reduce((a, v) => a + v, 0) / firingTurns.length;
+  const meanPot = potSizes.reduce((a, v) => a + v, 0) / potSizes.length;
+  const potDist = [0, 1, 2, 3, 4].map(p => potSizes.filter(v => v === p).length);
+  console.log(`Tea firing turn:    mean=${meanTurn.toFixed(1)}, min=${Math.min(...firingTurns)}, max=${Math.max(...firingTurns)}`);
+  console.log(`Tea pot size:       mean=${meanPot.toFixed(2)}, min=${Math.min(...potSizes)}, max=${Math.max(...potSizes)} (dist 0-4: ${potDist.join('/')})`);
+} else {
+  console.log(`Tea firing turn:    (no teas fired)`);
+}
+
+// Backstop firings (target: near zero; >~1/game means player-driven refresh isn't
+// covering tile supply). Deck reshuffles (now expected at 4p). Late-game droughts.
+const totalBackstops = allTeaStats.reduce((a, t) => a + (t.backstopCount || 0), 0);
+const gamesWithBackstop = allTeaStats.filter(t => (t.backstopCount || 0) > 0).length;
+const totalReshuffles = allTeaStats.reduce((a, t) => a + (t.deckReshuffles || 0), 0);
+const totalDroughts = allTeaStats.reduce((a, t) => a + (t.lateDroughtTurns || 0), 0);
+console.log(`Backstop firings:   total=${totalBackstops} (mean/game=${(totalBackstops / allTeaStats.length).toFixed(3)}, games affected=${gamesWithBackstop}/${allTeaStats.length})`);
+console.log(`Deck reshuffles:    total=${totalReshuffles} (mean/game=${(totalReshuffles / allTeaStats.length).toFixed(2)})`);
+console.log(`Late-game droughts: total=${totalDroughts} (mean/game=${(totalDroughts / allTeaStats.length).toFixed(2)}) [best-sweep=1 tile, all teas spent]`);
+
+// Claims from reserve as a fraction of all claims (reserve traffic is up now).
+const totalReserveClaims = allTeaStats.reduce((a, t) => a + (t.reserveClaims || 0), 0);
+const totalClaims = allTeaStats.reduce((a, t) => a + (t.totalCardsClaimed || 0), 0);
+console.log(`Claims from reserve: ${totalReserveClaims}/${totalClaims} (${totalClaims > 0 ? (100 * totalReserveClaims / totalClaims).toFixed(1) : '0.0'}% of all claims)`);
+
+// Cupcake influx per player by source (start / pot / plates) and the mean total
+// per player-result — the wild is looser with the cap gone; watch this knob.
+let inStart = 0, inPot = 0, inPlates = 0;
+for (const t of allTeaStats) {
+  const tot = t.cupcakeInfluxTotals || { start: 0, pot: 0, plates: 0 };
+  inStart += tot.start; inPot += tot.pot; inPlates += tot.plates;
+}
+const inTotal = inStart + inPot + inPlates;
+console.log(`\n=== CUPCAKE INFLUX (${n} player-results) ===\n`);
+console.log(`By source: start=${inStart}, pot=${inPot}, plates=${inPlates}, total=${inTotal}`);
+console.log(`Mean/player: start=${(inStart / n).toFixed(2)}, pot=${(inPot / n).toFixed(2)}, plates=${(inPlates / n).toFixed(2)}, total=${(inTotal / n).toFixed(2)}`);
 
 console.log(`\nCompleted ${gamesPerConfig} games in ${elapsed}ms (${(elapsed / gamesPerConfig).toFixed(1)}ms/game)`);

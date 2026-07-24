@@ -8,11 +8,36 @@ import { BOARD_SIZE, CARD_MARKET_SIZE, CARDS_TO_END_2P, REWARD_CARDS, COLOURS, I
 // stand score is 52 (26 + 12 + 9 + 5).
 export const STAND_ROW_VALUES = [[2, 6, 14, 26], [3, 7, 12], [4, 9], [5]];
 
-// Hard cap on cupcakes a player may hold. Players start with 2 (see createGame);
-// they gain more by ordering a fresh pot of tea (orderTea) or by plating a tile
-// onto a cupcake plate (plateTileOntoRow). Both gains are capped here — a gain
-// attempted at the cap is a no-op / silently forfeited.
-export const MAX_CUPCAKES = 4;
+// Cupcake symbols printed on the tile-market board. FOUR cells carry a printed
+// cupcake symbol; a symbol is "visible" when its cell is currently empty (no
+// tile sitting on it). At the cupcake-pot step of a fresh pot of tea, the tea
+// player gains 1 cupcake per visible (empty) symbol cell (see finishTeaRound).
+// There is NO cupcake cap any more — every gain always pays.
+//
+// Keyed by marketSize: 6 for 3-4 players (6×6 board), 5 for 2 players (5×5
+// board). Values are flat market-array indices (index = row*marketSize + col)
+// forming a symmetric group of 4 within the board. The per-player-count sets are
+// DELIBERATE: the 2-player 5×5 layout is a smaller inner area, so it carries its
+// own symbol positions rather than reusing the 6×6 ones. POSITIONS ARE NOT FINAL
+// — these are placeholders pending the printed board art; they are config, not
+// hardcoded logic, precisely so the art team can move them without touching code.
+export const CUPCAKE_SYMBOL_CELLS = {
+  6: [7, 10, 25, 28], // 6×6: rows 1 & 4, cols 1 & 4 — symmetric 4
+  5: [6, 8, 16, 18],  // 5×5: rows 1 & 3, cols 1 & 3 — symmetric 4 within the inner area
+};
+
+// Count the cupcake symbols currently VISIBLE (i.e. whose market cell is empty)
+// for this game's market size. Shared by the engine (the tea pot), the bots (tea
+// timing), and the UI (rendering + pot preview) so all three read visibility the
+// same way: purely from cell emptiness, with no separate symbol state.
+export function getVisibleCupcakeSymbols(gameState) {
+  const cells = CUPCAKE_SYMBOL_CELLS[gameState.marketSize] || [];
+  let visible = 0;
+  for (const idx of cells) {
+    if (gameState.market[idx] === null || gameState.market[idx] === undefined) visible++;
+  }
+  return visible;
+}
 
 // Cupcake plates: the (rowIndex, plateIndex) stand positions that grant a
 // cupcake the moment a tile is plated onto them. Indices are 0-based into the
@@ -21,9 +46,9 @@ export const MAX_CUPCAKES = 4;
 // the SECOND plate of every multi-plate row plus the top row's single plate —
 // bottom[1], second[1], third[1], top[0] — the four plates the board art marks
 // with a cupcake icon (images/cake_stand.png). Plating onto one grants 1 cupcake
-// from the supply, but only while below MAX_CUPCAKES; a gain at cap is silently
-// forfeited (see plateTileOntoRow). The opening-plate variant was rejected in
-// playtesting, so no row's first plate (plateIndex 0, except the top) appears.
+// from the supply — always (there is no cupcake cap; see plateTileOntoRow). The
+// opening-plate variant was rejected in playtesting, so no row's first plate
+// (plateIndex 0, except the top) appears.
 export const CUPCAKE_PLATES = [
   { rowIndex: 0, plateIndex: 1 },
   { rowIndex: 1, plateIndex: 1 },
@@ -40,8 +65,7 @@ function isCupcakePlate(rowIndex, plateIndex) {
 // so the cupcake-plate trigger lives here in one place. The plate the tile lands
 // on is the row's length BEFORE the push. On the first tile the row locks to the
 // tile's ingredient. If the landing plate is a cupcake plate, the player gains 1
-// cupcake — but only while below the cap; a gain attempted at cap is silently
-// forfeited (nothing owed later, the trigger is consumed) and recorded as such.
+// cupcake from the supply — always; there is no cap, so the gain never forfeits.
 function plateTileOntoRow(gameState, player, rowIndex, tile) {
   const row = player.stand[rowIndex];
   const plateIndex = row.tiles.length;
@@ -52,19 +76,11 @@ function plateTileOntoRow(gameState, player, rowIndex, tile) {
   if (gameState.statsCollector) gameState.statsCollector.recordPlating(player.id, rowIndex);
 
   if (!isCupcakePlate(rowIndex, plateIndex)) return;
-  if (player.cupcakes < MAX_CUPCAKES) {
-    player.cupcakes++;
-    if (gameState.statsCollector) gameState.statsCollector.recordCupcakePlateGain();
-  } else if (gameState.statsCollector) {
-    gameState.statsCollector.recordCupcakeForfeit();
-  }
+  player.cupcakes++;
+  if (gameState.statsCollector) gameState.statsCollector.recordCupcakePlateGain(player.id);
 }
 
 function getMarketSize(playerCount) {
-  return playerCount === 2 ? 5 : 6;
-}
-
-function getRefillThreshold(playerCount) {
   return playerCount === 2 ? 5 : 6;
 }
 
@@ -88,11 +104,23 @@ export function createGame(playerConfigs, statsCollector = null) {
     crumbTray: [],
     claimedCards: [],
     cupcakes: 2,
+    // Fresh Pot of Tea is once per game per player. teaCardUsed flips true when
+    // that player's tea round completes (finishTeaRound), and orderTea refuses a
+    // second use. A never-used tea card scores 0 (it grants no VP itself).
+    teaCardUsed: false,
     // Personal reserve for the tea round: a single face-up card object (or null).
     // Filled by teaReserve, emptied by claim (completing it) or left to score 0.
     reservedCard: null,
     score: 0,
   }));
+
+  // Metric: every player starts with 2 cupcakes — log it as their opening influx
+  // so the per-source cupcake accounting (start / pot / plates) is complete.
+  if (statsCollector) {
+    for (const player of players) {
+      statsCollector.recordCupcakeGain(player.id, 'start', player.cupcakes);
+    }
+  }
 
   const market = [];
   for (let i = 0; i < marketSize * marketSize; i++) {
@@ -125,8 +153,8 @@ export function createGame(playerConfigs, statsCollector = null) {
     gameDeck,
     cardMarket,
     // Claimed/flushed cards accumulate here and are reshuffled back into an
-    // empty gameDeck by drawCard. Nothing feeds it yet — the tea round (a later
-    // phase) is what discards market cards; until then it simply stays empty.
+    // empty gameDeck by drawCard. The tea round's flush (finishTeaRound) and a
+    // refilled-slot claim both feed it, so it fills steadily once tea rounds start.
     cardDiscard: [],
     currentPlayerIndex: 0,
     gamePhase: 'sweep',
@@ -144,6 +172,12 @@ export function createGame(playerConfigs, statsCollector = null) {
     // board that cannot accept swept tiles) — not a documented tabletop rule.
     endGameReason: null,
     remainingTurnsInEndGame: 0, // final-turn countdown for the boardOverflow safety valve
+    // Deadlock safety valve for the backstop rule: when the tile market AND bag
+    // are both empty no sweep is possible, so a run of turns can pass with nobody
+    // able to claim. This counts turns since the last card was claimed (reset in
+    // claim); once it reaches playerCount while market+bag are dry, the game ends
+    // (see the backstop in advanceToNextTurn).
+    turnsSinceLastClaim: 0,
     cardsNeededToEnd,
     playerCount,
     marketSize,
@@ -179,8 +213,8 @@ export function initGameDeck() {
 // been discarded, the discard pile is Fisher-Yates shuffled into a fresh deck
 // and emptied (the tabletop "reshuffle when the deck runs out" rule). Returns
 // the drawn card, or null when both deck and discard are exhausted so callers
-// can simply skip the market refill. Nothing populates cardDiscard until the
-// tea round lands, so today this only ever draws from the initial deck.
+// can simply skip the market refill. Tea flushes feed the discard, so at 4p
+// (each tea burns 4+ cards) reshuffles are expected rather than a corner case.
 export function drawCard(gameState) {
   if (gameState.gameDeck.length === 0 && gameState.cardDiscard.length > 0) {
     const reshuffled = gameState.cardDiscard;
@@ -190,6 +224,7 @@ export function drawCard(gameState) {
     }
     gameState.gameDeck = reshuffled;
     gameState.cardDiscard = [];
+    if (gameState.statsCollector) gameState.statsCollector.recordDeckReshuffle();
   }
   return gameState.gameDeck.shift() ?? null;
 }
@@ -321,28 +356,30 @@ export function declineBonusTile(gameState) {
   return gameState;
 }
 
-// Order a fresh pot of tea instead of sweeping. This replaces the sweep+place
-// steps of the turn: the flusher gains a cupcake (capped at MAX_CUPCAKES), then
-// the turn enters the 'teaReserve' phase where each player, starting with the
-// flusher and proceeding clockwise, may reserve one market card. Only legal at
-// the very start of a turn (sweep phase, no pending bonus tile) — the cost of
-// forgoing the whole sweep is the design's only gate on the action.
+// Order a fresh pot of tea at the START of a turn, BEFORE the sweep. Unlike the
+// old flow, tea no longer replaces the sweep: after the tea round resolves the
+// player takes their FULL normal turn (sweep, place, move, claim). The procedure
+// runs in this order (see finishTeaRound for steps b-e): (a) a reserve round —
+// starting with the tea player and proceeding clockwise, each player may reserve
+// one market card; (b) an unconditional flush + redeal of the card market;
+// (c) the cupcake pot — the tea player gains 1 cupcake per visible symbol;
+// (d) a full tile-market refill from the bag; (e) the tea card is spent.
+//
+// orderTea sets up only the reserve round (a); teaReserve advances it and
+// finishTeaRound performs (b)-(e). Only legal at the very start of a turn (sweep
+// phase, no pending bonus tile) and only once per game per player.
 export function orderTea(gameState) {
   if (gameState.gamePhase !== 'sweep') throw new Error('Can only order tea at the start of a turn (sweep phase)');
   if (gameState.bonusTileAvailable) throw new Error('Cannot order tea while a bonus tile is pending');
 
   const player = gameState.players[gameState.currentPlayerIndex];
-  player.cupcakes = Math.min(MAX_CUPCAKES, player.cupcakes + 1);
+  if (player.teaCardUsed) throw new Error('Fresh Pot of Tea has already been used this game');
 
-  // The flusher reserves FIRST (deliberate — see design doc); every player gets
-  // exactly one reserve opportunity, so the countdown starts at playerCount.
+  // The tea player reserves FIRST (deliberate — see design doc); every player
+  // gets exactly one reserve opportunity, so the countdown starts at playerCount.
   gameState.teaReserverIndex = gameState.currentPlayerIndex;
   gameState.teaReservesRemaining = gameState.playerCount;
   gameState.gamePhase = 'teaReserve';
-
-  if (gameState.statsCollector) {
-    gameState.statsCollector.recordTeaRound(gameState.stats.turnsPlayed);
-  }
 
   return gameState;
 }
@@ -365,7 +402,8 @@ export function teaReserveMustPass(gameState) {
 // the market into the player's reserve; the market is NOT refilled per-take (the
 // whole market is discarded and redealt once every player has decided). Advances
 // clockwise to the next reserver; when all playerCount decisions are in, the tea
-// round finishes and the turn continues into the normal move phase.
+// round finishes (finishTeaRound) and the turn continues into the normal sweep
+// phase — the tea player then takes their full turn.
 export function teaReserve(gameState, cardId) {
   if (gameState.gamePhase !== 'teaReserve') throw new Error('Not in tea reserve phase');
 
@@ -398,11 +436,21 @@ export function teaReserve(gameState, cardId) {
   return gameState;
 }
 
-// Discard whatever survived the reserve round and deal a fresh market, then hand
-// the turn back to its normal flow (move → claim → refill). Dealing fewer than
-// CARD_MARKET_SIZE cards is legal when deck+discard are exhausted, mirroring the
-// existing shrinking-market behaviour elsewhere.
+// Resolve the tea round once every player has had their reserve decision. Runs
+// steps (b)-(e) of the tea procedure IN ORDER (see orderTea):
+//   (b) Unconditional flush + redeal: every surviving market card goes to the
+//       discard and a fresh CARD_MARKET_SIZE cards are dealt (fewer only when
+//       deck+discard are exhausted, mirroring the shrinking-market behaviour).
+//   (c) Cupcake pot: the ACTIVE (tea) player — currentPlayerIndex, NOT each
+//       reserver — gains 1 cupcake per visible cupcake symbol (an empty symbol
+//       cell). Uncapped. This is read BEFORE the tile refill, since (d) covers
+//       the symbols.
+//   (d) Tile refill: fill EVERY empty market cell from the bag (partial fill if
+//       the bag runs dry).
+//   (e) Spend the tea card (teaCardUsed) and return to the SWEEP phase — the tea
+//       player now takes their full normal turn.
 function finishTeaRound(gameState) {
+  // (b) Flush unreserved market cards, then redeal a fresh market.
   while (gameState.cardMarket.length > 0) {
     const discarded = gameState.cardMarket.shift();
     gameState.cardDiscard.push(discarded);
@@ -420,8 +468,44 @@ function finishTeaRound(gameState) {
     }
   }
 
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+
+  // (c) Cupcake pot — count visible symbols BEFORE refilling the tiles.
+  const potSize = getVisibleCupcakeSymbols(gameState);
+  if (potSize > 0) {
+    activePlayer.cupcakes += potSize;
+    if (gameState.statsCollector) {
+      gameState.statsCollector.recordCupcakeGain(activePlayer.id, 'pot', potSize);
+    }
+  }
+
+  // (d) Fill every empty tile-market cell from the bag (partial if the bag runs dry).
+  let filledAny = false;
+  for (let i = 0; i < gameState.market.length; i++) {
+    if (gameState.market[i] === null && gameState.bag.length > 0) {
+      gameState.market[i] = gameState.bag.shift();
+      filledAny = true;
+    }
+  }
+  if (filledAny && gameState.statsCollector) {
+    gameState.statsCollector.recordMarketFill();
+  }
+
+  // Metric: log the tea firing (turn + pot collected) now that the pot is known.
+  if (gameState.statsCollector) {
+    gameState.statsCollector.recordTeaRound(gameState.stats.turnsPlayed, potSize);
+  }
+
+  // (e) Spend the tea card and hand the tea player their full normal turn.
+  activePlayer.teaCardUsed = true;
   gameState.teaReserverIndex = null;
-  gameState.gamePhase = 'move';
+  gameState.gamePhase = 'sweep';
+
+  // If the bag was dry, step (d) may have left the market completely empty — the
+  // player cannot sweep, so apply the same empty-market handling as at a normal
+  // turn start (skip to the move phase / deadlock valve). With any tiles refilled
+  // this is a no-op, making the backstop moot on a tea turn as the design notes.
+  applyBackstopRefresh(gameState);
 }
 
 export function place(gameState, placements) {
@@ -549,9 +633,12 @@ export function claim(gameState, cardId, removedBoardIndex, destination) {
   }
   player.board[removedBoardIndex] = { type: 'blocked' };
   player.claimedCards.push(cardId);
+  // A claim breaks the empty-market deadlock watch (see the backstop).
+  gameState.turnsSinceLastClaim = 0;
 
   if (gameState.statsCollector) {
-    gameState.statsCollector.recordCardClaimed(cardId, gameState.stats.turnsPlayed);
+    // fromReserve feeds the claims-from-reserve fraction metric.
+    gameState.statsCollector.recordCardClaimed(cardId, gameState.stats.turnsPlayed, fromReserve);
     // A reserved card already recorded its market exit when it was reserved.
     if (!fromReserve) {
       gameState.statsCollector.recordCardMarketExit(cardId, gameState.stats.turnsPlayed);
@@ -616,19 +703,10 @@ export function skipClaim(gameState) {
 export function refill(gameState) {
   if (gameState.gamePhase !== 'refill') throw new Error('Not in refill phase');
 
-  const tilesInMarket = gameState.market.filter(t => t !== null).length;
-  const refillThreshold = getRefillThreshold(gameState.playerCount);
-
-  if (tilesInMarket <= refillThreshold && gameState.bag.length > 0) {
-    for (let i = 0; i < gameState.market.length; i++) {
-      if (gameState.market[i] === null && gameState.bag.length > 0) {
-        gameState.market[i] = gameState.bag.shift();
-      }
-    }
-    if (gameState.statsCollector) {
-      gameState.statsCollector.recordMarketFill();
-    }
-  }
+  // The tile market no longer refills automatically at end of turn. It is
+  // refreshed ONLY by the tea step (finishTeaRound step d) and by the backstop
+  // (advanceToNextTurn). This function now just resolves the end conditions and
+  // rotates the turn.
 
   // Handle board overflow end game
   if (gameState.endGameReason === 'boardOverflow') {
@@ -645,12 +723,11 @@ export function refill(gameState) {
     gameState.gameOver = true;
     gameState.endGameReason = 'cardMarket';
     calculateFinalScores(gameState);
-  } else if (gameState.market.every(t => t === null) && gameState.bag.length === 0) {
-    // Market tiles exhausted
-    gameState.gameOver = true;
-    gameState.endGameReason = 'marketTiles';
-    calculateFinalScores(gameState);
   } else {
+    // No unconditional "market+bag empty → game over" here any more: the
+    // backstop in advanceToNextTurn refreshes an empty market from the bag, and
+    // only its deadlock valve (market+bag dry, no claim for a full round of
+    // turns) ends the game with endGameReason 'marketTiles'.
     advanceToNextTurn(gameState);
   }
 
@@ -666,13 +743,59 @@ function advanceToNextTurn(gameState) {
   gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
   gameState.cupcakesUsedThisTurn = false;
   gameState.gamePhase = 'sweep';
+  // Count this turn toward the empty-market deadlock watch (reset by any claim).
+  gameState.turnsSinceLastClaim++;
 
   const nextPlayer = gameState.players[gameState.currentPlayerIndex];
   if (getValidPlacements(nextPlayer.board).length === 0) {
     gameState.gameOver = true;
     gameState.endGameReason = gameState.endGameReason || 'boardFull';
     calculateFinalScores(gameState);
+    return;
   }
+
+  applyBackstopRefresh(gameState);
+}
+
+// BACKSTOP REFRESH. A sweep is legal whenever any tile sits on the market, so
+// the only unplayable sweep is a COMPLETELY EMPTY tile market. Checked at the
+// start of every new turn's sweep phase:
+//   - Market empty, bag has tiles: refill every cell from the bag for FREE (no
+//     cupcakes) and log the firing, then proceed with the normal sweep. Expected
+//     frequency is near zero — a firing means player-driven refresh (tea) isn't
+//     covering tile supply.
+//   - Market AND bag empty: no refill is possible. The game does not end here on
+//     its own (it will end on the tart/card clock or a full board). Since no
+//     sweep can be made, skip the sweep+place steps straight to the move phase so
+//     the player can still move a tile and claim. To avoid spinning forever when
+//     nobody can claim again, the deadlock valve ends the game once a full round
+//     of turns (playerCount) has passed with no claim.
+function applyBackstopRefresh(gameState) {
+  if (!gameState.market.every(t => t === null)) return; // tiles present — normal sweep
+
+  if (gameState.bag.length > 0) {
+    for (let i = 0; i < gameState.market.length; i++) {
+      if (gameState.market[i] === null && gameState.bag.length > 0) {
+        gameState.market[i] = gameState.bag.shift();
+      }
+    }
+    if (gameState.statsCollector) {
+      gameState.statsCollector.recordBackstopFiring(gameState.stats.turnsPlayed);
+      gameState.statsCollector.recordMarketFill();
+    }
+    return;
+  }
+
+  // Market and bag both empty.
+  if (gameState.turnsSinceLastClaim >= gameState.playerCount) {
+    gameState.gameOver = true;
+    gameState.endGameReason = gameState.endGameReason || 'marketTiles';
+    calculateFinalScores(gameState);
+    return;
+  }
+  // No tiles anywhere to sweep — jump to the move phase so the player can still
+  // move/claim this turn.
+  gameState.gamePhase = 'move';
 }
 
 export function getValidSweeps(gameState) {
