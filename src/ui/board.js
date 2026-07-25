@@ -39,49 +39,49 @@ export function showRulesModal() {
 
           <div class="ft-rules__step">
             <div class="ft-rules__step-title">2. Place Tiles</div>
-            <div class="ft-rules__text">Place all swept tiles anywhere on your 5×5 board. No adjacency required — tiles can go in any empty cells.</div>
+            <div class="ft-rules__text">Place all swept tiles anywhere on your 5×5 board. No adjacency required - tiles can go in any empty cells.</div>
           </div>
 
           <div class="ft-rules__step">
             <div class="ft-rules__step-title">3. Move Tiles (Optional)</div>
-            <div class="ft-rules__text">You may spend 1 cupcake to move one tile — or one tart token (a blocked space) — from its current cell to any other empty cell on your board. You can move at most one tile or tart per turn.</div>
+            <div class="ft-rules__text">You may spend 1 cupcake to move one tile - or one tart token (a blocked space) - from its current cell to any other empty cell on your board. You can move at most one tile or tart per turn.</div>
           </div>
 
           <div class="ft-rules__step">
             <div class="ft-rules__step-title">4. Claim (Optional)</div>
             <div class="ft-rules__text">If tiles on your board match a card's colour pattern (in any rotation or reflection), you may claim it.</div>
-            <div class="ft-rules__text">When claiming: remove 1 tile from the pattern, then place it on your cake stand or in your crumb tray. Each ingredient can only ever be placed on ONE stand row — the first tile you plate locks that ingredient to that row, and no other row can ever hold it. Once that row is full (or if you choose not to extend it), any further tiles of that ingredient must go to the crumb tray. The crumb tray always accepts any tile and is worth 1 point each.</div>
+            <div class="ft-rules__text">When claiming: remove 1 tile from the pattern, then place it on your cake stand or in your crumb tray. Each ingredient can only ever be placed on ONE stand row - the first tile you plate locks that ingredient to that row, and no other row can ever hold it. Once that row is full (or if you choose not to extend it), any further tiles of that ingredient must go to the crumb tray. The crumb tray always accepts any tile and is worth 1 point each.</div>
             <div class="ft-rules__text"><strong>Blocked Spaces:</strong> The cell where you removed the tile becomes a permanently blocked space, marked by a croissant icon. No new tiles can be placed on blocked spaces, and they break pattern matching.</div>
           </div>
 
           <div class="ft-rules__step">
             <div class="ft-rules__step-title">5. Market Refresh</div>
-            <div class="ft-rules__text">The tile market is <strong>not</strong> refilled every turn. It refreshes only when someone plays a Fresh Pot of Tea (see below) — or, as a rare safety net, automatically from the bag if it ever becomes completely empty at the start of a turn.</div>
+            <div class="ft-rules__text">The tile market is <strong>not</strong> refilled every turn. It refreshes only when someone plays a Fresh Pot of Tea (see below) - or, as a rare safety net, automatically from the bag if it ever becomes completely empty at the start of a turn.</div>
           </div>
         </div>
 
         <div class="ft-rules__section">
           <div class="ft-rules__section-title">🫖 Fresh Pot of Tea</div>
-          <div class="ft-rules__text"><strong>At the start of your turn, before you sweep,</strong> you may play your Fresh Pot of Tea card — <strong>once per game</strong>. You still take your full normal turn afterwards. Playing it:</div>
+          <div class="ft-rules__text"><strong>At the start of your turn, before you sweep,</strong> you may play your Fresh Pot of Tea card - <strong>once per game</strong>. You still take your full normal turn afterwards. Playing it:</div>
           <div class="ft-rules__text">1. Starting with you, each player in clockwise order may take 1 card from the market into their personal reserve.</div>
           <div class="ft-rules__text">2. Discard the remaining market cards and deal 4 new ones.</div>
           <div class="ft-rules__text">3. <strong>Cupcake pot:</strong> gain 1 cupcake for every cupcake symbol still visible (uncovered) on the tile market.</div>
-          <div class="ft-rules__text">4. Refill the tile market — fill every empty space from the bag.</div>
+          <div class="ft-rules__text">4. Refill the tile market - fill every empty space from the bag.</div>
           <div class="ft-rules__text">Then take your normal turn (sweep, place, move, claim). An unused Fresh Pot of Tea card is worth nothing at game end.</div>
           <div class="ft-rules__text"><strong>Your reserve:</strong> you may hold at most 1 reserved card, kept face-up beside your board (marked "On order"). If your reserve is already full you simply pass at the reserve step.</div>
-          <div class="ft-rules__text"><strong>Completing a reserved card</strong> works exactly like a normal claim (match the pattern on your board, remove a tile, place it, use your one claim for the turn) — it just does not refill the card market. An uncompleted reserved card scores nothing; a completed one counts as a claimed card, including for the tiebreaker.</div>
+          <div class="ft-rules__text"><strong>Completing a reserved card</strong> works exactly like a normal claim (match the pattern on your board, remove a tile, place it, use your one claim for the turn) - it just does not refill the card market. An uncompleted reserved card scores nothing; a completed one counts as a claimed card, including for the tiebreaker.</div>
           <img src="images/fresh_pot_of_tea_card.png?v=2" alt="Fresh Pot of Tea player aid" style="width: 100%; max-width: 220px; display: block; margin: var(--spacing-md) auto 0; border-radius: var(--radius-md); border: 1px solid var(--color-border);">
         </div>
 
         <div class="ft-rules__section">
           <div class="ft-rules__section-title">Cupcakes</div>
-          <div class="ft-rules__text">You start the game with 2 cupcakes — you gain more from the cupcake pot when you order a fresh pot of tea, or by plating a tile onto a cupcake plate. There is no limit on how many you may hold. Once per turn (step 3), you may spend 1 cupcake to move one tile or tart token on your board to a different empty cell. At game end, each unspent cupcake is worth 1 point.</div>
+          <div class="ft-rules__text">You start the game with 2 cupcakes - you gain more from the cupcake pot when you order a fresh pot of tea, or by plating a tile onto a cupcake plate. There is no limit on how many you may hold. Once per turn (step 3), you may spend 1 cupcake to move one tile or tart token on your board to a different empty cell. At game end, each unspent cupcake is worth 1 point.</div>
         </div>
 
         <div class="ft-rules__section">
           <div class="ft-rules__section-title">Scoring</div>
           <div class="ft-rules__text">Your final score adds up four things:</div>
-          <div class="ft-rules__text"><strong>Cake stand:</strong> each row scores by how many plates it fills — the bottom row climbs 2 / 6 / 14 / 26, and shorter rows have their own (lower) totals printed under the plates.</div>
+          <div class="ft-rules__text"><strong>Cake stand:</strong> each row scores by how many plates it fills - the bottom row climbs 2 / 6 / 14 / 26, and shorter rows have their own (lower) totals printed under the plates.</div>
           <div class="ft-rules__text"><strong>Crumb tray:</strong> 1 point per tile.</div>
           <div class="ft-rules__text"><strong>Card VP:</strong> the victory-point value shown on each claimed card.</div>
           <div class="ft-rules__text"><strong>Cupcakes:</strong> 1 point for each remaining cupcake.</div>
@@ -90,7 +90,7 @@ export function showRulesModal() {
         <div class="ft-rules__section">
           <div class="ft-rules__section-title">Game Ends When</div>
           <div class="ft-rules__text">• The last card is claimed from the card market, OR</div>
-          <div class="ft-rules__text">• A player's board is completely full (tiles + tarts) at the start of their turn — the game ends immediately, OR</div>
+          <div class="ft-rules__text">• A player's board is completely full (tiles + tarts) at the start of their turn - the game ends immediately, OR</div>
           <div class="ft-rules__text">• A player sweeps more tiles than their board can hold (every other player then takes one final turn), OR</div>
           <div class="ft-rules__text">• All market tiles are gone and the bag is empty</div>
         </div>
@@ -109,27 +109,95 @@ export function showRulesModal() {
 
 export function renderSetupScreen(container, onStart) {
   container.innerHTML = `
-    <div class="ft-setup">
-      <div class="ft-setup__title">
-        <h1>Fancy That!</h1>
-        <p class="ft-setup__intro">Configure your game</p>
+    <div class="ft-landing">
+      <header class="ft-hero">
+        <img class="ft-hero__art" src="images/landing/hero.jpg"
+             alt="Fancy That! - an illustrated afternoon tea table laden with cakes, tarts, sandwiches and a cup of tea">
+        <p class="ft-hero__tagline">A spot of strategy with your afternoon tea.</p>
+      </header>
+
+      <div class="ft-landing__main">
+        <section class="ft-about">
+          <h2 class="ft-landing__heading">About the Game</h2>
+          <p>At this tea party you fancy everything - but your eyes are bigger than your board.
+             You truly can't have your cake and eat it: every treat you serve leaves behind an
+             empty plate that never clears away. Serve shrewdly, though, and you'll be the one
+             who takes the cake.</p>
+          <p>In this spatial puzzle game, every tile leads a double life - a colour and an
+             ingredient etched on top. The colour builds the patterns that earn your patisseries;
+             the ingredient decides how they score. Juggle both to have the grandest high tea!</p>
+        </section>
+
+        <section class="ft-play">
+          <h2 class="ft-play__title">Take Your Seat</h2>
+
+          <div class="ft-setup__section">
+            <label class="ft-setup__label" for="playerCount">Number of Players</label>
+            <select id="playerCount" class="ft-setup__select">
+              <option value="2" selected>2 Players</option>
+              <option value="3">3 Players</option>
+              <option value="4">4 Players</option>
+            </select>
+          </div>
+
+          <div id="playerSetup" class="ft-setup__section"></div>
+
+          <div class="ft-play__actions">
+            <button id="rulesButton" class="ft-btn ft-btn--secondary">📖 Rules</button>
+            <button id="startButton" class="ft-btn ft-btn--primary">Start Game</button>
+          </div>
+        </section>
+
+        <ul class="ft-stats">
+          <li class="ft-stat">
+            <img src="images/landing/icon-players.jpg" alt="">
+            <span><strong>2-4</strong> players</span>
+          </li>
+          <li class="ft-stat">
+            <img src="images/landing/icon-time.jpg" alt="">
+            <span><strong>45</strong> minutes</span>
+          </li>
+          <li class="ft-stat">
+            <img src="images/landing/icon-weight.jpg" alt="">
+            <span><strong>1.8</strong> weight</span>
+          </li>
+          <li class="ft-stat">
+            <img src="images/landing/icon-age.jpg" alt="">
+            <span><strong>10+</strong> age</span>
+          </li>
+        </ul>
       </div>
 
-      <div class="ft-setup__section">
-        <label class="ft-setup__label">Number of Players</label>
-        <select id="playerCount" class="ft-setup__select">
-          <option value="2" selected>2 Players</option>
-          <option value="3">3 Players</option>
-          <option value="4">4 Players</option>
-        </select>
-      </div>
+      <section class="ft-steps">
+        <h2 class="ft-landing__heading ft-landing__heading--light">From the Trolley to the Cake Stand</h2>
+        <ol class="ft-steps__list">
+          <li class="ft-step">
+            <span class="ft-step__num">1</span>
+            <h3>Sweep</h3>
+            <p>Choose a row or column, then take every tile of one colour or ingredient.</p>
+          </li>
+          <li class="ft-step">
+            <span class="ft-step__num">2</span>
+            <h3>Arrange</h3>
+            <p>Lay your tiles on your 5×5 board, building toward the face-up patisserie cards.</p>
+          </li>
+          <li class="ft-step">
+            <span class="ft-step__num">3</span>
+            <h3>Serve</h3>
+            <p>Match a card's pattern to claim it. The treat is eaten, and an empty plate covers that space for good.</p>
+          </li>
+          <li class="ft-step">
+            <span class="ft-step__num">4</span>
+            <h3>Display</h3>
+            <p>Plated tiles climb your cake stand, each worth more than the last. Add your cards' points - best tea wins.</p>
+          </li>
+        </ol>
+      </section>
 
-      <div id="playerSetup" class="ft-setup__section"></div>
-
-      <div style="display: flex; gap: var(--spacing-sm); margin-bottom: var(--spacing-md);">
-        <button id="rulesButton" class="ft-btn ft-btn--secondary" style="flex: 1;">📖 Rules</button>
-        <button id="startButton" class="ft-btn ft-btn--primary" style="flex: 2; padding: 12px;">Start Game</button>
-      </div>
+      <footer class="ft-landing__footer">
+        <p>Designed by Dean Morris · <a href="https://www.wombatgamefactory.com" target="_blank" rel="noopener">Wombat Game Factory</a></p>
+        <p class="ft-landing__fineprint">Prototype art - a tabletop game in development.</p>
+      </footer>
     </div>
   `;
 
@@ -560,7 +628,7 @@ function updateMarket(gameState) {
     return `
       <div class="${tileClass} market-tile" data-index="${idx}" style="${isEmpty ? 'opacity: 0.3;' : ''} ${isBonusAvailable ? 'cursor: pointer;' : ''} background-color: ${tile ? getColourCSS(tile.colour) : 'white'};">
         ${tile ? `<img src="images/symbol_${tile.ingredient}.png" class="ft-tile__icon" alt="${tile.ingredient}">` : ''}
-        ${showCupcakeSymbol ? `<img src="images/cupcake.png" class="ft-market-cupcake-symbol" alt="cupcake symbol" title="Cupcake symbol — the tea player collects 1 cupcake per visible symbol">` : ''}
+        ${showCupcakeSymbol ? `<img src="images/cupcake.png" class="ft-market-cupcake-symbol" alt="cupcake symbol" title="Cupcake symbol - the tea player collects 1 cupcake per visible symbol">` : ''}
       </div>
     `;
   }).join('');
@@ -1283,7 +1351,7 @@ function renderStand(player, opts = {}) {
       // when plated onto; mark them on the board whether empty or filled.
       const isCupcakePlate = CUPCAKE_PLATES.some(p => p.rowIndex === rowIndex && p.plateIndex === k);
       const cupcakeMarker = isCupcakePlate
-        ? `<span class="ft-stand__cupcake-plate" title="Cupcake plate — plating here gains a cupcake">🧁</span>`
+        ? `<span class="ft-stand__cupcake-plate" title="Cupcake plate - plating here gains a cupcake">🧁</span>`
         : '';
       slots += `
         <div class="ft-stand__slot">
@@ -1455,7 +1523,7 @@ function updatePhaseControls(gameState) {
 
   controls.classList.remove('ft-hidden');
   const hasCupcakes = player.cupcakes > 0 && gameState.gamePhase === 'move' && !gameState.cupcakesUsedThisTurn;
-  const cupcakeHint = hasCupcakes ? `<div class="ft-phase-bar__cupcake-hint">💡 You have ${player.cupcakes} cupcake${player.cupcakes === 1 ? '' : 's'} available — click one to move one tile or tart on your board!</div>` : '';
+  const cupcakeHint = hasCupcakes ? `<div class="ft-phase-bar__cupcake-hint">💡 You have ${player.cupcakes} cupcake${player.cupcakes === 1 ? '' : 's'} available - click one to move one tile or tart on your board!</div>` : '';
   const ui = window._gameUI;
   const canUndo = ui?.canUndo === true;
   const undoBtn = canUndo ? `<button id="undoBtn" class="ft-btn ft-btn--secondary ft-btn--small">↩ Undo</button>` : '';
@@ -1481,7 +1549,7 @@ function updatePhaseControls(gameState) {
     const potSize = getVisibleCupcakeSymbols(gameState);
     const teaInstruction = teaUsed
       ? 'Sweep a row or column above'
-      : 'Sweep a row or column above — or play your Fresh Pot of Tea first';
+      : 'Sweep a row or column above - or play your Fresh Pot of Tea first';
     const teaTitle = teaUsed
       ? 'Fresh Pot of Tea already used this game'
       : `Play your Fresh Pot of Tea before sweeping (collects the ${potSize}-cupcake pot; you still take your full turn)`;
@@ -1739,7 +1807,7 @@ function cardSpriteHTML(card, displayHeight, { extraClass = '', clickable = fals
   return `
     <div data-card-id="${card.id}" class="card-market-sprite ft-card ${extraClass}" style="position: relative; width: ${DISPLAY_WIDTH}px; height: ${displayHeight}px; background-image: url('images/reward_card_layout.png?v=3'); background-position: ${bgPosX}px ${bgPosY}px; background-size: ${bgSizeW}px ${bgSizeH}px; background-repeat: no-repeat; ${clickable ? 'cursor: pointer;' : ''}">
       <div class="ft-card__vp" title="${card.vp} victory point${card.vp === 1 ? '' : 's'}">${card.vp}</div>
-      ${badge ? '<div class="ft-card__teacup" title="On order — not yet served">🫖</div>' : ''}
+      ${badge ? '<div class="ft-card__teacup" title="On order - not yet served">🫖</div>' : ''}
     </div>
   `;
 }
@@ -1750,7 +1818,7 @@ function cardSpriteHTML(card, displayHeight, { extraClass = '', clickable = fals
 function showTeaConfirm(potSize = 0) {
   const potText = potSize > 0
     ? `You will collect a pot of <strong>${potSize} cupcake${potSize === 1 ? '' : 's'}</strong>, refresh both markets, then take your full turn. Once per game.`
-    : `No cupcake symbols are uncovered, so the pot is empty this turn — but you will still refresh both markets and reserve a card, then take your full turn. Once per game.`;
+    : `No cupcake symbols are uncovered, so the pot is empty this turn - but you will still refresh both markets and reserve a card, then take your full turn. Once per game.`;
   const modal = document.createElement('div');
   modal.className = 'ft-modal';
   modal.innerHTML = `
