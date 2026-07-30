@@ -1,3 +1,4 @@
+const K = (n, d) => (process.env[n] !== undefined ? parseFloat(process.env[n]) : d);
 import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleCupcakeSymbols, canOrderTea, STAND_ROW_VALUES, CUPCAKE_PLATES, CUPCAKE_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE } from '../engine/game.js';
 
 // Approximate value of a completed claim beyond the card's printed VP: the
@@ -50,7 +51,7 @@ function isCupcakePlate(rowIndex, plateIndex) {
 //   and rather more when spent on a move that completes a card; 6 points puts a
 //   minimum 2-cupcake pot (12) just over half the mean swap value (~22), which
 //   is the balance the arena runs below settled on.
-const TEA_CUPCAKE_VALUE = 6;
+const TEA_CUPCAKE_VALUE = K('TEA_CUPCAKE_VALUE', 6);
 // TEA_DENIAL_SHARE: how much of the NEXT player's gain from the flush we charge
 //   against our own. The flush restocks the board for everybody, so a refresh
 //   that helps them more than us is a gift even though we sweep first; equally,
@@ -58,7 +59,7 @@ const TEA_CUPCAKE_VALUE = 6;
 //   and becomes the denial value the design doc asks for. Half-weight because we
 //   move first on the fresh market and they do not, and because at 3-4 players
 //   the next seat is only one of several rivals.
-const TEA_DENIAL_SHARE = 0.5;
+const TEA_DENIAL_SHARE = K('TEA_DENIAL_SHARE', 0.5);
 // TEA_FRESH_SAMPLES: synthetic fresh markets averaged per decision. The estimate
 //   is noisy per draw and the decision is only a sign test, so three is plenty;
 //   this runs once per turn (never inside an MCTS rollout), so the cost is small.
@@ -69,7 +70,7 @@ const TEA_FRESH_SAMPLES = 3;
 //   tempo weapon when ahead and a self-inflicted loss when behind, so the bot
 //   requires this much of a committed-score lead (pot included) before pulling
 //   it. See worthEndingTheGame.
-const TEA_ENDGAME_LEAD_MARGIN = 0;
+const TEA_ENDGAME_LEAD_MARGIN = K('TEA_ENDGAME_LEAD_MARGIN', 0);
 
 // ── Symbol-steering constants ──────────────────────────────────────────────
 // A sweep can only ever UNCOVER teapot symbols, and a player may only order a
@@ -82,17 +83,17 @@ const TEA_ENDGAME_LEAD_MARGIN = 0;
 // SYMBOL_ARM_COST: charged when our sweep takes the visible count from below
 //   REFRESH_THRESHOLD to at or above it - i.e. we hand the next player the whole
 //   refresh option, which the probe above shows is worth a lot.
-const SYMBOL_ARM_COST = 8;
+const SYMBOL_ARM_COST = K('SYMBOL_ARM_COST', 8);
 // SYMBOL_GIFT_COST: charged per extra symbol exposed once the gate is already
 //   open (or beyond the threshold), because each one adds a cupcake to the pot
 //   the next player collects.
-const SYMBOL_GIFT_COST = 3;
+const SYMBOL_GIFT_COST = K('SYMBOL_GIFT_COST', 3);
 // SYMBOL_COST_FLOOR: the share of the above still charged on a nearly-empty
 //   market. A board that is almost swept out is heading for the mandatory
 //   empty-market refresh anyway, and everyone's sweeps there are poor, so
 //   holding the gate shut buys much less; the cost tapers with how many tiles
 //   are left rather than switching off.
-const SYMBOL_COST_FLOOR = 0.25;
+const SYMBOL_COST_FLOOR = K('SYMBOL_COST_FLOOR', 0.25);
 
 // ── Reserve-selection constants ────────────────────────────────────────────
 // RESERVE_COMPLETION_ODDS[m]: measured probability that a card reserved while m
@@ -105,17 +106,17 @@ const SYMBOL_COST_FLOOR = 0.25;
 const RESERVE_COMPLETION_ODDS = [0.55, 0.55, 0.33, 0.20, 0.04, 0.0];
 // RESERVE_MAX_MISSING: hard cut. Was 4, which is most of a six-cell pattern and
 //   completed 4% of the time.
-const RESERVE_MAX_MISSING = 2;
+const RESERVE_MAX_MISSING = K('RESERVE_MAX_MISSING', 2);
 // RESERVE_LATE_MAX_MISSING / RESERVE_LATE_CLAIMS: near the end there is no time
 //   to build a window, and the probe measured last-quarter reserves completing
 //   6% (4p). With this few claims left in the game the bot only reserves what is
 //   already all but finished.
-const RESERVE_LATE_MAX_MISSING = 1;
-const RESERVE_LATE_CLAIMS = 2;
+const RESERVE_LATE_MAX_MISSING = K('RESERVE_LATE_MAX_MISSING', 1);
+const RESERVE_LATE_CLAIMS = K('RESERVE_LATE_CLAIMS', 2);
 // RESERVE_MIN_VALUE: expected payout (in VP) below which the slot is better left
 //   empty for the next refresh - a reserve is limited to one card and a dud
 //   blocks the slot for the rest of the game.
-const RESERVE_MIN_VALUE = 1.5;
+const RESERVE_MIN_VALUE = K('RESERVE_MIN_VALUE', 1.5);
 
 // ── Claim-selection constants ──────────────────────────────────────────────
 // Two incentives changed on 28 July: the card row GROWS on every claimless turn
@@ -128,20 +129,20 @@ const RESERVE_MIN_VALUE = 1.5;
 //   against the card's printed VP when choosing between claimable cards. The
 //   plate value is real VP, but it is realised at the end of the game and the
 //   one-row-per-ingredient rule can strand it, so it is discounted.
-const CLAIM_DEST_WEIGHT = 0.6;
+const CLAIM_DEST_WEIGHT = K('CLAIM_DEST_WEIGHT', 0.6);
 // CLAIM_PROTECT_OTHER: penalty for sacrificing a tile that another card we can
 //   ALSO claim needs. Under the old refill-on-claim rule that card was about to
 //   be replaced anyway; now it sits in the row waiting for us.
-const CLAIM_PROTECT_OTHER = 4;
+const CLAIM_PROTECT_OTHER = K('CLAIM_PROTECT_OTHER', 4);
 // CLAIM_RESERVE_BONUS: prefer finishing a reserved card when values are close.
 //   An unclaimed reserve scores 0 at the end AND blocks the one reserve slot,
 //   and it is the one card a refresh flush cannot take away.
-const CLAIM_RESERVE_BONUS = 1.5;
+const CLAIM_RESERVE_BONUS = K('CLAIM_RESERVE_BONUS', 1.5);
 // CLAIM_FLUSH_RISK_BONUS: ...unless a refresh is armed right now, in which case
 //   the ROW is the perishable place to be claiming from - the next player can
 //   flush the whole row to the discard before our next turn, and cannot touch
 //   our reserve.
-const CLAIM_FLUSH_RISK_BONUS = 2;
+const CLAIM_FLUSH_RISK_BONUS = K('CLAIM_FLUSH_RISK_BONUS', 2);
 // ───────────────────────────────────────────────────────────────────────────
 
 // Per-colour demand derived from viable pattern windows on this player's
@@ -606,7 +607,7 @@ function drawSyntheticMarket(tileCount, cells) {
 // below is judgement, in scoreSweeps points, and weighs the four inputs the doc
 // names:
 //
-//   REWARD - a flat TEA_POT_REWARD cupcakes (30 July rule), priced at
+//   REWARD - potSize cupcakes (2-4, sized by the gate), priced at
 //     TEA_CUPCAKE_VALUE each. Ours alone; only the active player is paid.
 //   HOW WELL THE MARKET SUITS US - our best sweep on a fresh deal minus our best
 //     sweep on the market in front of us. This is where the flush's destructive
@@ -638,7 +639,7 @@ export function decideOrderTea(gameState) {
   // The redeal draws from bag + everything the flush returns, so this is how big
   // the fresh market can be; short of `cells` it also means the bag ends empty.
   const freshTiles = Math.min(cells, gameState.bag.length + onBoard);
-  if (freshTiles < cells && !worthEndingTheGame(gameState, TEA_POT_REWARD)) return false;
+  if (K('TEA_ENDGAME_GUARD', 1) && freshTiles < cells && !worthEndingTheGame(gameState, TEA_POT_REWARD)) return false;
 
   const meIndex = gameState.currentPlayerIndex;
   const myCtx = sweepContext(gameState.players[meIndex], gameState.cardMarket);
@@ -669,7 +670,7 @@ export function decideOrderTea(gameState) {
     + (myFresh - myNow)
     - TEA_DENIAL_SHARE * (nextFresh - nextNow);
 
-  return value > 0;
+  return value > K('TEA_FIRE_MARGIN', 0);
 }
 
 // Which market card players[reserverIndex] should reserve during a tea round

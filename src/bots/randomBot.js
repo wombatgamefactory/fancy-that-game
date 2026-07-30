@@ -3,23 +3,26 @@
 // policy) plus its own chaotic tea decisions — used to exercise the tea path
 // under maximum noise in simulate.js.
 
-import { getValidPlacements, getTotalCardsClaimed } from '../engine/game.js';
+import { getValidPlacements, canOrderTea } from '../engine/game.js';
+import { refreshWouldRestockBoard } from './basicBot.js';
 
 // Reuse the fast bot's random legal-move policy for the ordinary phases (its
 // decideClaim already treats a reserved card as a claim candidate).
 export { decideSweep, decideBonusTile, decidePlacements, decideClaim } from './fastBot.js';
 
-// Order a fresh pot of tea (once per game) with a small random chance each turn
-// while the card is unused, and force it in the late game so it never goes to
-// waste. NOTE: the old "no valid sweep -> tea" escape hatch is gone — the engine
-// backstop now auto-refreshes a completely empty tile market, so tea is no longer
-// the only way to make progress.
+// Order a fresh pot of tea with a small random chance on any turn where it is
+// legal. canOrderTea is the whole legality gate (28 July: the once-per-game tea
+// card is deleted, so there is no per-player flag to check and no "use it before
+// it goes to waste" late-game clause). Two deliberate restraints on top of it:
+// the chance stays low, because a bot that flushed at every legal opportunity
+// would churn the tile market every turn and make the noise-test games
+// meaningless; and refreshWouldRestockBoard declines a flush that could not
+// refill the board (see its comment in basicBot.js - now play judgement, since
+// the empty-bag rule closed the cupcake-pump loop for good).
 export function decideOrderTea(gameState) {
-  const player = gameState.players[gameState.currentPlayerIndex];
-  if (player.teaCardUsed) return false;
-  const cardsLeft = Math.max(0, gameState.cardsNeededToEnd - getTotalCardsClaimed(gameState));
-  if (cardsLeft <= gameState.playerCount) return true; // late game — use it
-  return Math.random() < 0.05;
+  if (!canOrderTea(gameState)) return false;
+  if (!refreshWouldRestockBoard(gameState)) return false;
+  return Math.random() < 0.1;
 }
 
 // Reserve a random market card when this player's reserve is empty, else pass.

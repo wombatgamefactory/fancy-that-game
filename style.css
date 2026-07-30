@@ -103,80 +103,102 @@ label {
 /* --- Hero --- */
 
 .ft-hero {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--spacing-md);
   text-align: center;
-  margin-bottom: var(--spacing-2xl);
 }
 
 .ft-hero__art {
   display: block;
   width: 100%;
   height: auto;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-card);
+  border-radius: var(--radius-md);
 }
 
 .ft-hero__tagline {
   font-family: 'Fraunces', serif;
-  font-size: clamp(17px, 2.4vw, 24px);
+  font-size: clamp(15px, 1.9vw, 19px);
   font-style: italic;
   color: var(--color-accent);
-  margin-top: var(--spacing-lg);
+  margin: var(--spacing-md) 0 var(--spacing-xs);
 }
 
-/* --- About + play panel + stats --- */
+/* --- Two-column layout: art + about | setup + stats --- */
 
 .ft-landing__main {
   display: grid;
-  grid-template-columns: 1fr 1fr 120px;
+  grid-template-columns: 1fr 1fr;
   gap: var(--spacing-xl);
   align-items: start;
   margin-bottom: var(--spacing-2xl);
 }
 
-/* Stat list — deliberately quiet, sits beside the setup card */
+.ft-landing__col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  height: 100%;
+}
+
+/* The lower card in each column absorbs the slack so both columns end level. */
+.ft-about,
+.ft-stats {
+  flex: 1;
+}
+
+/* Stat list - deliberately quiet, sits under the setup card */
 
 .ft-stats {
   list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-md) var(--spacing-sm);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  align-content: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg) var(--spacing-md);
+  background: var(--color-card);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
 }
 
 .ft-stat {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--spacing-sm);
-  font-size: 12px;
+  gap: var(--spacing-xs);
+  text-align: center;
+  font-size: 13px;
   color: var(--color-text-secondary);
 }
 
 .ft-stat img {
-  width: 22px;
-  height: 22px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
   mix-blend-mode: multiply;
-  flex-shrink: 0;
 }
 
 .ft-stat strong {
-  color: var(--color-text-primary);
-  font-weight: 600;
+  display: block;
+  font-family: 'Fraunces', serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-accent);
+  line-height: 1.2;
 }
 
-.ft-landing__heading {
+/* Card headings carry the sell sheet's gold rule. */
+.ft-landing__heading,
+.ft-play__title {
   font-family: 'Fraunces', serif;
   font-size: 22px;
   color: var(--color-accent);
-  margin-bottom: var(--spacing-md);
-}
-
-.ft-landing__heading--light {
-  color: var(--color-accent-gold);
-  text-align: center;
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 2px solid var(--color-accent-gold);
+  margin-bottom: var(--spacing-lg);
 }
 
 .ft-about {
@@ -205,13 +227,6 @@ label {
   padding: var(--spacing-xl);
 }
 
-.ft-play__title {
-  font-family: 'Fraunces', serif;
-  font-size: 22px;
-  color: var(--color-accent);
-  margin-bottom: var(--spacing-lg);
-}
-
 .ft-play__actions {
   display: flex;
   gap: var(--spacing-sm);
@@ -219,56 +234,6 @@ label {
 
 .ft-play__actions .ft-btn--secondary { flex: 1; }
 .ft-play__actions .ft-btn--primary { flex: 2; padding: 12px; }
-
-/* --- How to play --- */
-
-.ft-steps {
-  background: #3F4B3E;
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-xl);
-  margin-bottom: var(--spacing-2xl);
-}
-
-.ft-steps__list {
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--spacing-md);
-}
-
-.ft-step {
-  background: var(--color-cream);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-lg);
-  text-align: center;
-}
-
-.ft-step__num {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: var(--color-accent);
-  color: #fff;
-  font-family: 'Fraunces', serif;
-  font-size: 16px;
-  font-weight: 700;
-  margin-bottom: var(--spacing-sm);
-}
-
-.ft-step h3 {
-  color: var(--color-accent);
-  font-size: 17px;
-  margin-bottom: var(--spacing-xs);
-}
-
-.ft-step p {
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--color-text-secondary);
-}
 
 /* --- Footer --- */
 
@@ -291,9 +256,7 @@ label {
 
 @media (max-width: 860px) {
   .ft-landing { padding: var(--spacing-lg) var(--spacing-md) 0; }
-  .ft-landing__main,
-  .ft-steps__list { grid-template-columns: 1fr; }
-  .ft-stats { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: var(--spacing-lg); }
+  .ft-landing__main { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 520px) {
@@ -799,17 +762,29 @@ label {
 
 /* ======= Card VP Badge ======= */
 
+/* Cards are containers so the badge can size itself in cqw and stay glued to
+   the printed laurel-wreath VP as cards shrink/grow with row length. */
+.card-market-sprite {
+  container-type: size;
+}
+
+/* Overlays the VP number printed on the card art (bottom-center, inside a
+   laurel wreath ~18% of card width, centered ~8.6% up from the bottom edge).
+   Sized to the wreath ring so the laurel frames the badge without spilling
+   into the pattern tiles above. Drawn programmatically so the displayed value
+   always matches the data even if the image is stale. */
 .ft-card__vp {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 26px;
-  height: 26px;
+  bottom: 2%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 18.5cqw;
+  height: 18.5cqw;
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: 'Fraunces', serif;
-  font-size: 14px;
+  font-size: 10cqw;
   font-weight: 700;
   color: var(--color-text-primary);
   background: radial-gradient(circle at 50% 40%, #FBE7B8 0%, var(--color-accent-gold) 100%);
@@ -959,7 +934,9 @@ label {
 
 .ft-market-grid {
   display: grid;
-  grid-template-columns: repeat(6, var(--tile-size));
+  /* 5x5 tile market at all player counts. board.js also sets this inline from
+     gameState.marketSize, which wins; this is the static fallback. */
+  grid-template-columns: repeat(5, var(--tile-size));
   gap: var(--tile-gap);
   padding: 0;
   background: transparent;
@@ -1022,20 +999,56 @@ label {
   object-fit: contain;
 }
 
-/* Cupcake symbol printed on the tile-market board. Rendered only on the four
+/* Teapot symbol printed on the tile-market board. Rendered only on the five
    symbol cells while they are EMPTY (see CUPCAKE_SYMBOL_CELLS / updateMarket).
-   Small and dimmed — a printed-on-board marker, not a collectible tile — showing
-   what the tea player would collect into the cupcake pot. */
-.ft-market-cupcake-symbol {
+   A printed-on-board marker, not a collectible tile, showing what the tea player
+   would collect into the cupcake pot. Empty market cells are otherwise drawn at
+   0.3 opacity; a symbol cell is NOT dimmed that way (updateMarket skips it), or
+   the marker would be all but invisible at 0.3 x 0.5.
+
+   The size and opacity here are tuned to the TEAPOT art, which replaced a
+   cupcake. Two things about it force higher values than the cupcake needed:
+   it is cream-on-cream against the #FFFCF5 cell rather than saturated purple,
+   so it washes out below ~0.6; and it is a landscape image, so object-fit:
+   contain in a square box renders far less ink than the square cupcake did. */
+.ft-market-teapot-symbol {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 55%;
-  height: 55%;
+  width: 62%;
+  height: 62%;
   object-fit: contain;
-  opacity: 0.5;
+  opacity: 0.7;
   pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+/* THE GATE, SHOWN ON THE BOARD. Once REFRESH_THRESHOLD symbols are uncovered a
+   fresh pot may be ordered, so at that instant every showing symbol lights up.
+   Together with the panel below the market it means a player never has to count
+   cells to know whether the trigger is live. */
+.ft-market-teapot-symbol--armed {
+  opacity: 1;
+  filter: drop-shadow(0 0 3px rgba(212, 175, 55, 0.9));
+}
+
+/* A market cell carrying a showing symbol, still waiting on the threshold. */
+.ft-tile--symbol {
+  border-color: var(--color-border);
+  background: #FFFCF5;
+}
+
+/* ...and the same cell once the threshold is met. */
+.ft-tile--symbol-armed {
+  border: 2px solid var(--color-accent-gold);
+  background: rgba(212, 175, 55, 0.14);
+  animation: pulse-symbol 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse-symbol {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.55); }
+  50% { box-shadow: 0 0 0 4px rgba(212, 175, 55, 0); }
 }
 
 .ft-tile.drag-over {
@@ -1121,13 +1134,115 @@ label {
 
 /* ======= Card Market ======= */
 
+/* The card row is VARIABLE-LENGTH AND UNCAPPED (28 July rework): it starts at 4,
+   grows by one at the end of every turn, shrinks by one per market claim, and
+   only a fresh pot of tea cuts it back to 4. Measured lengths run to ~13 against
+   a competent bot and past 20 against a weak one, so the layout is designed for
+   ~20 cards on screen.
+
+   The row is framed as its own strip so its length is legible and contained:
+   a header states the count, and .ft-card-grid below caps its height and scrolls
+   internally, so a growing row can never push the info panel (or the rest of the
+   page) around. Card SIZE also steps down as the row grows - that half lives in
+   cardDisplayHeight() in board.js, because the sprite maths needs the number. */
+.ft-card-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  background: #FAFAFA;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.ft-card-row__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.ft-card-row__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.ft-card-row__count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+/* A long row is a standing invitation to order a fresh pot of tea (the only
+   thing that cuts it back), so it is worth flagging rather than just counting. */
+.ft-card-row__count--long {
+  color: var(--color-accent-gold);
+  background: rgba(212, 175, 55, 0.14);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--spacing-sm);
+}
+
+/* In-page notice above the row - currently the one-claim-per-turn rejection.
+   Deliberately not a modal: it answers a click, it does not interrupt a turn. */
+.ft-card-row__notice {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-danger);
+  background: rgba(192, 57, 43, 0.08);
+  border-left: 3px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.ft-card-row__notice--flash {
+  animation: notice-flash 0.45s ease;
+}
+
+@keyframes notice-flash {
+  0% { opacity: 0; transform: translateY(-4px); }
+  35% { background: rgba(192, 57, 43, 0.28); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
 .ft-card-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
   gap: var(--spacing-md);
-  padding: 0;
+  /* Cap + scroll. Paired with cardDisplayHeight()'s steps this shows everything
+     up to ~18 cards outright and scrolls a 20+ row by about one line, instead of
+     letting it grow to over a thousand pixels and shove the page around. The
+     padding is not decoration - .ft-card--claimable draws a glow ring 8px outside
+     the card, which a scroll container would otherwise clip. */
+  max-height: 480px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px;
   background: transparent;
   border-radius: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.ft-card-grid::-webkit-scrollbar {
+  width: 10px;
+}
+
+.ft-card-grid::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 5px;
+}
+
+.ft-card-grid::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Cards a player may not claim again this turn: dimmed, but still clickable so
+   the click can be answered with the rule (see showCardRowNotice). */
+.ft-card--claim-used {
+  opacity: 0.55;
+  filter: grayscale(0.35);
 }
 
 .ft-card {
@@ -1807,6 +1922,22 @@ select:focus {
   margin-bottom: 0;
 }
 
+/* Text quoted verbatim from a printed component - currently the fresh-pot
+   trigger on the tile market board. Set apart so a player recognises it as
+   something to look for ON the board, not as more rulebook prose. */
+.ft-rules__quote {
+  font-family: 'Fraunces', serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-accent);
+  background: rgba(212, 175, 55, 0.12);
+  border: 1px dashed var(--color-accent-gold);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+  text-align: center;
+}
+
 .ft-rules__btn {
   width: 100%;
   margin-top: var(--spacing-lg);
@@ -1828,21 +1959,124 @@ select:focus {
   border-color: var(--color-accent);
 }
 
-/* Confirm overlay reuses .ft-modal; the player-aid image is the hero. */
-.ft-tea-confirm {
-  text-align: center;
-  max-width: 420px;
+/* ---- The persistent fresh-pot affordance, under the tile market ----
+   Deliberately QUIET (30 July). This was previously a full printed panel - trigger
+   line, pip gauge, reason sentence and a standing red warning about the flush -
+   which made it the loudest element on the screen and the first thing a new player
+   read. It is now one compact row: the gate reading, and the button when the order
+   is legal. The rules panel explains the action; the confirm dialog still states
+   the destructive flush in full before anything is committed. */
+.ft-tea-option {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, #FDF9F2 0%, rgba(212, 175, 55, 0.06) 100%);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm) var(--spacing-md);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.ft-tea-confirm__image {
-  width: 100%;
-  max-width: 300px;
-  height: auto;
-  display: block;
-  margin: var(--spacing-lg) auto;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-card);
+/* Orderable right now: solid gold border and a lit panel. */
+.ft-tea-option--ready {
+  border: 2px solid var(--color-accent-gold);
+  background: linear-gradient(135deg, #FBF5EC 0%, rgba(212, 175, 55, 0.18) 100%);
+  box-shadow: 0 0 12px rgba(212, 175, 55, 0.35);
+}
+
+/* Not available: the gauge stays perfectly readable, it just stops advertising. */
+.ft-tea-option--locked {
+  opacity: 0.85;
+}
+
+/* Forced (the tile market emptied): no longer an option, so it stops looking
+   like one and shouts instead. */
+.ft-tea-option--forced {
+  border: 2px solid var(--color-danger);
+  background: linear-gradient(135deg, #FBF5EC 0%, rgba(192, 57, 43, 0.12) 100%);
+  animation: pulse-forced 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-forced {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(192, 57, 43, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(192, 57, 43, 0); }
+}
+
+/* The whole affordance in its resting state: "3/4 teapots visible". */
+.ft-tea-option__count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.ft-tea-option__count strong {
+  font-family: 'Fraunces', serif;
+  font-size: 16px;
+  color: var(--color-accent);
+}
+
+.ft-tea-option__icon {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+/* Shown only for the two states the gauge cannot express by itself: a forced pot,
+   and a dead bag. Everything else stays silent. */
+.ft-tea-option__note {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.45;
+}
+
+.ft-tea-option--forced .ft-tea-option__note {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+/* Pushed to the far end of the row, so the gauge reads first. */
+.ft-tea-option__btn {
+  margin-left: auto;
+}
+
+/* Confirm overlay reuses .ft-modal. There is no card image any more - the Fresh
+   Pot of Tea card is deleted, so the overlay explains the board option instead. */
+.ft-tea-confirm {
+  text-align: center;
+  max-width: 460px;
+}
+
+.ft-tea-confirm__steps {
+  text-align: left;
+  margin: var(--spacing-lg) 0 var(--spacing-md);
+  padding-left: var(--spacing-2xl);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+}
+
+.ft-tea-confirm__steps li {
+  margin-bottom: var(--spacing-xs);
+}
+
+.ft-tea-confirm__steps-warning {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.ft-tea-confirm__warning {
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.5;
+  background: rgba(192, 57, 43, 0.08);
+  border-left: 3px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
 }
 
 .ft-tea-confirm__buttons {
@@ -1867,11 +2101,35 @@ select:focus {
   animation: slide-in 0.3s ease;
 }
 
+/* A FORCED round (empty tile market) is not a choice anyone made, so it must not
+   look like the celebratory voluntary one. Red, not gold. */
+.ft-tea-banner--forced {
+  background: linear-gradient(135deg, #FBF5EC 0%, rgba(192, 57, 43, 0.12) 100%);
+  border: 1px solid var(--color-danger);
+  border-left: 4px solid var(--color-danger);
+}
+
+.ft-tea-banner__head {
+  flex: 1 1 260px;
+}
+
 .ft-tea-banner__title {
   font-family: 'Fraunces', serif;
   font-weight: 700;
   font-size: 15px;
   color: var(--color-accent);
+}
+
+.ft-tea-banner--forced .ft-tea-banner__title {
+  color: var(--color-danger);
+  letter-spacing: 0.03em;
+}
+
+.ft-tea-banner__subtitle {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
 }
 
 .ft-tea-banner__text {

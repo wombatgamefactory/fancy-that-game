@@ -3,12 +3,15 @@ import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacement
 
 // Tea-round decisions (v1): delegate to the basicBot heuristics rather than
 // expanding the MCTS move space. Adding orderTea/teaReserve as tree actions
-// would balloon branching and rollout cost for a rarely-optimal action; the
-// shared basicBot core makes this a clean two-function delegation. Known
-// limitation — revisit if simulation shows MCTS losing ground after the
-// feature. NOTE: rollouts never generate orderTea (selectHeuristicSweep only
-// returns real sweeps), so a 'teaReserve' phase never arises inside a playout;
-// the guard in rollout() below is purely defensive against future changes.
+// would balloon branching and rollout cost; the shared basicBot core makes this
+// a clean two-function delegation. Known limitation — revisit if simulation
+// shows MCTS losing ground after the feature, and note that the refresh is now
+// repeatable and destructive, which makes its timing a much bigger decision than
+// the old once-per-game card was. NOTE: rollouts never CHOOSE to order tea
+// (selectHeuristicSweep only returns real sweeps), but a playout can still enter
+// the 'teaReserve' phase without asking, because an empty tile market at the
+// start of a turn forces a mandatory refresh — hence the live guard in rollout()
+// below.
 export function decideOrderTea(gameState) {
   return basicOrderTea(gameState);
 }
@@ -95,8 +98,20 @@ function cloneState(state) {
     bag: [...state.bag],
     gameDeck: [...state.gameDeck],
     cardMarket: [...state.cardMarket],
+    // cardDiscard MUST be copied: every simulated turn now ends with a card
+    // dealt from the deck (dealEndOfTurnCard), and drawCard reshuffles the
+    // discard pile in place once the deck runs dry. Sharing the real array
+    // would let a search rollout shuffle and consume the live discard pile.
+    cardDiscard: [...state.cardDiscard],
     pendingSweepTiles: [...state.pendingSweepTiles],
     stats: { ...state.stats },
+    // A rollout is imaginary and must not be logged. Belt and braces: the engine
+    // also refuses to log through a collector that is not bound to the exact
+    // state passed in (see metrics() in game.js), so a clone cannot pollute the
+    // real game's metrics even if this line is ever lost again. It was lost
+    // once, and hundreds of imaginary rollout turns per real turn went onto the
+    // end screen as sweeps, claims and refills.
+    statsCollector: null,
   };
 }
 
@@ -501,10 +516,10 @@ function rollout(state, playerIndex) {
           skipClaim(cloned);
         }
       } else if (cloned.gamePhase === 'teaReserve') {
-        // Defensive only: rollouts never generate orderTea, so this phase is
-        // unreachable here today. If a future rollout policy adds tea, resolve
-        // each reserve with the basic heuristic (or a forced pass) so playouts
-        // can neither stall nor throw.
+        // Reachable: the rollout policy never orders tea itself, but an empty
+        // tile market at the start of a turn forces a mandatory refresh, which
+        // opens a reserve round mid-playout. Resolve each reserve with the basic
+        // heuristic (or a forced pass) so playouts neither stall nor throw.
         const idx = cloned.teaReserverIndex;
         const cardId = teaReserveMustPass(cloned) ? null : basicTeaReserve(cloned, idx);
         teaReserve(cloned, cardId);

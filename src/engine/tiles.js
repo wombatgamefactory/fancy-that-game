@@ -90,10 +90,18 @@ export function createTileBag() {
   return bag;
 }
 
+// The PLAYER's personal 5×5 tile board (25 cells). Unrelated to the tile market
+// (see MARKET_SIZE in game.js), which is separately 5×5 - do not substitute one
+// for the other.
 export const BOARD_SIZE = 5;
-export const CARD_MARKET_SIZE = 4;
+// Cards dealt face-up to the card market at setup, and dealt back after a tea
+// flush (30 July: reduced from 4; the row grows on its own each turn).
+export const INITIAL_MARKET_CARDS = 3;
+// Hard ceiling on the card row (30 July rule change). The end-of-turn deal
+// (dealEndOfTurnCard) is skipped while the row already holds this many cards.
+export const MAX_MARKET_CARDS = 8;
 // Cards a 2-player game must see claimed before the card-count end condition
-// fires (8 tarts × 2 players). This is NOT a deck size — the deck holds all 46
+// fires (8 tarts × 2 players). This is NOT a deck size — the deck holds all 47
 // cards left after the market is dealt (see initGameDeck). 3p/4p scale this up
 // (24/32) in createGame.
 export const CARDS_TO_END_2P = 16;
