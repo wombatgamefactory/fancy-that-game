@@ -1,5 +1,15 @@
+// tuneBot2: basicBot with its tuning constants exposed as environment
+// variables, for arena.js sweeps. REGENERATED FROM basicBot.js - do not edit the
+// heuristics here, edit basicBot and regenerate, or the comparison is meaningless.
+//
+// Knob names are prefixed 'B_' so tuneBot and tuneBot2 can be swept
+// against each other in one process without their environments colliding.
+//
+// Rebuilt 1 August for the end-of-turn tea trigger. The refresh-timing and
+// symbol-avoidance knobs are gone with the decision they tuned;
+// TEA_TRIGGER_PRIORITY_VALUE and TEA_TRIGGER_HANDOVER_COST replace them.
 const K = (n, d) => (process.env[n] !== undefined ? parseFloat(process.env[n]) : d);
-import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleCupcakeSymbols, canOrderTea, STAND_ROW_VALUES, CUPCAKE_PLATES, CUPCAKE_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE } from '../engine/game.js';
+import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleCupcakeSymbols, STAND_ROW_VALUES, CUPCAKE_PLATES, CUPCAKE_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE } from '../engine/game.js';
 
 // Approximate value of a completed claim beyond the card's printed VP: the
 // sacrificed tile is banked on the stand or crumb tray. A conservative floor —
@@ -23,77 +33,70 @@ function isCupcakePlate(rowIndex, plateIndex) {
   return CUPCAKE_PLATES.some(p => p.rowIndex === rowIndex && p.plateIndex === plateIndex);
 }
 
-// ── Refresh ("fresh pot of tea") tuning constants ──────────────────────────
-// Ordering a fresh pot NO LONGER costs the sweep (the player takes their full
-// turn afterwards) and, since 28 July, is no longer a once-per-game card either:
-// it is a repeatable board option gated on visible teapot symbols
-// (canOrderTea). What remains is a genuine timing call, and the design doc calls
-// it "the AI's biggest new decision". decideOrderTea below weighs the four
-// inputs the doc names: how well the current tile market suits us, the reward
-// (visible symbols), denial (the flush wipes the market the NEXT player was
-// about to sweep, and we sweep the fresh one first), and the race.
+// ── Teapot-trigger tuning constants (rewritten 1 August) ───────────────────
+// THE RULE CHANGED UNDER THIS HEURISTIC, AND IT CHANGED SIGN.
 //
-// THE MEASUREMENT THAT SET THESE. The step-2 placeholder that lived here refused
-// a modest pot unless the current market scored <= 2.5 by scoreSweeps. Probing
-// 120 real games showed the best-sweep score at a turn start actually runs
-// mean 39, median 30, p10 3.9 - so that clause fired on well under a tenth of
-// chances and the "modest pot" branch was effectively dead code. Worse, the same
-// probe showed that at the moment a refresh first becomes LEGAL the tile market
-// is already down to a mean of 11-13 tiles of 25, so a flush IMPROVES the firing
-// player's own best sweep 93-95% of the time, by a mean of ~22 score points.
-// The refresh is destructive in the rules, but in practice it is a restock: the
-// gate cannot open until the board has been swept well down. So the bot's old
-// reluctance was simply wrong, and the constants below are set to fire unless
-// the evaluation actively says no.
+// Tea used to be a voluntary action taken at the START of a turn. A sweep can
+// only ever UNCOVER teapot symbols, so a symbol we exposed during our turn was
+// never ours to use - it armed the option for the player on our left, who at 2
+// players is our only opponent. Symbol exposure was therefore priced purely as a
+// gift (SYMBOL_ARM_COST / SYMBOL_GIFT_COST / SYMBOL_COST_FLOOR, all deleted), and
+// the bot played to keep the gate shut. There was also a whole separate decision,
+// decideOrderTea, weighing whether to spend a turn-start on the flush; it is gone
+// too, along with its helpers.
 //
-// TEA_CUPCAKE_VALUE: one cupcake of the pot expressed in scoreSweeps points, so
-//   the reward and the market swap can be added together. A cupcake is 1 VP kept
-//   and rather more when spent on a move that completes a card; 6 points puts a
-//   minimum 2-cupcake pot (12) just over half the mean swap value (~22), which
-//   is the balance the arena runs below settled on.
+// Since 1 August the pot fires at the END of the turn that uncovers the fourth
+// teapot, and it belongs to whoever pulls the trigger. Uncovering it now pays US:
+//
+//   + the pot, a flat TEA_POT_REWARD cupcakes at TEA_CUPCAKE_VALUE each
+//   + first pick in the reserve round, which the tea player leads
+//   - the freshly dealt 25-tile market, which we do NOT get to sweep (we have
+//     already swept by the time the pot resolves) and the next seat does
+//
+// That last term is the counterweight the rule deliberately builds in, and it is
+// why this comes out a near-wash rather than a magnet. Deliberately so:
+// uncovering the fourth teapot should be a tiebreak between otherwise similar
+// sweeps, not a reason to take a bad one.
+//
+// TEA_CUPCAKE_VALUE: one cupcake expressed in scoreSweeps points. A cupcake is
+//   1 VP kept and rather more when spent on a move that completes a card.
 const TEA_CUPCAKE_VALUE = K('B_TEA_CUPCAKE_VALUE', 6);
-// TEA_DENIAL_SHARE: how much of the NEXT player's gain from the flush we charge
-//   against our own. The flush restocks the board for everybody, so a refresh
-//   that helps them more than us is a gift even though we sweep first; equally,
-//   when their current market is strong and ours is not, this term goes NEGATIVE
-//   and becomes the denial value the design doc asks for. Half-weight because we
-//   move first on the fresh market and they do not, and because at 3-4 players
-//   the next seat is only one of several rivals.
-const TEA_DENIAL_SHARE = K('B_TEA_DENIAL_SHARE', 0.5);
-// TEA_FRESH_SAMPLES: synthetic fresh markets averaged per decision. The estimate
-//   is noisy per draw and the decision is only a sign test, so three is plenty;
-//   this runs once per turn (never inside an MCTS rollout), so the cost is small.
-const TEA_FRESH_SAMPLES = 3;
-// TEA_ENDGAME_LEAD_MARGIN: a refresh whose redeal cannot fill the board drains
-//   the bag to zero, which ends the game at the next turn boundary - the firing
-//   player takes their full turn and NOBODY else gets another one. That is a
-//   tempo weapon when ahead and a self-inflicted loss when behind, so the bot
-//   requires this much of a committed-score lead (pot included) before pulling
-//   it. See worthEndingTheGame.
-const TEA_ENDGAME_LEAD_MARGIN = K('B_TEA_ENDGAME_LEAD_MARGIN', 0);
-
-// ── Symbol-steering constants ──────────────────────────────────────────────
-// A sweep can only ever UNCOVER teapot symbols, and a player may only order a
-// refresh at the START of their own turn - so a symbol we expose during our turn
-// is never ours to use. It is handed to whoever moves next, who at 2 players is
-// our only opponent. There is no "expose it for myself" case: any player may
-// fire once the gate is open, and the next seat gets first refusal. So symbol
-// exposure is priced purely as a gift.
+// TEA_TRIGGER_PRIORITY_VALUE: leading the reserve round. Worth well under a full
+//   cupcake: we get first refusal on the card row, but every opponent still gets
+//   a pick behind us, so the edge is priority rather than exclusivity.
+const TEA_TRIGGER_PRIORITY_VALUE = K('B_TEA_TRIGGER_PRIORITY_VALUE', 4);
+// TEA_TRIGGER_HANDOVER_COST: what we charge ourselves for the fresh board the
+//   next seat gets to sweep.
 //
-// SYMBOL_ARM_COST: charged when our sweep takes the visible count from below
-//   REFRESH_THRESHOLD to at or above it - i.e. we hand the next player the whole
-//   refresh option, which the probe above shows is worth a lot.
-const SYMBOL_ARM_COST = K('B_SYMBOL_ARM_COST', 8);
-// SYMBOL_GIFT_COST: charged per extra symbol exposed once the gate is already
-//   open (or beyond the threshold), because each one adds a cupcake to the pot
-//   the next player collects.
-const SYMBOL_GIFT_COST = K('B_SYMBOL_GIFT_COST', 3);
-// SYMBOL_COST_FLOOR: the share of the above still charged on a nearly-empty
-//   market. A board that is almost swept out is heading for the mandatory
-//   empty-market refresh anyway, and everyone's sweeps there are poor, so
-//   holding the gate shut buys much less; the cost tapers with how many tiles
-//   are left rather than switching off.
-const SYMBOL_COST_FLOOR = K('B_SYMBOL_COST_FLOOR', 0.25);
+//   MEASURED AT ZERO, against expectation. This started at 11, from the step-6
+//   probe's finding that a fresh 25-tile market is worth roughly +22 scoreSweeps
+//   points to whoever sweeps it, charged at the old TEA_DENIAL_SHARE half weight.
+//   That value made the whole trigger worth 6 + 4 - 11 = -1, i.e. a near-wash,
+//   which is what the RULE is designed to be.
+//
+//   The bot does not agree. Swept over 200-game 2p arena runs (tuneBot vs
+//   basicBot, with a same-value control landing on exactly 50.0% to check the
+//   harness): 0 beat 11 twice independently, at 59.1% and 56.6%. Charging MORE
+//   got monotonically worse (18 -> 51.0%, 25 -> 47.9%). At 11 the heuristic was
+//   worse than useless - it lost to oldBasicBot, which ignores teapots entirely,
+//   at 47.4%; at 0 it beats that same baseline at 56.6%.
+//
+//   Everything from about -20 to 0 is indistinguishable at 300 games (45-53%, and
+//   a self-match reads 46.9%, so the noise floor is about +/-3pp). 0 is the point
+//   in that flat region closest to the theory, so that is where it sits rather
+//   than at a spuriously precise negative number.
+//
+//   WHY IT IS PROBABLY ZERO. Charging for the handover double-counts: rawSweepScore
+//   is already computed on the live market, so a board worth handing over is a
+//   board we were already scoring poorly. The term as written taxed the trigger a
+//   second time for the same fact.
+//
+//   THIS IS A DESIGN SIGNAL, NOT JUST A BOT ONE. At 0 the trigger is worth +10 to
+//   the bot, so it actively CHASES the fourth teapot rather than treating it as a
+//   coin-flip. The rule successfully inverted the old avoidance, but the fresh
+//   board is not currently a strong enough counterweight to make the trade neutral.
+//   If it should be neutral, the pot is the knob - see TEA_POT_REWARD.
+const TEA_TRIGGER_HANDOVER_COST = K('B_TEA_TRIGGER_HANDOVER_COST', 0);
 
 // ── Reserve-selection constants ────────────────────────────────────────────
 // RESERVE_COMPLETION_ODDS[m]: measured probability that a card reserved while m
@@ -353,9 +356,9 @@ export function decideDestination(player, tile, gameState = null) {
 // What one player wants out of the tile market: per-colour claim demand from
 // their board's viable windows against the (public) card row, plus the
 // ingredients of their locked, unfilled stand rows, which only that ingredient
-// can ever extend. Built once and reused across however many markets we score -
-// this is the expensive half of sweep scoring, so decideOrderTea below scores a
-// live market and several hypothetical fresh ones off a single context.
+// can ever extend. Built once and reused across every sweep candidate - this is
+// the expensive half of sweep scoring, so scoreSweeps builds one context and
+// scores the whole market against it.
 function sweepContext(player, cardMarket) {
   const wantedIngredients = new Set();
   for (const row of player.stand) {
@@ -390,19 +393,10 @@ function rawSweepScore(market, sweep, marketSize, ctx) {
   return score;
 }
 
-// Best raw sweep score available to `ctx` on an arbitrary market array. Used to
-// compare the live market against hypothetical fresh ones (and to compare our
-// market with the next player's view of the same market), so it deliberately
-// takes a bare market rather than a game state. getValidSweeps only reads
-// .market and .marketSize, so a two-field stand-in is a legitimate argument.
-function bestSweepScoreOn(market, marketSize, ctx) {
-  let best = 0;
-  for (const sweep of getValidSweeps({ market, marketSize })) {
-    const score = rawSweepScore(market, sweep, marketSize, ctx);
-    if (score > best) best = score;
-  }
-  return best;
-}
+// (bestSweepScoreOn, which scored an arbitrary market array for a given player,
+// was deleted on 1 August with decideOrderTea - its only caller. It existed to
+// compare the live market against synthetic fresh ones when weighing whether to
+// order tea, and there is no such decision any more.)
 
 // How many currently-COVERED teapot symbols this sweep would uncover. Symbol
 // cells are config (CUPCAKE_SYMBOL_CELLS), and the 30 July inner-ring placement
@@ -426,41 +420,38 @@ function symbolsExposedBySweep(market, sweep, marketSize) {
   return exposed;
 }
 
-// What uncovering `exposed` symbols costs us, given `visibleNow` already show
-// and `onBoard` of `cells` market cells still hold a tile.
+// What uncovering `exposed` teapot symbols is WORTH to us, given `visibleNow`
+// already show. SIGNED: positive means the exposure is good for us.
 //
-// SYMBOL STEERING, AND WHY IT IS ONE-DIRECTIONAL. A player may only order a
-// refresh at the START of their own turn, and sweeps only ever uncover symbols
-// (nothing but a refresh covers them again). So a symbol we uncover during our
-// turn is available to every opponent before it is available to us, and the next
-// seat gets first refusal - at 2 players, our only opponent. There is no
-// "advance the unlock for myself" case to balance against the gift; the way to
-// unlock it for yourself is to leave the gate shut and let somebody else blink.
-// Hence a cost, never a bonus. The taper handles the one honest counterweight:
-// on a nearly-empty board the mandatory empty-market refresh is coming whatever
-// we do, so withholding buys much less.
-function symbolExposureCost(visibleNow, exposed, onBoard, cells) {
+// Exactly one thing matters - whether this is the move that takes the visible
+// count across REFRESH_THRESHOLD, and so fires the pot at the end of OUR turn.
+//   - Symbols beyond the threshold are worth nothing extra. The pot has been flat
+//     since 30 July, and the flush re-covers every cell regardless.
+//   - Falling short of the threshold is worth nothing either. Uncovering the
+//     third teapot does not arm anything for anyone: the next player cannot use
+//     it (there is no start-of-turn option any more), and by our next turn the
+//     board will have moved on.
+//   - visibleNow is always BELOW the threshold when this runs, because tea fires
+//     at the end of the turn that reaches it - no turn can begin with the trigger
+//     armed. The >= branch is defence in depth for a constructed state.
+//
+// No taper. The old one existed because a nearly-empty board was heading for the
+// mandatory empty-market refresh anyway, so withholding bought less. That
+// backstop is unreachable now: the end-of-turn trigger always fires first.
+function symbolTriggerValue(visibleNow, exposed) {
   if (exposed === 0) return 0;
-  const after = visibleNow + exposed;
-  if (after < REFRESH_THRESHOLD) return 0; // gate still shut - nothing handed over
+  if (visibleNow >= REFRESH_THRESHOLD) return 0;              // already fired
+  if (visibleNow + exposed < REFRESH_THRESHOLD) return 0;     // still short
 
-  let cost = 0;
-  if (visibleNow < REFRESH_THRESHOLD) {
-    // We opened the gate: the whole option changes hands, plus a cupcake for
-    // each symbol past the threshold.
-    cost = SYMBOL_ARM_COST + (after - REFRESH_THRESHOLD) * SYMBOL_GIFT_COST;
-  } else {
-    // Already open - each extra symbol is one more cupcake in someone's pot.
-    cost = exposed * SYMBOL_GIFT_COST;
-  }
-
-  const taper = SYMBOL_COST_FLOOR + (1 - SYMBOL_COST_FLOOR) * (cells > 0 ? onBoard / cells : 1);
-  return cost * taper;
+  return TEA_POT_REWARD * TEA_CUPCAKE_VALUE
+    + TEA_TRIGGER_PRIORITY_VALUE
+    - TEA_TRIGGER_HANDOVER_COST;
 }
 
 // All valid sweeps on the LIVE market scored best-first for the active player.
-// Score = raw tile value minus the symbol-exposure cost. Shared by rankSweeps
-// (which drops the scores) and decideSweep.
+// Score = raw tile value PLUS the (signed, usually slightly negative) value of
+// any teapot trigger the sweep pulls. Shared by rankSweeps (which drops the
+// scores) and decideSweep.
 function scoreSweeps(gameState) {
   const validSweeps = getValidSweeps(gameState);
   if (validSweeps.length === 0) return [];
@@ -469,14 +460,11 @@ function scoreSweeps(gameState) {
   const marketSize = gameState.marketSize;
   const ctx = sweepContext(currentPlayer, gameState.cardMarket);
 
-  const cells = gameState.market.length;
-  let onBoard = 0;
-  for (const tile of gameState.market) if (tile) onBoard++;
   const visibleNow = getVisibleCupcakeSymbols(gameState);
 
   const scored = validSweeps.map(sweep => {
     const score = rawSweepScore(gameState.market, sweep, marketSize, ctx)
-      - symbolExposureCost(visibleNow, symbolsExposedBySweep(gameState.market, sweep, marketSize), onBoard, cells);
+      + symbolTriggerValue(visibleNow, symbolsExposedBySweep(gameState.market, sweep, marketSize));
     return { sweep, score };
   });
 
@@ -510,168 +498,37 @@ function minMissingForCard(board, card) {
 // (plus the tiles the flush returns to it) hold enough to fill every cell?
 //
 // This began life as a workaround for a rules hole: once the bag was short, the
-// redeal left cells empty - including teapot-symbol cells - so the gate stayed
-// OPEN and a bot that only checked canOrderTea would order tea again, on the same
+// redeal left cells empty - including teapot-symbol cells - so the trigger stayed
+// armed and a bot that only checked legality would order tea again, on the same
 // turn, for another pot, forever (~200 refreshes, games that never ended). That
-// hole is CLOSED in the rules now: canOrderTea requires a non-empty bag, and the
+// hole is CLOSED in the rules: a refresh needs a non-empty bag (isTeaDue) and the
 // game ends on an empty bag ('bagEmpty'), so nothing here is load-bearing for
 // termination any more.
 //
-// basicBot NO LONGER USES IT AS A VETO (step 6). It was deliberately stricter
-// than the rule, and measurement showed the strictness was costing real games:
-// at 4 players it blocked three quarters of the 4-symbol chances and two thirds
-// of the 3-symbol ones, which is most of where the design doc's "bad market
-// sitting unflushed" failure mode came from, and it also threw away the strongest
-// tempo play in the game (drain the bag, take the last turn, end it while
-// ahead). Both halves of its judgement are now folded into decideOrderTea:
-// "a flush that cannot refill the whole board is mostly just a reshuffle" falls
-// out for free, because the fresh-market estimate is sized to bag + board and so
-// scores barely better than the market we already have; and "it hands the game
-// its ending" becomes worthEndingTheGame, which asks whether we WANT the ending.
-// The export stays for randomBot, which uses it as its own crude gate.
+// NOTHING USES IT AS A VETO SINCE 1 AUGUST, because there is no longer a decision
+// to veto - tea fires automatically at the end of a turn. Kept as a small public
+// predicate: "would a flush right now actually restock the board, or just
+// reshuffle what is left?" is still a real question about a position, and it is
+// how a caller can spot the flush that will drain the bag and end the game.
 export function refreshWouldRestockBoard(gameState) {
   let onBoard = 0;
   for (const tile of gameState.market) if (tile) onBoard++;
   return gameState.bag.length + onBoard >= gameState.market.length;
 }
 
-// Score already banked by a player: stand rows + crumbs + claimed card VP +
-// unspent cupcakes. Mirrors calculateFinalScores on a live state (everything it
-// reads is public at the table). Used only by worthEndingTheGame.
-function committedScore(player) {
-  let score = 0;
-  for (let i = 0; i < player.stand.length; i++) {
-    const row = player.stand[i];
-    if (row.tiles.length > 0) score += STAND_ROW_VALUES[i][row.tiles.length - 1];
-  }
-  score += player.crumbTray.length;
-  for (const cardId of player.claimedCards) {
-    const card = REWARD_CARDS.find(c => c.id === cardId);
-    if (card) score += card.vp;
-  }
-  score += player.cupcakes || 0;
-  return score;
-}
-
-// A refresh whose redeal cannot fill all 25 cells drains the bag to exactly zero
-// (the redeal takes everything), and an empty bag ends the game at the next turn
-// boundary - AFTER we finish the turn we are about to take, and BEFORE anyone
-// else gets another one. Firing it is therefore a deliberate "and that's time,
-// thank you": worth it holding a lead, a straight loss trailing. Committed score
-// only, deliberately: board potential is exactly what everyone is about to lose.
-function worthEndingTheGame(gameState, potSize) {
-  const me = gameState.players[gameState.currentPlayerIndex];
-  const mine = committedScore(me) + potSize;
-  let bestOpponent = 0;
-  for (const player of gameState.players) {
-    if (player === me) continue;
-    const score = committedScore(player);
-    if (score > bestOpponent) bestOpponent = score;
-  }
-  return mine >= bestOpponent + TEA_ENDGAME_LEAD_MARGIN;
-}
-
-// A hypothetical fresh tile market holding `tileCount` tiles scattered over
-// `cells` cells, for judging what a flush would deal us.
+// DELETED 1 AUGUST: decideOrderTea, and the three helpers that existed only to
+// serve it - committedScore, worthEndingTheGame and drawSyntheticMarket.
 //
-// PUBLIC INFORMATION ONLY. The composition sampled is the printed bag - 5
-// colours x 5 ingredients, 4 copies each - not gameState.bag, which the bot must
-// never look inside. Only the bag's LENGTH is read (by the caller, to size the
-// deal), which every player can see well enough and which the engine's own end
-// condition uses. Sampling with replacement from a flat distribution slightly
-// understates how much a 100-tile bag depletes, which is immaterial to a
-// comparison of two markets scored the same way.
-function drawSyntheticMarket(tileCount, cells) {
-  const market = new Array(cells).fill(null);
-  // WHERE the tiles land matters: sweeps are lines, so a fresh deal has to be
-  // scattered rather than packed into the first cells.
-  const order = [];
-  for (let i = 0; i < cells; i++) order.push(i);
-  for (let i = cells - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [order[i], order[j]] = [order[j], order[i]];
-  }
-  for (let i = 0; i < tileCount && i < cells; i++) {
-    market[order[i]] = {
-      colour: COLOURS[Math.floor(Math.random() * COLOURS.length)],
-      ingredient: INGREDIENTS[Math.floor(Math.random() * INGREDIENTS.length)],
-    };
-  }
-  return market;
-}
-
-// Whether to order a fresh pot of tea at the start of this turn - the design
-// doc's "AI's biggest new decision". canOrderTea is the ONLY legality gate (right
-// phase, no pending bonus tile, non-empty bag, enough visible symbols); the bot
-// never re-derives it and there is no once-per-game check any more. Everything
-// below is judgement, in scoreSweeps points, and weighs the four inputs the doc
-// names:
+// The design doc used to call ordering tea "the AI biggest new decision": a
+// voluntary start-of-turn flush weighed on how well the current market suited
+// us, the pot, denial of the next player, and the race to fire first. The rule
+// change removes the decision entirely - tea now fires by itself at the end of
+// the turn that uncovers the fourth teapot. What survives of that judgement is
+// symbolTriggerValue above, which prices the trigger inside the sweep choice
+// where the decision now actually lives.
 //
-//   REWARD - potSize cupcakes (2-4, sized by the gate), priced at
-//     TEA_CUPCAKE_VALUE each. Ours alone; only the active player is paid.
-//   HOW WELL THE MARKET SUITS US - our best sweep on a fresh deal minus our best
-//     sweep on the market in front of us. This is where the flush's destructive
-//     half is priced, and it also silently handles a short bag: when the bag can
-//     only part-fill the board, the "fresh" market is barely bigger than the one
-//     we already have and the term goes to nothing on its own.
-//   DENIAL - the same difference computed for the NEXT player, subtracted at
-//     TEA_DENIAL_SHARE. A flush restocks the board for everyone, so when they
-//     gain more than we do it is a gift however good it looks in isolation; when
-//     they are sitting on a market built for their board and we are not, the
-//     term flips sign and pays us to wipe it. We sweep the fresh board first,
-//     which is why it is a share and not the whole of their gain. Their personal
-//     board and the card row are both face up, so this reads nothing hidden -
-//     their RESERVED card is hidden and is deliberately not consulted.
-//   THE RACE - handled by there being no "wait for a bigger pot" clause at all.
-//     Every player can fire the moment the gate is open and the next seat gets
-//     first refusal, so a pot left on the table is usually somebody else's. The
-//     bot banks a positive evaluation rather than holding out for a better one.
-//
-// The one hard veto left is the endgame one: see worthEndingTheGame.
-export function decideOrderTea(gameState) {
-  if (!canOrderTea(gameState)) return false;
-
-  const cells = gameState.market.length;
-  const marketSize = gameState.marketSize;
-  let onBoard = 0;
-  for (const tile of gameState.market) if (tile) onBoard++;
-
-  // The redeal draws from bag + everything the flush returns, so this is how big
-  // the fresh market can be; short of `cells` it also means the bag ends empty.
-  const freshTiles = Math.min(cells, gameState.bag.length + onBoard);
-  if (K('B_TEA_ENDGAME_GUARD', 1) && freshTiles < cells && !worthEndingTheGame(gameState, TEA_POT_REWARD)) return false;
-
-  const meIndex = gameState.currentPlayerIndex;
-  const myCtx = sweepContext(gameState.players[meIndex], gameState.cardMarket);
-  const nextIndex = (meIndex + 1) % gameState.playerCount;
-  const nextCtx = nextIndex === meIndex
-    ? null
-    : sweepContext(gameState.players[nextIndex], gameState.cardMarket);
-
-  const myNow = bestSweepScoreOn(gameState.market, marketSize, myCtx);
-  const nextNow = nextCtx ? bestSweepScoreOn(gameState.market, marketSize, nextCtx) : 0;
-
-  // Both players are scored on the SAME synthetic draws, so the difference of
-  // the two gains is a paired comparison and needs far fewer samples than two
-  // independent estimates would.
-  let myFresh = 0;
-  let nextFresh = 0;
-  for (let s = 0; s < TEA_FRESH_SAMPLES; s++) {
-    const synthetic = drawSyntheticMarket(freshTiles, cells);
-    myFresh += bestSweepScoreOn(synthetic, marketSize, myCtx);
-    if (nextCtx) nextFresh += bestSweepScoreOn(synthetic, marketSize, nextCtx);
-  }
-  myFresh /= TEA_FRESH_SAMPLES;
-  nextFresh /= TEA_FRESH_SAMPLES;
-
-  // The pot is a flat TEA_POT_REWARD (30 July rule), so the reward term does
-  // not scale with the visible symbols.
-  const value = TEA_POT_REWARD * TEA_CUPCAKE_VALUE
-    + (myFresh - myNow)
-    - TEA_DENIAL_SHARE * (nextFresh - nextNow);
-
-  return value > K('B_TEA_FIRE_MARGIN', 0);
-}
+// Drivers no longer call decideOrderTea. It is gone rather than stubbed so that
+// a driver still calling it fails loudly instead of silently never firing.
 
 // Which market card players[reserverIndex] should reserve during a tea round
 // (returns a cardId), or null to pass.
@@ -687,14 +544,14 @@ export function decideOrderTea(gameState) {
 // nearly done.
 //
 // So the score is now an EXPECTED PAYOUT: (card VP + the banked sacrifice tile)
-// times the measured odds of ever completing it. A reserve slot holds one card
-// for the rest of the game, so a card that will not finish is not free - it
-// blocks the next refresh's reserve too, which is why there is a floor
-// (RESERVE_MIN_VALUE) below which passing is correct, and why the bar rises
-// again once the game is nearly over.
+// times the measured odds of ever completing it. The RESERVE_MIN_VALUE floor
+// below which passing is correct dates from the one-card slot (a dud blocked
+// every future refresh's reserve too). Since 1 Aug the reserve is UNCAPPED, so a
+// dud costs nothing but the take - the floor is kept as a "not worth it" bar and
+// still rises once the game is nearly over, but it is now the obvious knob to
+// re-tune if bots look too shy about reserving.
 export function decideTeaReserve(gameState, reserverIndex) {
   const player = gameState.players[reserverIndex];
-  if (player.reservedCard !== null) return null;
 
   // Roughly how many more claims this player gets before the card-count end
   // condition fires. The same public estimate decideDestination uses.
@@ -738,10 +595,8 @@ export function rankBonusTiles(gameState) {
 
   // Symbol steering applies here too: the bonus tile is lifted straight off the
   // market, so taking the one sitting on a teapot-symbol cell uncovers that
-  // symbol for the next player exactly as a sweep would.
-  const cells = gameState.market.length;
-  let onBoard = 0;
-  for (const tile of gameState.market) if (tile) onBoard++;
+  // symbol exactly as a sweep would - and, since 1 August, can be what fires our
+  // own end-of-turn pot.
   const visibleNow = getVisibleCupcakeSymbols(gameState);
 
   const scored = availableTiles.map(({ tile, index }) => {
@@ -754,7 +609,7 @@ export function rankBonusTiles(gameState) {
     score += ingredientCount * 0.5;
 
     if (CUPCAKE_SYMBOL_CELLS.includes(index)) {
-      score -= symbolExposureCost(visibleNow, 1, onBoard, cells);
+      score += symbolTriggerValue(visibleNow, 1);
     }
 
     return { index, score };
@@ -842,11 +697,10 @@ export function decideMove(gameState) {
   const player = gameState.players[gameState.currentPlayerIndex];
   if (gameState.cupcakesUsedThisTurn || player.cupcakes <= 0) return null;
 
-  // Claimable candidates are the market cards PLUS this player's reserved card
-  // (which completes as a normal claim). A cupcake move that finishes either is
-  // fair game.
-  const candidateCards = [...gameState.cardMarket];
-  if (player.reservedCard) candidateCards.push(player.reservedCard);
+  // Claimable candidates are the market cards PLUS this player's reserved cards
+  // (which complete as normal claims). A cupcake move that finishes any of them
+  // is fair game.
+  const candidateCards = [...gameState.cardMarket, ...player.reservedCards];
 
   let bestNowVp = 0;
   const matchedNow = new Set();
@@ -944,10 +798,9 @@ function destinationValue(player, tile, gameState) {
 export function decideClaim(gameState) {
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
-  // Candidates are the market cards PLUS this player's reserved card, which
-  // completes as a normal claim (claim() resolves a reserved id transparently).
-  const candidateCards = [...gameState.cardMarket];
-  if (currentPlayer.reservedCard) candidateCards.push(currentPlayer.reservedCard);
+  // Candidates are the market cards PLUS this player's reserved cards, which
+  // complete as normal claims (claim() resolves a reserved id transparently).
+  const candidateCards = [...gameState.cardMarket, ...currentPlayer.reservedCards];
 
   // Find all claimable cards.
   const claimableCards = [];
@@ -962,10 +815,13 @@ export function decideClaim(gameState) {
     return null; // Skip claim
   }
 
-  const reservedId = currentPlayer.reservedCard ? currentPlayer.reservedCard.id : null;
-  // Is the card row itself at risk before our next turn? The refresh gate is
-  // open (visible symbols at or over the threshold) and the bag can still
-  // refill, so any player from here to our next turn can flush the whole row.
+  const reservedIds = new Set(currentPlayer.reservedCards.map(c => c.id));
+  // Is the card row itself about to be flushed? Since 1 August this is a
+  // CERTAINTY rather than a risk: if the threshold is met and the bag can still
+  // refill, tea fires at the end of this very turn and the whole row goes to the
+  // discard. Anything we do not claim (or reserve) now is gone. Same expression
+  // as the engine's isTeaDue, deliberately - claim scoring must not disagree with
+  // the trigger.
   const rowAtRisk = gameState.bag.length > 0
     && getVisibleCupcakeSymbols(gameState) >= REFRESH_THRESHOLD;
 
@@ -1037,7 +893,7 @@ export function decideClaim(gameState) {
 
     // Card value = printed VP + what the sacrifice banks, plus perishability.
     let cardScore = (candidate.card.vp || 0) + bestRemoveValue * CLAIM_DEST_WEIGHT;
-    const fromReserve = candidate.card.id === reservedId;
+    const fromReserve = reservedIds.has(candidate.card.id);
     if (fromReserve) cardScore += CLAIM_RESERVE_BONUS;
     else if (rowAtRisk) cardScore += CLAIM_FLUSH_RISK_BONUS;
     // Tie-break toward the smaller pattern (fewer tiles committed to one shape).

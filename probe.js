@@ -6,7 +6,7 @@
 //   B. reserve completion rate BUCKETED BY minMissing at the moment of reserving,
 //      which is the evidence for or against "the bot reserves cards it cannot
 //      realistically complete".
-import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, moveTile, refill, orderTea, teaReserve, teaReserveMustPass, calculateFinalScores, getValidSweeps, getPatternWindows, getVisibleCupcakeSymbols, canOrderTea, CUPCAKE_SYMBOL_CELLS } from './src/engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, moveTile, refill, teaReserve, teaReserveMustPass, calculateFinalScores, getValidSweeps, getPatternWindows, getVisibleCupcakeSymbols, CUPCAKE_SYMBOL_CELLS } from './src/engine/game.js';
 import { COLOURS, INGREDIENTS } from './src/engine/tiles.js';
 import * as basicBot from './src/bots/basicBot.js';
 
@@ -86,7 +86,6 @@ const games = parseInt(process.argv[2]) || 40;
 const playerCount = parseInt(process.argv[3]) || 3;
 
 const sweepScores = [];        // best sweep score at every turn start
-const legalRows = [];          // one row per legal-refresh turn start
 const reserveRows = [];        // { game, playerId, mm, vp, cardId }
 const results = [];
 
@@ -113,22 +112,7 @@ for (let g = 0; g < games; g++) {
           const want = wantedIngredients(me);
           const cur = bestSweepScore(gameState.market, gameState.marketSize, dem, want);
           sweepScores.push(cur);
-          if (canOrderTea(gameState)) {
-            let onBoard = 0;
-            for (const t of gameState.market) if (t) onBoard++;
-            const n = Math.min(gameState.market.length, gameState.bag.length + onBoard);
-            let fresh = 0;
-            const SAMPLES = 6;
-            for (let k = 0; k < SAMPLES; k++) fresh += bestSweepScore(randomMarket(n, gameState.marketSize), gameState.marketSize, dem, want);
-            fresh /= SAMPLES;
-            const nextP = gameState.players[(gameState.currentPlayerIndex + 1) % playerCount];
-            const ndem = buildColourDemand(nextP.board, gameState.cardMarket);
-            const nwant = wantedIngredients(nextP);
-            const nextCur = bestSweepScore(gameState.market, gameState.marketSize, ndem, nwant);
-            legalRows.push({ pot: getVisibleCupcakeSymbols(gameState), onBoard, n, cur, fresh, nextCur, fired: basicBot.decideOrderTea(gameState) });
-          }
         }
-        if (basicBot.decideOrderTea(gameState)) { gameState = orderTea(gameState); break; }
         const d = basicBot.decideSweep(gameState);
         if (d) gameState = sweep(gameState, d.rowOrCol, d.isRow, d.declaration, d.declarationType);
         else gameState.gamePhase = 'place';
@@ -175,20 +159,9 @@ const mean = a => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 console.log(`\n--- A. SWEEP SCORE SCALE (${sweepScores.length} turn starts, ${games} games @ ${playerCount}p) ---`);
 console.log(`best-sweep score: mean=${mean(sweepScores).toFixed(2)} p10=${q(sweepScores, 0.10).toFixed(2)} p25=${q(sweepScores, 0.25).toFixed(2)} p50=${q(sweepScores, 0.5).toFixed(2)} p75=${q(sweepScores, 0.75).toFixed(2)} p90=${q(sweepScores, 0.9).toFixed(2)} max=${Math.max(...sweepScores).toFixed(2)}`);
 
-console.log(`\n--- A2. FRESH-MARKET SWAP (${legalRows.length} legal-refresh turn starts) ---`);
-console.log(`tiles on board at a legal chance: mean=${mean(legalRows.map(r => r.onBoard)).toFixed(1)}, fresh deal size mean=${mean(legalRows.map(r => r.n)).toFixed(1)}`);
-console.log(`my best sweep now:  mean=${mean(legalRows.map(r => r.cur)).toFixed(2)}`);
-console.log(`my best sweep fresh:mean=${mean(legalRows.map(r => r.fresh)).toFixed(2)}`);
-const swaps = legalRows.map(r => r.fresh - r.cur);
-console.log(`swap value (fresh-now): mean=${mean(swaps).toFixed(2)} p10=${q(swaps, 0.1).toFixed(2)} p25=${q(swaps, 0.25).toFixed(2)} p50=${q(swaps, 0.5).toFixed(2)} p75=${q(swaps, 0.75).toFixed(2)} p90=${q(swaps, 0.9).toFixed(2)}`);
-console.log(`share of chances where a flush IMPROVES my sweep: ${(100 * swaps.filter(v => v > 0).length / swaps.length).toFixed(1)}%`);
-for (const pot of [2, 3, 4]) {
-  const rows = legalRows.filter(r => r.pot === pot);
-  if (!rows.length) continue;
-  console.log(`  pot=${pot}: n=${rows.length} onBoard=${mean(rows.map(r => r.onBoard)).toFixed(1)} swap=${mean(rows.map(r => r.fresh - r.cur)).toFixed(2)} oldBotFired=${(100 * rows.filter(r => r.fired).length / rows.length).toFixed(0)}%`);
-}
-const nextSwaps = legalRows.map(r => r.nextCur);
-console.log(`next player's best sweep on the live market: mean=${mean(nextSwaps).toFixed(2)} p75=${q(nextSwaps, 0.75).toFixed(2)} p90=${q(nextSwaps, 0.9).toFixed(2)}`);
+// A2 (fresh-market swap value) is RETIRED. It existed to calibrate the constants
+// of the old voluntary order-tea decision; the 1 August rule change deletes that
+// decision, so there is nothing left to calibrate.
 
 console.log(`\n--- B. RESERVE COMPLETION BY minMissing AT RESERVE TIME (${reserveRows.length} reserves) ---`);
 for (let mm = 0; mm <= 5; mm++) {

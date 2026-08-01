@@ -18,8 +18,8 @@ export const STAND_ROW_VALUES = [[1, 4, 12, 22], [2, 7, 14], [3, 9], [5]];
 
 // Teapot symbols printed on the tile-market board. FIVE cells carry a printed
 // teapot symbol; a symbol is "visible" when its cell is currently empty (no
-// tile sitting on it). Visible symbols GATE the fresh pot of tea
-// (REFRESH_THRESHOLD of them must show — see canOrderTea). Since 30 July they no
+// tile sitting on it). Visible symbols TRIGGER the fresh pot of tea
+// (REFRESH_THRESHOLD of them must show - see isTeaDue). Since 30 July they no
 // longer size its reward — the pot pays a flat TEA_POT_REWARD at the cupcake-pot
 // step (see finishTeaRound). There is NO cupcake cap any more — every gain
 // always pays.
@@ -45,18 +45,22 @@ export const STAND_ROW_VALUES = [[1, 4, 12, 22], [2, 7, 14], [3, 9], [5]];
 // move them without touching any code that reads them.
 export const CUPCAKE_SYMBOL_CELLS = [3, 5, 12, 19, 21];
 
-// Visible teapot symbols needed at the start of a turn before a player may
-// order a fresh pot of tea. This is the designated tuning knob for refresh
-// frequency - never additional rules. Read by canOrderTea, which is the one gate
-// the engine, the bots and the UI all share.
+// Visible teapot symbols that force a fresh pot of tea at the END of a turn.
+// This is the designated tuning knob for refresh frequency - never additional
+// rules. Read by isTeaDue, which is the one trigger the engine, the bots and the
+// UI all share.
 //
-// Adopted 30 July: 4 of the 5 symbols must be visible before a fresh pot may be
-// ordered. Since no two symbols share a row or column (see CUPCAKE_SYMBOL_CELLS),
-// uncovering each one costs a separate sweep, so the gate demands four
-// symbol-clearing sweeps. Simulation (200 games/config, 30 July) put the flush
-// at ~6.5-7.3 tiles left on the board against a 5-7 design target; the previous
-// 3-of-4 gate flushed at ~9 and a 4-of-4 gate overshot to ~3.5 while making
-// forced empty-board refreshes common.
+// Adopted 30 July: 4 of the 5 symbols must be visible. Since no two symbols share
+// a row or column (see CUPCAKE_SYMBOL_CELLS), uncovering each one costs a
+// separate sweep, so the trigger demands four symbol-clearing sweeps. Simulation
+// (200 games/config, 30 July) put the flush at ~6.5-7.3 tiles left on the board
+// against a 5-7 design target; the previous 3-of-4 gate flushed at ~9 and a
+// 4-of-4 gate overshot to ~3.5 while making forced empty-board refreshes common.
+//
+// 1 AUGUST RE-TUNE NOTE. Those figures were measured under the old START-OF-TURN
+// rule, where the flush landed one turn AFTER the fourth symbol appeared. The
+// end-of-turn trigger fires on the same turn, so the board carries roughly one
+// tile more at the flush. Re-measure before moving this knob.
 export const REFRESH_THRESHOLD = 4;
 
 // Adopted 30 July: the cupcake pot is a FLAT reward - the tea player gains
@@ -168,15 +172,21 @@ function metrics(gameState) {
 // nothing for these hooks.
 // ---------------------------------------------------------------------------
 
-// METRIC 3 (card row size) and the OPPORTUNITY denominator for metric 1. One
+// METRIC 3 (card row size) and, since 1 August, the TRIGGER INVARIANT. One
 // sample at the very start of each real turn: the length of the CARD row
 // (gameState.cardMarket — not the 5x5 tile market, not the personal board), the
-// visible teapot symbols, and whether a refresh is legal right now. Called from
-// exactly two places, createGame for the opening turn and advanceToNextTurn for
-// every rotation that actually hands somebody a turn, so there is precisely one
-// sample per turn played. Sampling at the START matters: a refresh taken during
-// the turn cuts the row back to INITIAL_MARKET_CARDS, and metric 3 is about the
-// row the player was faced with.
+// visible teapot symbols, and whether tea is still due. Called from exactly two
+// places, createGame for the opening turn and advanceToNextTurn for every
+// rotation that actually hands somebody a turn, so there is precisely one sample
+// per turn played. Sampling at the START matters: a refresh cuts the row back to
+// INITIAL_MARKET_CARDS, and metric 3 is about the row the player was faced with.
+//
+// THE INVARIANT. Under the end-of-turn trigger, isTeaDue must be FALSE at the
+// start of every turn: the previous turn either flushed the board or never
+// reached the threshold. A non-zero count here means a tea round was skipped or
+// failed to cover the symbols, so the sample is worth keeping even though it is
+// no longer the "did anyone take the free refresh?" measurement it used to be
+// (it could not be - tea is not a choice any more).
 function sampleTurnStart(gameState) {
   const collector = metrics(gameState);
   if (!collector) return;
@@ -185,7 +195,7 @@ function sampleTurnStart(gameState) {
     gameState.currentPlayerIndex,
     gameState.cardMarket.length,
     getVisibleCupcakeSymbols(gameState),
-    canOrderTea(gameState),
+    isTeaDue(gameState),
   );
 }
 
@@ -210,8 +220,10 @@ function sampleClaimOpportunity(gameState) {
   for (const card of gameState.cardMarket) {
     if (getPatternMatches(player.board, card.pattern).length > 0) rowClaimable++;
   }
-  const reserved = player.reservedCard;
-  const reserveClaimable = (reserved && getPatternMatches(player.board, reserved.pattern).length > 0) ? 1 : 0;
+  let reserveClaimable = 0;
+  for (const reserved of player.reservedCards) {
+    if (getPatternMatches(player.board, reserved.pattern).length > 0) reserveClaimable++;
+  }
   collector.recordClaimOpportunity(gameState.stats.turnsPlayed, player.id, rowClaimable, reserveClaimable);
 }
 
@@ -275,10 +287,13 @@ export function createGame(playerConfigs, statsCollector = null) {
     // NOTE (28 July): there is no per-player tea state any more. The Fresh Pot of
     // Tea CARD is deleted, and with it the once-per-game "tea spent" flag — the
     // refresh is a standing board option with no per-game or per-player limit,
-    // gated purely on visible teapot symbols (see canOrderTea).
-    // Personal reserve for the tea round: a single face-up card object (or null).
-    // Filled by teaReserve, emptied by claim (completing it) or left to score 0.
-    reservedCard: null,
+    // gated purely on visible teapot symbols (see isTeaDue).
+    // Personal reserve for the tea round: face-up card objects, oldest first.
+    // Filled by teaReserve (one card per tea round), emptied card-by-card by
+    // claim (completing one) or left to score 0. NOTE (1 Aug): there is no
+    // longer a one-card cap - a player may hold any number of reserved cards.
+    // The rate limit is the tea round itself (one take each, per refresh).
+    reservedCards: [],
     score: 0,
   }));
 
@@ -322,11 +337,20 @@ export function createGame(playerConfigs, statsCollector = null) {
     // dormant (null / 0) outside a tea round.
     teaReserverIndex: null,
     teaReservesRemaining: 0,
-    // True while the tea round in progress was FORCED by an empty tile market
-    // (the mandatory refresh — see applyEmptyMarketRule) rather than chosen by
-    // the player. Drivers and the UI read it to present/drive a forced refresh
-    // differently (no "cancel", no confirm prompt). Cleared by finishTeaRound.
+    // The turn number the tea round in progress is attributed to in the metrics.
+    // Set by beginTeaRound, which is the only place that knows which side of
+    // refill's turn counter the round opened on. See recordRefresh's call site.
+    teaRoundTurn: 0,
+    // True while the tea round in progress was opened by the empty-market
+    // BACKSTOP (applyEmptyMarketRule) rather than by the normal end-of-turn
+    // teapot trigger. Metric 2 counts these, and since the 1 August change they
+    // should never fire in real play. Cleared by finishTeaRound.
     refreshIsMandatory: false,
+    // True while the tea round in progress was opened at the END of a turn (the
+    // normal route). It tells finishTeaRound whether to pass the turn on
+    // (end-of-turn tea) or hand the current player their sweep (the backstop,
+    // which fires at the START of a turn). Cleared by finishTeaRound.
+    teaRoundEndsTurn: false,
     gameOver: false,
     // endGameReason - every value the engine can set:
     //   'cardMarket'    - the documented card end condition: cardsNeededToEnd
@@ -567,117 +591,105 @@ export function declineBonusTile(gameState) {
   return gameState;
 }
 
-// Is ordering a fresh pot of tea legal RIGHT NOW? The single gate shared by the
-// engine (orderTea's own guard), the bots (refresh timing) and the UI (button
-// state), so none of the three re-implements it:
-//   - it is the very start of a turn (sweep phase, nothing swept yet), and
-//   - no bonus tile is pending, and
+// Is a fresh pot of tea DUE? Checked at the END of a turn, once the player has
+// finished sweeping, placing, moving and claiming. The single trigger shared by
+// the engine (endTurn), the bots (sweep scoring) and the UI (the gauge), so none
+// of the three re-implements it:
 //   - the BAG IS NOT EMPTY, and
 //   - at least REFRESH_THRESHOLD teapot symbols are VISIBLE on the market board.
-// There is deliberately NO per-game or per-player limit to check: the refresh is
-// a standing board option, and the gate resets itself because the tile flush
-// (finishTeaRound step d) covers every symbol again.
+//
+// THE 1 AUGUST RULE CHANGE. Tea used to be a voluntary action taken at the START
+// of a turn, which meant the player whose sweep uncovered the fourth teapot was
+// the one player who could never use it - the trigger armed for their left-hand
+// neighbour instead. Every player therefore had a standing incentive to AVOID
+// uncovering the fourth symbol, and dodging was nearly free (with three showing
+// only four of the ten lines are dangerous, and only for a matching declaration).
+// Moving the trigger to the end of the turn hands the pot to the player who
+// caused it, so uncovering a teapot is something you can aim at rather than
+// something you quietly duck. See the top of finishTeaRound for what the tea
+// player gives up in exchange.
+//
+// There is deliberately NO per-game or per-player limit: tea fires every time the
+// board reaches the threshold, and the trigger resets itself because the tile
+// flush (finishTeaRound step d) covers every symbol again.
 //
 // THE EMPTY-BAG CLAUSE (28 July ruling: "if the bag is empty, no refills are
 // possible - this is also an end game trigger"). A refill needs tiles to refill
-// with, so with a dry bag ordering a fresh pot is simply not a legal action.
-// That clause is also what makes "the gate resets itself" true. Without it, once
-// the bag was short of the market's 25 cells the redeal left cells empty - often
-// symbol cells - so the gate stayed OPEN and the same player could order tea
-// again, and again, inside one turn, collecting a pot each time (observed: ~200
-// refreshes and games that never ended). It closes because a redeal that cannot
-// fill the board always drains the bag to exactly 0, so the very next
-// canOrderTea fails. The game itself then ends at the next turn boundary with
-// endGameReason 'bagEmpty' (see advanceToNextTurn) - the player who emptied the
-// bag still finishes their own turn.
-export function canOrderTea(gameState) {
-  if (gameState.gamePhase !== 'sweep') return false;
-  if (gameState.bonusTileAvailable) return false;
+// with, so with a dry bag no pot is ordered at all. That clause is also what
+// makes "the trigger resets itself" true. Without it, once the bag was short of
+// the market's 25 cells the redeal left cells empty - often symbol cells - so the
+// trigger stayed ARMED and tea fired again, and again, collecting a pot each time
+// (observed under the old rule: ~200 refreshes and games that never ended). It
+// closes because a redeal that cannot fill the board always drains the bag to
+// exactly 0, so the very next isTeaDue fails. The game itself then ends at the
+// next turn boundary with endGameReason 'bagEmpty' (see advanceToNextTurn).
+export function isTeaDue(gameState) {
   if (gameState.bag.length === 0) return false;
   return getVisibleCupcakeSymbols(gameState) >= REFRESH_THRESHOLD;
 }
 
-// Order a fresh pot of tea at the START of a turn, BEFORE the sweep. This is a
-// standing option printed on the market board ("4 teapots showing? Order a
-// fresh pot of tea"), NOT a held card: the 28 July rules delete the Fresh Pot of
-// Tea card and its once-per-game restriction with it, so a player may order tea
-// as often as the board AND THE BAG allow (an empty bag cannot refill anything,
-// so it makes the order illegal - see canOrderTea). Tea does not cost the sweep
-// either - after the round resolves the player takes their FULL normal turn
-// (sweep, place, move, claim, including a card they reserved in step (a)).
+// Open the reserve round of a fresh pot of tea. Two routes reach it:
+//   - the NORMAL one: REFRESH_THRESHOLD teapots showing at the end of a turn
+//     (endTurn, gated by isTeaDue). endsTurn is true - the tea player has already
+//     had their turn, so when the round resolves the turn passes on.
+//   - the BACKSTOP: a completely empty tile market at the start of a turn (see
+//     applyEmptyMarketRule). endsTurn is false - the incoming player still owes
+//     themselves a full turn once the round resolves. Since the 1 August change
+//     this route is unreachable in normal play (an empty market shows all five
+//     symbols, so the end-of-turn trigger always refills it a turn earlier), and
+//     it is kept only as defence in depth.
 //
-// The procedure runs in this order (see finishTeaRound for steps b-d):
-//   (a) reserve round — starting with the tea player and proceeding clockwise,
-//       each player may reserve one card from the card market (limit 1);
-//   (b) card flush — the ENTIRE remaining card row goes to the discard and
-//       exactly INITIAL_MARKET_CARDS fresh cards are dealt;
-//   (c) cupcake pot — the ACTIVE player gains a flat TEA_POT_REWARD cupcakes
-//       (symbols are still counted, for the metrics, BEFORE the tiles are
-//       refilled);
-//   (d) FULL tile flush — every tile still on the market returns to the bag, the
-//       bag is shuffled, and all cells are dealt afresh. Destructive, not
-//       additive: the survivors do not survive.
+// refreshIsMandatory marks the BACKSTOP route specifically. It is what metric 2
+// counts, and it should now always be zero in a real game.
 //
-// orderTea sets up only the reserve round (a); teaReserve advances it and
-// finishTeaRound performs (b)-(d). Legality is canOrderTea's business.
-export function orderTea(gameState) {
-  if (gameState.gamePhase !== 'sweep') throw new Error('Can only order tea at the start of a turn (sweep phase)');
-  if (gameState.bonusTileAvailable) throw new Error('Cannot order tea while a bonus tile is pending');
-  if (gameState.bag.length === 0) throw new Error('Cannot order a fresh pot of tea with an empty bag - no refill is possible');
-  if (getVisibleCupcakeSymbols(gameState) < REFRESH_THRESHOLD) {
-    throw new Error(`Need at least ${REFRESH_THRESHOLD} visible teapot symbols to order a fresh pot of tea`);
-  }
-
-  beginTeaRound(gameState, false);
-  return gameState;
-}
-
-// Open the reserve round of a fresh pot of tea. Shared by the voluntary route
-// (orderTea, which does the legality checking) and the MANDATORY route (an empty
-// tile market at the start of a turn — see applyEmptyMarketRule), which bypasses
-// the gate because an empty market shows every symbol anyway. isMandatory is
-// recorded on the state so drivers and the UI can tell the two apart.
-function beginTeaRound(gameState, isMandatory) {
+// `turn` is the turn number the pot is ATTRIBUTED to, and the two routes have to
+// pass it in rather than read it here, because they sit on opposite sides of
+// refill's stats.turnsPlayed++ - the end-of-turn route fires after the counter
+// has already moved on to the next turn, the backstop before. Getting this wrong
+// silently shifts the whole refresh-cadence histogram by one turn.
+function beginTeaRound(gameState, { endsTurn, isBackstop, turn }) {
   // The tea player reserves FIRST (deliberate — see design doc); every player
   // gets exactly one reserve opportunity, so the countdown starts at playerCount.
   gameState.teaReserverIndex = gameState.currentPlayerIndex;
   gameState.teaReservesRemaining = gameState.playerCount;
-  gameState.refreshIsMandatory = isMandatory;
+  gameState.refreshIsMandatory = isBackstop;
+  gameState.teaRoundEndsTurn = endsTurn;
+  gameState.teaRoundTurn = turn;
   gameState.gamePhase = 'teaReserve';
 }
 
 // True when the pending reserver (players[teaReserverIndex]) cannot legally take
-// any card — either they already hold a reserved card, or the market is empty.
+// any card, which since 1 Aug means one thing only: the card market is empty.
+// A full reserve is no longer possible — the one-card cap is gone.
 // Drivers/UI call this to auto-pass; the engine deliberately does NOT auto-pass
 // itself, so every reserve step stays an explicit, individually-undoable call.
 export function teaReserveMustPass(gameState) {
   if (gameState.gamePhase !== 'teaReserve') throw new Error('Not in tea reserve phase');
-  const reserver = gameState.players[gameState.teaReserverIndex];
-  if (reserver.reservedCard !== null) return true;
   return gameState.cardMarket.length === 0;
 }
 
 // Resolve one player's reserve decision during a tea round. Acts for
 // players[teaReserverIndex] — NOT necessarily the current player. cardId === null
-// is always a legal pass. A non-null cardId requires that this reserver's reserve
-// is empty and the card is present in the market. Taking splices the card out of
-// the market into the player's reserve; the market is NOT refilled per-take (the
-// whole market is discarded and redealt once every player has decided). Advances
-// clockwise to the next reserver; when all playerCount decisions are in, the tea
-// round finishes (finishTeaRound) and the turn continues into the normal sweep
-// phase — the tea player then takes their full turn.
+// is always a legal pass. A non-null cardId requires only that the card is
+// present in the market: since 1 Aug a reserve holds ANY NUMBER of cards, so an
+// existing reserve never blocks a take. Taking splices the card out of the
+// market onto the end of the player's reserve; the market is NOT refilled
+// per-take (the whole market is discarded and redealt once everyone has
+// decided). Advances clockwise to the next reserver; when all playerCount
+// decisions are in, the tea round finishes (finishTeaRound), which passes the
+// turn on to the next player (the normal end-of-turn route) or hands the current
+// player their sweep (the empty-market backstop).
 export function teaReserve(gameState, cardId) {
   if (gameState.gamePhase !== 'teaReserve') throw new Error('Not in tea reserve phase');
 
   const reserver = gameState.players[gameState.teaReserverIndex];
 
   if (cardId !== null && cardId !== undefined) {
-    if (reserver.reservedCard !== null) throw new Error('Reserve is already full');
     const marketIndex = gameState.cardMarket.findIndex(c => c.id === cardId);
     if (marketIndex === -1) throw new Error('Card not in market');
 
     const [card] = gameState.cardMarket.splice(marketIndex, 1);
-    reserver.reservedCard = card;
+    reserver.reservedCards.push(card);
 
     // The card leaves the market here (back when reserved), so a later claim
     // from the reserve must NOT record another market exit for it.
@@ -696,14 +708,35 @@ export function teaReserve(gameState, cardId) {
   return gameState;
 }
 
-// Resolve the tea round once every player has had their reserve decision. Runs
-// steps (b)-(d) of the tea procedure IN ORDER (see orderTea):
+// THE FRESH POT OF TEA, in full. It happens INSTEAD OF the end-of-turn card deal
+// (see refill), not in addition to it, so the row nobody has touched since the
+// turn began is the row everybody drafts from. The whole procedure, in order:
+//   (a) reserve round - starting with the TEA PLAYER (the one whose turn just
+//       triggered it) and proceeding clockwise, each player may reserve one card
+//       from the card market. Opened by beginTeaRound, advanced by teaReserve.
+//   (b) card flush - the ENTIRE remaining card row goes to the discard and
+//       exactly INITIAL_MARKET_CARDS fresh cards are dealt.
+//   (c) cupcake pot - the TEA PLAYER gains a flat TEA_POT_REWARD cupcakes.
+//   (d) FULL tile flush - every tile still on the market returns to the bag, the
+//       bag is shuffled, and all cells are dealt afresh. Destructive, not
+//       additive: the survivors do not survive.
+//
+// WHAT THE TEA PLAYER GIVES UP (1 August). Because tea now fires at the END of a
+// turn, the tea player has ALREADY swept - so the freshly dealt 25-tile market
+// goes to the player on their left, not to them. That is the deliberate
+// counterweight to their pot and their first pick in the reserve round: ordering
+// tea is a trade, not a pure gain, which is what stops the trigger from being
+// something players either farm or dodge. Under the old start-of-turn rule the
+// orderer collected the pot, the first pick AND the fresh board.
+//
+// This function runs steps (b)-(d), once every player has had their reserve
+// decision:
 //   (b) Card flush + redeal: every surviving market card goes to the discard and
 //       a fresh INITIAL_MARKET_CARDS cards are dealt (fewer only when deck +
 //       discard are exhausted). The row is flushed BY LENGTH, not by assuming
 //       four cards: the row grows without a cap (see dealEndOfTurnCard), and this
 //       flush is the ONLY thing that ever shrinks it back to four.
-//   (c) Cupcake pot: the ACTIVE (tea) player — currentPlayerIndex, NOT each
+//   (c) Cupcake pot: the TEA player — currentPlayerIndex, NOT each
 //       reserver — gains a flat TEA_POT_REWARD cupcakes. The visible-symbol
 //       count is still read BEFORE the tile flush, since (d) covers the symbols
 //       again, but it now only feeds the metrics.
@@ -713,8 +746,8 @@ export function teaReserve(gameState, cardId) {
 //       destructive, not additive — a tile market a player has been building
 //       toward does not survive someone else's refresh, which is the whole
 //       point of the 28 July change.
-// Finally the phase returns to SWEEP: the tea player now takes their full
-// normal turn.
+// Finally the turn resumes where the round interrupted it - see the tail of this
+// function for the two routes.
 function finishTeaRound(gameState) {
   // (b) Flush unreserved market cards, then redeal a fresh market.
   while (gameState.cardMarket.length > 0) {
@@ -724,9 +757,9 @@ function finishTeaRound(gameState) {
   }
 
   // The row is EMPTY at this point (the loop above emptied it whatever its
-  // length), so this deals exactly INITIAL_MARKET_CARDS. It is a redeal, NOT a
-  // "top the row back up to 4" invariant — nothing anywhere else may assume the
-  // row is four cards long.
+  // length), so this deals exactly INITIAL_MARKET_CARDS (3). It is a redeal, NOT
+  // a "top the row back up" invariant — nothing anywhere else may assume a
+  // fixed row length.
   while (gameState.cardMarket.length < INITIAL_MARKET_CARDS) {
     const newCard = drawCard(gameState);
     if (!newCard) break; // deck + discard exhausted — market simply stays short
@@ -791,7 +824,9 @@ function finishTeaRound(gameState) {
     // reserve round between ordering and resolving only touches cards, so its
     // length IS the tile count on the board when the pot was called.
     collector.recordRefresh(
-      gameState.stats.turnsPlayed,
+      // The turn the pot was TRIGGERED on, captured when the round opened - not
+      // stats.turnsPlayed, which the end-of-turn route has already advanced past.
+      gameState.teaRoundTurn,
       activePlayer.id,
       potSize,
       TEA_POT_REWARD,
@@ -811,17 +846,31 @@ function finishTeaRound(gameState) {
     collector.recordBagFlush(returned.map(t => t.colour), dealtColours, immediateReturns);
   }
 
-  // Hand the tea player their full normal turn.
+  const endsTurn = gameState.teaRoundEndsTurn;
   gameState.teaReserverIndex = null;
   gameState.refreshIsMandatory = false;
+  gameState.teaRoundEndsTurn = false;
+
+  if (endsTurn) {
+    // The NORMAL route. The tea player has already taken their whole turn, so the
+    // pot was the last thing owed to them: hand the fresh board straight on to
+    // the next player. endTurn already ran the end-of-game checks that precede a
+    // rotation (it is what opened this round), so we resume at the rotation
+    // itself rather than re-running them.
+    advanceToNextTurn(gameState);
+    return;
+  }
+
+  // The BACKSTOP route: the round opened at the START of the incoming player's
+  // turn, so they are still owed the whole of it.
   gameState.gamePhase = 'sweep';
 
-  // Defence in depth only. BOTH routes into a tea round now require a non-empty
-  // bag (canOrderTea for the chosen one, applyEmptyMarketRule's own bag check for
-  // the mandatory one), and step (d) moves the whole bag onto the market until
-  // every cell is full, so the market always holds at least one tile here and
-  // this call returns immediately. It stays because a driver could construct a
-  // tea round directly from an odd state.
+  // Defence in depth only. BOTH routes into a tea round require a non-empty bag
+  // (isTeaDue for the normal one, applyEmptyMarketRule's own bag check for the
+  // backstop), and step (d) moves the whole bag onto the market until every cell
+  // is full, so the market always holds at least one tile here and this call
+  // returns immediately. It stays because a driver could construct a tea round
+  // directly from an odd state.
   applyEmptyMarketRule(gameState);
 }
 
@@ -922,10 +971,13 @@ export function claim(gameState, cardId, removedBoardIndex, destination) {
   // is not spliced (see the fromReserve branches below), since the card left the
   // row when it was reserved.
   const cardIndex = gameState.cardMarket.findIndex(c => c.id === cardId);
-  const fromReserve = cardIndex === -1 && player.reservedCard && player.reservedCard.id === cardId;
+  const reserveIndex = cardIndex === -1
+    ? player.reservedCards.findIndex(c => c.id === cardId)
+    : -1;
+  const fromReserve = reserveIndex !== -1;
   if (cardIndex === -1 && !fromReserve) throw new Error('Card not in market');
 
-  const card = fromReserve ? player.reservedCard : gameState.cardMarket[cardIndex];
+  const card = fromReserve ? player.reservedCards[reserveIndex] : gameState.cardMarket[cardIndex];
   const matches = getPatternMatches(player.board, card.pattern);
 
   if (matches.length === 0) throw new Error('Pattern not found on board');
@@ -993,9 +1045,10 @@ export function claim(gameState, cardId, removedBoardIndex, destination) {
   }
 
   if (fromReserve) {
-    // Completing a reserved card: clear the reserve. The market is untouched —
-    // the card left it when it was reserved.
-    player.reservedCard = null;
+    // Completing a reserved card: remove just that card from the reserve (the
+    // rest stay on order). The market is untouched — the card left it when it
+    // was reserved.
+    player.reservedCards.splice(reserveIndex, 1);
   } else {
     // The card simply LEAVES the row. No replacement is drawn here (28 July: the
     // claim-refill rule is deleted). The row is replenished once per turn, at the
@@ -1068,10 +1121,13 @@ export function skipClaim(gameState) {
 }
 
 // THE END-OF-TURN DEAL (28 July rework, §5; capped 30 July). ONE card goes from
-// the deck onto the card row at the end of EVERY turn - claim or no claim,
-// refresh or no refresh, market claim or reserve claim - UNLESS the row already
-// holds MAX_MARKET_CARDS, in which case the deal is skipped and the row stands
-// still. It is not a decision any player or bot makes.
+// the deck onto the card row at the end of EVERY turn - claim or no claim, market
+// claim or reserve claim - with TWO exceptions: the row already holds
+// MAX_MARKET_CARDS, or a fresh pot of tea is due. Either way the deal is skipped
+// and the row stands still. It is not a decision any player or bot makes.
+//
+// THE TEA EXCEPTION (1 August clarification). A FRESH POT REPLACES THE DEAL: it
+// does not happen on top of it. See refill() for why.
 //
 // THE CAP (30 July rule change). The 28 July design deliberately had no cap,
 // arguing an uncapped row was the staleness valve: a row nobody can claim from
@@ -1093,12 +1149,10 @@ export function skipClaim(gameState) {
 // PLACEMENT: this runs at the TOP of refill(), i.e. before the end-condition
 // checks and before advanceToNextTurn's rotation. Two reasons.
 //   1. It is a step of the turn that is ENDING, not of the next one. Rotating
-//      first would attribute the card to the incoming player, and would let a
-//      mandatory refresh opened by advanceToNextTurn (applyEmptyMarketRule)
-//      flush a row that had not yet received the deal it was owed.
+//      first would attribute the card to the incoming player.
 //   2. Running it ahead of the end checks keeps it a single straight-line
 //      statement instead of something that has to be repeated down each of
-//      refill's three branches, where a future edit could quietly drop one.
+//      endTurn's branches, where a future edit could quietly drop one.
 //      Dealing on the final turn costs nothing - the row is not scored.
 // drawCard reshuffles the discard pile when the deck runs out and returns null
 // only when deck AND discard are both empty, in which case the row simply does
@@ -1114,20 +1168,61 @@ function dealEndOfTurnCard(gameState) {
 export function refill(gameState) {
   if (gameState.gamePhase !== 'refill') throw new Error('Not in refill phase');
 
-  // The TILE market no longer refills automatically at end of turn. It is
-  // refreshed ONLY by a fresh pot of tea (finishTeaRound step d), whether that
-  // was ordered voluntarily or forced by the empty-market rule. The CARD row is
-  // the opposite: it is topped up here and nowhere else (see below).
-  dealEndOfTurnCard(gameState);
+  // The TILE market never refills a cell at a time. It is refreshed ONLY by a
+  // fresh pot of tea (finishTeaRound step d) - normally by the end-of-turn
+  // teapot trigger, or by the empty-market backstop. The CARD row is the
+  // opposite: it is topped up here and nowhere else.
+  //
+  // A FRESH POT REPLACES THE END-OF-TURN DEAL (1 August clarification). The two
+  // are alternatives, not a sequence: a turn either adds one card to the row, or
+  // brews a pot, never both.
+  //
+  // WHY. The reserve round exists to let a player PRESERVE a card they were
+  // already working toward - that is the whole point of drafting before the
+  // flush. A card dealt at the very end of the turn is, by definition, a card
+  // nobody could have been working toward. Dealing it first would put fresh
+  // information into the draft, so the round would stop being "save what you were
+  // building" and become "react to what just turned up", which is a different and
+  // much noisier decision. Everyone drafts from exactly the row that was on the
+  // table while the turn was played.
+  //
+  // It also costs the deck a card less per refresh, since the dealt card is no
+  // longer immediately flushed into the discard.
+  //
+  // The trigger is evaluated ONCE, here, and handed to endTurn. Nothing between
+  // the two touches the market or the bag so a second isTeaDue call would agree,
+  // but one evaluation means the deal and the pot can never disagree about
+  // whether this is a tea turn.
+  const teaDue = isTeaDue(gameState);
+  if (!teaDue) dealEndOfTurnCard(gameState);
 
   // The turn just PLAYED is counted here, at the one point every turn passes
-  // through, rather than in advanceToNextTurn. Two of refill's three branches end
+  // through, rather than in advanceToNextTurn. Two of endTurn's branches end
   // the game without rotating, so counting on rotation dropped the final turn:
   // a game the collector saw 22 sweeps in reported "Turns Played 21". Counted
   // after dealEndOfTurnCard so the turn stamps on card-market entries are
   // unchanged.
   gameState.stats.turnsPlayed++;
 
+  endTurn(gameState, teaDue);
+
+  return gameState;
+}
+
+// Close the turn that has just been played: resolve the end conditions that stop
+// a rotation, then either order the end-of-turn fresh pot of tea or rotate.
+//
+// SPLIT OUT OF refill (1 August) because the tea round is INTERACTIVE. When tea
+// is due this function returns with the game parked in the 'teaReserve' phase and
+// the rotation still owed; finishTeaRound calls advanceToNextTurn once every
+// player has made their reserve decision. Drivers must therefore dispatch on
+// gamePhase after refill() rather than assuming the next player is up - which is
+// the same contract they already had to honour for the empty-market backstop.
+//
+// teaDue is passed in rather than re-derived: refill needed the same answer to
+// decide whether to skip the end-of-turn card deal, and the pot replaces that
+// deal, so both must come from one evaluation.
+function endTurn(gameState, teaDue) {
   // Handle board overflow end game
   if (gameState.endGameReason === 'boardOverflow') {
     gameState.remainingTurnsInEndGame--;
@@ -1136,23 +1231,40 @@ export function refill(gameState) {
     if (gameState.remainingTurnsInEndGame === 0 || (gameState.market.every(t => t === null) && gameState.bag.length === 0)) {
       gameState.gameOver = true;
       calculateFinalScores(gameState);
-    } else {
-      advanceToNextTurn(gameState);
+      return;
     }
   } else if (isGameOver(gameState)) {
     gameState.gameOver = true;
     gameState.endGameReason = 'cardMarket';
     calculateFinalScores(gameState);
-  } else {
-    // No unconditional "market+bag empty → game over" here: the tile end
-    // condition is resolved one level down, at the turn boundary inside
-    // advanceToNextTurn, so every player gets the same number of turns. An empty
-    // bag ends the game there ('bagEmpty'); a merely empty MARKET with tiles
-    // still in the bag forces a refresh instead (applyEmptyMarketRule).
-    advanceToNextTurn(gameState);
+    return;
   }
 
-  return gameState;
+  // THE END-OF-TURN FRESH POT OF TEA (1 August rule change). Resolved here, after
+  // the end conditions that would stop the game outright - there is no point
+  // running a reserve round for a game that is already over - and before the
+  // rotation, so the pot and the first reserve pick go to the player whose turn
+  // this was. See isTeaDue for why the trigger moved here from the start of a
+  // turn, and finishTeaRound for what the tea player trades away.
+  //
+  // NOT a decision: there is no "may" left in the rule. The choice sits upstream,
+  // in whether the player's sweep uncovers that fourth teapot at all.
+  //
+  // refill() has already skipped this turn's card deal on the strength of the
+  // same flag - the pot replaces it.
+  if (teaDue) {
+    // refill() has already counted the turn that just played, so the pot belongs
+    // to turnsPlayed - 1, not to the turn about to start.
+    beginTeaRound(gameState, { endsTurn: true, isBackstop: false, turn: gameState.stats.turnsPlayed - 1 });
+    return; // finishTeaRound resumes at advanceToNextTurn
+  }
+
+  // No unconditional "market+bag empty → game over" here: the tile end
+  // condition is resolved one level down, at the turn boundary inside
+  // advanceToNextTurn, so every player gets the same number of turns. An empty
+  // bag ends the game there ('bagEmpty'); a merely empty MARKET with tiles
+  // still in the bag forces a refresh instead (applyEmptyMarketRule).
+  advanceToNextTurn(gameState);
 }
 
 // Rotate to the next player's turn, then resolve the two TURN-BOUNDARY end
@@ -1206,24 +1318,36 @@ function advanceToNextTurn(gameState) {
 
   // Metric: the incoming turn is definitely going to be played (neither
   // end-condition above fired), so sample its opening state. Deliberately BEFORE
-  // applyEmptyMarketRule: a mandatory refresh would otherwise have already moved
+  // applyEmptyMarketRule: a backstop refresh would otherwise have already moved
   // the phase to 'teaReserve' and flushed the row, and metric 3 wants the row the
-  // player was handed, while metric 1 wants canOrderTea's honest answer.
+  // player was handed, while the trigger invariant wants isTeaDue's honest answer
+  // about the board this player was actually handed.
   sampleTurnStart(gameState);
 
   applyEmptyMarketRule(gameState);
 }
 
-// EMPTY-MARKET RULE (the reworked backstop). A sweep is legal whenever any tile
-// sits on the market, so the only unplayable sweep is a COMPLETELY EMPTY tile
-// market. Checked at the start of every new turn's sweep phase:
-//   - Market empty, bag has tiles: the refresh becomes MANDATORY. It is a normal
-//     fresh pot of tea in every way — reserve round, card flush, and the full
-//     cupcake pot, which pays the same flat TEA_POT_REWARD as a chosen one.
-//     Whoever emptied the board therefore gifts the next player the maximum
-//     reward; that gift/deny tension is INTENDED and must not be softened. (This
-//     replaces the 24 July free-refill backstop, which handed out tiles with no
-//     reserve round and no pot.)
+// EMPTY-MARKET RULE (the backstop). A sweep is legal whenever any tile sits on
+// the market, so the only unplayable sweep is a COMPLETELY EMPTY tile market.
+// Checked at the start of every new turn's sweep phase:
+//   - Market empty, bag has tiles: a fresh pot of tea is forced. It is a normal
+//     one in every way — reserve round, card flush, and the same flat
+//     TEA_POT_REWARD — except that it fires at the START of a turn, so the
+//     incoming player collects the pot AND sweeps the board they just refilled.
+//
+//     UNREACHABLE SINCE 1 AUGUST, and kept only as defence in depth. An empty
+//     market shows all five teapot symbols, which is above REFRESH_THRESHOLD, so
+//     the player who swept the board bare now triggers the end-of-turn pot
+//     themselves and refills it before the turn passes on. A turn can therefore
+//     never BEGIN on an empty market. Metric 2 counts firings of this branch and
+//     should read zero for every real game; a non-zero count means the
+//     end-of-turn trigger has a hole in it.
+//
+//     (This branch also carried the old "whoever emptied the board gifts the next
+//     player the maximum reward" tension. That was deliberate as a rare deterrent
+//     against stripping the board bare, but it was the same shape as the
+//     start-of-turn tea rule the 1 August change removed - see isTeaDue - and it
+//     is now simply dead code rather than a live incentive.)
 //   - Market AND bag empty: a flush cannot produce a single tile, so forcing a
 //     refresh would spin forever. This is the deadlock valve: skip the
 //     sweep+place steps straight to the move phase so the player can still move a
@@ -1237,20 +1361,22 @@ function advanceToNextTurn(gameState) {
 //     constructs such a state directly; its 'marketTiles' end reason should
 //     never appear in a real game.
 // Called from advanceToNextTurn (the normal turn rotation) and from the tail of
-// finishTeaRound. Because the mandatory branch enters the interactive
-// 'teaReserve' phase, callers must be able to drive a tea round that begins
-// without anyone asking for one — gameState.refreshIsMandatory tells them apart.
+// finishTeaRound. Because this branch enters the interactive 'teaReserve' phase,
+// callers must be able to drive a tea round that begins at the START of a turn —
+// gameState.teaRoundEndsTurn tells the two routes apart.
 function applyEmptyMarketRule(gameState) {
   if (!gameState.market.every(t => t === null)) return; // tiles present — normal sweep
 
-  // The bag check comes first, so a mandatory refresh is never forced on a state
-  // that could not satisfy it. An empty bag falls through to the valve below.
+  // The bag check comes first, so a refresh is never forced on a state that could
+  // not satisfy it. An empty bag falls through to the valve below.
   if (gameState.bag.length > 0) {
-    // Mandatory refresh. Log it as a backstop firing: the metric still means
-    // "the tile market ran dry before anyone chose to refresh it", and it should
-    // stay rare.
+    // Log it as a backstop firing: the metric means "a turn began on a tile
+    // market that ran dry", which the end-of-turn trigger is supposed to make
+    // impossible. Should be zero.
     metrics(gameState)?.recordBackstopFiring(gameState.stats.turnsPlayed);
-    beginTeaRound(gameState, true);
+    // The backstop fires at the START of a turn, so turnsPlayed already names
+    // that turn - no adjustment, unlike the end-of-turn route.
+    beginTeaRound(gameState, { endsTurn: false, isBackstop: true, turn: gameState.stats.turnsPlayed });
     return;
   }
 

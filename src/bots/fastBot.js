@@ -1,12 +1,10 @@
 import { getValidSweeps, getValidPlacements, getPatternMatches } from '../engine/game.js';
-import { decideDestination, decideOrderTea as basicOrderTea, decideTeaReserve as basicTeaReserve } from './basicBot.js';
+import { decideDestination, decideTeaReserve as basicTeaReserve } from './basicBot.js';
 
-// Tea decisions reuse the basicBot heuristics (cheap window scans — no rollout
-// cost), so the fast bot exercises the tea path with the same policy.
-export function decideOrderTea(gameState) {
-  return basicOrderTea(gameState);
-}
-
+// decideOrderTea is gone (1 August): tea is no longer a decision, it fires from
+// the engine at the end of any turn that leaves four teapots showing. The RESERVE
+// decision inside a tea round is still real, and still reuses the basicBot
+// heuristic (cheap window scans — no rollout cost).
 export function decideTeaReserve(gameState, reserverIndex) {
   return basicTeaReserve(gameState, reserverIndex);
 }
@@ -45,10 +43,9 @@ export function decidePlacements(gameState) {
 export function decideClaim(gameState) {
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
-  // Candidates are the market cards plus this player's reserved card (which
-  // completes as a normal claim). Find the first claimable one and pick a tile.
-  const candidateCards = [...gameState.cardMarket];
-  if (currentPlayer.reservedCard) candidateCards.push(currentPlayer.reservedCard);
+  // Candidates are the market cards plus this player's reserved cards (which
+  // complete as normal claims). Find the first claimable one and pick a tile.
+  const candidateCards = [...gameState.cardMarket, ...currentPlayer.reservedCards];
 
   for (const card of candidateCards) {
     const matches = getPatternMatches(currentPlayer.board, card.pattern);

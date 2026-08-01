@@ -1,4 +1,4 @@
-import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, refill, moveTile, orderTea, teaReserve, teaReserveMustPass, getValidSweeps, getValidPlacements, getPatternMatches, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, refill, moveTile, teaReserve, teaReserveMustPass, getValidSweeps, getValidPlacements, getPatternMatches, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
 import { createStatsCollector } from '../engine/statsCollector.js';
 import { renderSetupScreen, renderGameScreen, updateGameDisplay, setThinkingState, setThinkingProgress, renderEndScreen } from './board.js';
 import * as basicBot from '../bots/basicBot.js';
@@ -51,9 +51,10 @@ function confirmTurn() {
   if (gameState.gameOver) {
     onGameEnd();
   } else if (gameState.gamePhase === 'teaReserve') {
-    // Rotating the turn can start it mid tea round: an empty tile market forces
-    // a mandatory refresh (see the engine's empty-market rule). driveTeaReserves
-    // owns the whole round and resumes bot autoplay itself afterwards.
+    // Ending the turn with four teapots showing forces a fresh pot of tea
+    // (1 August rule) - refill() opens the reserve round and leaves the rotation
+    // owed. driveTeaReserves owns the whole round, passes the turn on, and
+    // resumes bot autoplay itself afterwards.
     driveTeaReserves();
   } else {
     setTimeout(() => {
@@ -72,7 +73,7 @@ function onGameStart(playerConfigs) {
   autoPlayMode = playerConfigs.every(p => !p.isHuman);
 
   const app = document.getElementById('app');
-  renderGameScreen(app, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick, onOrderTea, onTeaReserve);
+  renderGameScreen(app, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick, onTeaReserve);
 
   updateDisplay();
 
@@ -177,33 +178,19 @@ function onCupcakeClick() {
   }
 }
 
-// Human player orders a fresh pot of tea at the start of their turn (they still
-// take their full turn afterwards, and may order another on a later turn — there
-// is no per-game limit). This is the ONLY place a tea round pushes an undo
-// snapshot — undo then rewinds the entire round (every player's reserve, the card
-// flush, the cupcake pot, the full tile flush) in one step. Individual reserve
-// steps in driveTeaReserves deliberately do NOT snapshot. A MANDATORY refresh
-// never comes through here: the engine opens that round itself during the turn
-// rotation, and confirmTurn/checkAutoAdvance/autoPlayGame drive it.
-function onOrderTea() {
-  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-  if (gameState.gamePhase !== 'sweep' || !currentPlayer.isHuman || gameState.bonusTileAvailable) return;
-
-  try {
-    pushUndoSnapshot();
-    orderTea(gameState);
-    updateDisplay();
-    driveTeaReserves();
-  } catch (e) {
-    alert(e.message);
-  }
-}
+// onOrderTea DELETED 1 AUGUST. A human used to click a button to order a fresh
+// pot at the start of their turn; it was also the one place a tea round pushed an
+// undo snapshot, so undo rewound the whole round in a step. Neither is needed
+// now: the engine opens every tea round itself, from inside refill(), and
+// confirmTurn / checkAutoAdvance / autoPlayGame all drive it. Undo is not a
+// concern either, because confirmTurn clears the undo stack before calling
+// refill - by the time tea fires, the turn it belongs to is already over.
 
 // A human reserver resolves their tea-round decision: cardId to take a market
 // card into their reserve, or null to pass ("No, thank you"). The deciding
 // player is gameState.teaReserverIndex, NOT necessarily the current player
-// (hotseat: someone may act on the flusher's turn). No snapshot here — the whole
-// round is covered by the single snapshot taken in onOrderTea.
+// (hotseat: someone may act on the tea player's turn). No snapshot here — a tea
+// round is never undoable, see above.
 function onTeaReserve(cardId) {
   if (gameState.gamePhase !== 'teaReserve') return;
   const reserver = gameState.players[gameState.teaReserverIndex];
@@ -220,12 +207,15 @@ function onTeaReserve(cardId) {
 
 // Resolve tea-round reserve decisions in clockwise order. Bots decide via their
 // decideTeaReserve heuristic (with the usual thinking affordance + ~500ms pacing);
-// a human who is forced to pass (reserve full or empty market) is auto-passed
-// without a click. The loop stops when a human reserver who CAN act is reached
-// (the banner/market UI then waits for onTeaReserve) or when the round ends. On
-// completion the phase is 'sweep' for the tea player, who now takes their FULL
-// normal turn (tea no longer replaces the sweep); if that player is a bot the
-// normal autoplay loop is resumed.
+// a human who is forced to pass (empty card market — the only forced pass left
+// now that a reserve is uncapped) is auto-passed without a click. The loop stops when a human reserver who CAN act is reached
+// (the banner/market UI then waits for onTeaReserve) or when the round ends.
+//
+// WHAT THE GAME LOOKS LIKE WHEN THE ROUND ENDS (1 August). The normal route fires
+// at the END of a turn, so finishTeaRound passes the turn on: currentPlayerIndex
+// is the NEXT player and the phase is 'sweep'. That rotation runs the two
+// turn-boundary end conditions, so the round CAN end the game - hence the
+// gameOver check below, which the old start-of-turn round never needed.
 async function driveTeaReserves() {
   while (gameState.gamePhase === 'teaReserve') {
     const reserver = gameState.players[gameState.teaReserverIndex];
@@ -257,20 +247,41 @@ async function driveTeaReserves() {
     updateDisplay();
   }
 
-  // Round finished (gamePhase is now 'sweep' — the tea player takes their full
-  // turn). If that player is a bot, keep the all-bot / bot-turn autoplay going; a
-  // human just resumes their turn. Their tea button is disabled now not because
-  // tea is spent (there is no per-game limit any more) but because the flush has
-  // just covered every teapot symbol, so canOrderTea is false again.
-  if (!gameState.gameOver) {
-    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-    if (!currentPlayer.isHuman) {
-      autoPlayGame();
-    }
+  // Round finished. The turn has rotated, so gameState.currentPlayerIndex is now
+  // the INCOMING player, sitting in front of a freshly dealt 25-tile market with
+  // every teapot symbol covered again.
+  if (gameState.gameOver) {
+    // The rotation inside finishTeaRound hit a turn-boundary end condition (a
+    // full personal board, or a flush that drained the last of the bag).
+    onGameEnd();
+    return;
+  }
+  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  if (!currentPlayer.isHuman) {
+    autoPlayGame();
   }
 }
 
+// A claim phase with nothing claimable is a dead stop for a human: the only
+// control is "Skip Claim", which does nothing but reveal "Confirm Turn". Skip it
+// on their behalf so the turn ends in one click instead of two. No undo snapshot
+// is pushed here - the snapshot taken when the player left the move phase already
+// covers this step, so undo rewinds past the auto-skip rather than back onto it.
+function autoSkipEmptyClaim() {
+  if (gameState.gamePhase !== 'claim') return;
+  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  if (!currentPlayer.isHuman) return;
+
+  const cards = [...gameState.cardMarket, ...currentPlayer.reservedCards];
+  const anyMatch = cards.some(card => getPatternMatches(currentPlayer.board, card.pattern).length > 0);
+  if (anyMatch) return;
+
+  skipClaim(gameState);
+}
+
 function checkAutoAdvance() {
+  autoSkipEmptyClaim();
+
   if (gameState.gamePhase === 'refill') {
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
     if (currentPlayer.isHuman) {
@@ -284,8 +295,9 @@ function checkAutoAdvance() {
     if (gameState.gameOver) {
       onGameEnd();
     } else if (gameState.gamePhase === 'teaReserve') {
-      // Mandatory refresh forced by an empty tile market — same handling as in
-      // confirmTurn: driveTeaReserves runs the round and resumes autoplay.
+      // The turn ended with four teapots showing — same handling as in
+      // confirmTurn: driveTeaReserves runs the round, passes the turn on and
+      // resumes autoplay (or ends the game).
       driveTeaReserves();
     } else {
       setTimeout(() => {
@@ -323,11 +335,6 @@ async function autoPlayGame() {
               // Decline the bonus and move to place (may trigger board overflow).
               declineBonusTile(gameState);
             }
-          } else if (bot.decideOrderTea?.(gameState)) {
-            // Same driver contract as simulate.js: offer a fresh pot of tea
-            // before sweeping. orderTea moves us into the teaReserve phase, which
-            // the branch below (and driveTeaReserves) resolves.
-            orderTea(gameState);
           } else {
             setThinkingState(currentPlayer.name, true);
             updateDisplay();
@@ -346,7 +353,7 @@ async function autoPlayGame() {
         } else if (gameState.gamePhase === 'teaReserve') {
           // Reservers are keyed on teaReserverIndex, not currentPlayerIndex, and
           // may include hotseat humans — driveTeaReserves owns the whole round and
-          // resumes autoplay itself when the flusher (a bot here) regains control.
+          // resumes autoplay itself once the turn has passed on.
           await driveTeaReserves();
           return;
         } else if (gameState.gamePhase === 'place') {
@@ -397,9 +404,9 @@ async function autoPlayGame() {
 
       await new Promise(r => setTimeout(r, 500));
     } else {
-      // Handing control back to a human. Their turn may already have been forced
-      // into a mandatory refresh (empty tile market) by the turn rotation, in
-      // which case the reserve round must be driven rather than dropped.
+      // Handing control back to a human. A tea round may still be open (the
+      // reserve round runs clockwise, so a human can owe a decision on a bot's
+      // tea), in which case it must be driven rather than dropped.
       if (gameState.gamePhase === 'teaReserve') driveTeaReserves();
       break;
     }

@@ -1887,6 +1887,89 @@ select:focus {
   margin-bottom: var(--spacing-xl);
 }
 
+/* A BOXED section: a coloured frame that visibly binds a heading to the text
+   under it. The turn-sequence section above is already grouped by its own
+   .ft-rules__step cards, but the prose sections (fresh pot, cupcakes, scoring)
+   were loose paragraphs, so on a long scroll it was not obvious where one
+   heading stopped applying and the next began.
+
+   Two custom properties per section: --rule-accent for the frame, and
+   --rule-tint for the heading strip. The tint is written as an explicit rgba
+   literal rather than derived with color-mix() from the accent, because these
+   accents differ wildly in lightness (gold vs pink vs green) and a single mix
+   ratio does not read evenly across all three - and it keeps the panel working
+   in browsers without color-mix. */
+.ft-rules__section--boxed {
+  --rule-accent: var(--color-accent);
+  --rule-tint: rgba(193, 123, 92, 0.10);
+  border: 1px solid var(--rule-accent);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
+  background: var(--color-cream);
+}
+
+/* The heading sits ON the frame's top edge, so it reads as the box's label
+   rather than as the first line of its contents. Its text stays the standard
+   dark brown: the accents are chosen to be legible as a BORDER, and pale gold or
+   pink type on a pale tint would not carry the contrast. */
+.ft-rules__section--boxed .ft-rules__section-title {
+  color: var(--color-text-primary);
+  /* Negative margins exactly cancel the section's own padding, so the strip
+     spans the full inner width and sits flush against the inside of the frame. */
+  margin: calc(var(--spacing-md) * -1) calc(var(--spacing-lg) * -1) var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: var(--rule-tint);
+  border-bottom: 1px solid var(--rule-accent);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+/* One accent per section, in reading order. They are deliberately distinct
+   rather than a single house colour: the panel is a long scroll, and the colour
+   is the fastest way to tell at a glance which heading the paragraph under your
+   thumb belongs to. */
+.ft-rules__section--goal {
+  --rule-accent: var(--color-accent);
+  --rule-tint: rgba(193, 123, 92, 0.12);
+}
+
+.ft-rules__section--turn {
+  --rule-accent: var(--tile-blue);
+  --rule-tint: rgba(126, 200, 227, 0.20);
+}
+
+.ft-rules__section--tea {
+  --rule-accent: var(--color-accent-gold);
+  --rule-tint: rgba(212, 175, 55, 0.14);
+}
+
+.ft-rules__section--cupcakes {
+  --rule-accent: var(--tile-pink);
+  --rule-tint: rgba(244, 169, 187, 0.20);
+}
+
+.ft-rules__section--scoring {
+  --rule-accent: var(--color-success);
+  --rule-tint: rgba(90, 138, 92, 0.12);
+}
+
+.ft-rules__section--end {
+  --rule-accent: var(--tile-orange);
+  --rule-tint: rgba(240, 151, 74, 0.16);
+}
+
+/* The turn section is the one box whose contents are themselves cards
+   (.ft-rules__step). Drop their own background to plain white so the nesting
+   reads as one framed list rather than cards-inside-a-card, and let the frame
+   supply the cream. */
+.ft-rules__section--turn .ft-rules__step {
+  background: var(--color-card);
+}
+
+.ft-rules__section--turn .ft-rules__step:last-child {
+  margin-bottom: 0;
+}
+
 .ft-rules__section-title {
   font-family: 'Fraunces', serif;
   font-size: 14px;
@@ -1945,8 +2028,14 @@ select:focus {
 
 /* ======= Fresh Pot of Tea ======= */
 
-/* The tea button lives beside the sweep controls. Warm/gold styling sets it
-   apart from the sweep buttons as an alternative action. */
+/* NOTE (1 August): .ft-btn--tea, .ft-tea-option__btn and the whole .ft-tea-confirm
+   block below are now UNUSED. They styled the "Order a fresh pot of tea" button
+   and its confirm overlay, and tea stopped being an action a player takes - it
+   fires automatically at the end of any turn that leaves four teapots showing.
+   Kept rather than deleted because they are the ready-made styling if a future
+   rule ever puts a tea control back in the player's hands; nothing renders them
+   today, so they cost only bytes. */
+
 .ft-btn--tea {
   background: linear-gradient(135deg, #F6E3C5 0%, var(--color-accent-gold) 100%);
   border: 1px solid var(--color-accent-gold);
@@ -1959,13 +2048,11 @@ select:focus {
   border-color: var(--color-accent);
 }
 
-/* ---- The persistent fresh-pot affordance, under the tile market ----
-   Deliberately QUIET (30 July). This was previously a full printed panel - trigger
-   line, pip gauge, reason sentence and a standing red warning about the flush -
-   which made it the loudest element on the screen and the first thing a new player
-   read. It is now one compact row: the gate reading, and the button when the order
-   is legal. The rules panel explains the action; the confirm dialog still states
-   the destructive flush in full before anything is committed. */
+/* ---- The fresh-pot GAUGE, under the tile market ----
+   Deliberately QUIET (30 July), and purely a readout since 1 August: how close
+   this turn is to triggering the flush. There is no button in it any more, so
+   --ready no longer means "you may order one", it means "one is coming at the end
+   of this turn". The rules panel explains what a fresh pot does. */
 .ft-tea-option {
   margin-top: var(--spacing-md);
   padding: var(--spacing-sm) var(--spacing-md);
@@ -1979,7 +2066,7 @@ select:focus {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* Orderable right now: solid gold border and a lit panel. */
+/* A pot is coming at the end of this turn: solid gold border and a lit panel. */
 .ft-tea-option--ready {
   border: 2px solid var(--color-accent-gold);
   background: linear-gradient(135deg, #FBF5EC 0%, rgba(212, 175, 55, 0.18) 100%);
@@ -2166,6 +2253,14 @@ select:focus {
   align-items: center;
   gap: var(--spacing-xs);
   margin-top: var(--spacing-md);
+}
+
+/* A reserve is uncapped, so the on-order cards wrap into rows. */
+.ft-on-order__cards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--spacing-sm);
 }
 
 .ft-on-order__label {

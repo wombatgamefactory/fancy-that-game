@@ -80,14 +80,14 @@ export function createStatsCollector() {
     teaReserves: [], // Array of { playerId, cardId } for each card reserved
     deckReshuffles: 0, // times the card discard was reshuffled into a fresh deck
 
-    // --- 3. Card row size (and the refresh-opportunity record) --------------
+    // --- 3. Card row size (and the trigger invariant) -----------------------
     // One sample per REAL turn, taken at the very start of that turn before
     // anything happens in it (see recordTurnStart's call site):
-    //   { turn, playerId, rowSize, symbols, refreshLegal }
+    //   { turn, playerId, rowSize, symbols, teaStillDue }
     // rowSize is gameState.cardMarket.length - the variable-length CARD row, not
-    // the 5x5 tile market and not the player's personal board. refreshLegal is
-    // canOrderTea at that instant, which is what makes the "fires at every legal
-    // opportunity" and "nobody flushes a bad market" failure modes measurable.
+    // the 5x5 tile market and not the player's personal board. teaStillDue is
+    // isTeaDue at that instant, which must be FALSE on every turn start under the
+    // end-of-turn trigger - see the teaDueAtTurnStart derivation in getReport.
     turnSamples: [],
     firstClaimRowSize: null, // row length when the game's FIRST claim landed
     firstClaimTurn: null,
@@ -207,13 +207,13 @@ export function createStatsCollector() {
     },
 
     // One sample per real turn, at its very start. See the turnSamples comment.
-    recordTurnStart(turn, playerId, rowSize, symbols, refreshLegal) {
+    recordTurnStart(turn, playerId, rowSize, symbols, teaStillDue) {
       this.turnSamples.push({
         turn: parseInt(turn) || 0,
         playerId: playerId === undefined || playerId === null ? -1 : playerId,
         rowSize: rowSize | 0,
         symbols: symbols | 0,
-        refreshLegal: !!refreshLegal,
+        teaStillDue: !!teaStillDue,
       });
     },
 
@@ -344,42 +344,30 @@ export function createStatsCollector() {
       const symbolDist = [0, 0, 0, 0, 0, 0];
       const refreshesByPlayer = {};
       let refreshRewardTotal = 0;
-      const refreshTurns = new Set();
       for (const r of this.refreshes) {
         if (r.symbols >= 0 && r.symbols <= 5) symbolDist[r.symbols]++;
         refreshesByPlayer[r.playerId] = (refreshesByPlayer[r.playerId] || 0) + 1;
         refreshRewardTotal += r.reward;
-        refreshTurns.add(r.turn);
       }
 
-      // --- 3. Card row size, plus refresh OPPORTUNITY, from the turn samples --
-      // refreshLegalTurns is the denominator of "does it fire at every legal
-      // opportunity"; longestUnflushedStreak is the length of the worst run of
-      // consecutive turns where a refresh was legal and nobody took it - the
-      // "bad market sitting unflushed while players wait each other out" mode. A
-      // turn where the refresh is not legal breaks the run, because that is a
-      // different market, not continued waiting.
+      // --- 3. Card row size, plus the TRIGGER INVARIANT, from the turn samples -
+      // teaDueAtTurnStart counts turns that BEGAN with a fresh pot of tea still
+      // owed. Since the 1 August rule change tea fires at the end of the turn
+      // that reaches the threshold, so this must be ZERO: a non-zero count means
+      // a tea round was skipped, or a flush failed to re-cover the symbols.
+      //
+      // It replaces the old refreshLegalTurns / longestUnflushedStreak pair, which
+      // measured "was a voluntary refresh available and did anyone take it". Tea
+      // is not a choice any more, so that question no longer has a subject.
       const rowSizes = [];
       let rowSizeTotal = 0;
       let maxRowSize = 0;
-      let refreshLegalTurns = 0;
-      let longestUnflushedStreak = 0;
-      let unflushedRun = 0;
+      let teaDueAtTurnStart = 0;
       for (const s of this.turnSamples) {
         rowSizes.push(s.rowSize);
         rowSizeTotal += s.rowSize;
         if (s.rowSize > maxRowSize) maxRowSize = s.rowSize;
-        if (s.refreshLegal) {
-          refreshLegalTurns++;
-          if (refreshTurns.has(s.turn)) {
-            unflushedRun = 0;
-          } else {
-            unflushedRun++;
-            if (unflushedRun > longestUnflushedStreak) longestUnflushedStreak = unflushedRun;
-          }
-        } else {
-          unflushedRun = 0;
-        }
+        if (s.teaStillDue) teaDueAtTurnStart++;
       }
       const meanRowSize = rowSizes.length > 0 ? rowSizeTotal / rowSizes.length : 0;
 
@@ -457,8 +445,7 @@ export function createStatsCollector() {
         refreshSymbolDist: symbolDist,
         refreshesByPlayer: refreshesByPlayer,
         refreshRewardTotal: refreshRewardTotal,
-        refreshLegalTurns: refreshLegalTurns,
-        longestUnflushedStreak: longestUnflushedStreak,
+        teaDueAtTurnStart: teaDueAtTurnStart,
 
         // 2. Mandatory (empty-board) refreshes
         mandatoryRefreshCount: this.mandatoryRefreshTurns.length,

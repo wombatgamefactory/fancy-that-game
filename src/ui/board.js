@@ -1,5 +1,5 @@
 import { BOARD_SIZE, REWARD_CARDS } from '../engine/tiles.js';
-import { getPatternMatches, getLegalDestinations, teaReserveMustPass, canOrderTea, REFRESH_THRESHOLD, TEA_POT_REWARD, STAND_ROW_VALUES, CUPCAKE_PLATES, CUPCAKE_SYMBOL_CELLS, getVisibleCupcakeSymbols } from '../engine/game.js';
+import { getPatternMatches, getLegalDestinations, teaReserveMustPass, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, CUPCAKE_SYMBOL_CELLS, getVisibleCupcakeSymbols } from '../engine/game.js';
 
 const DIFFICULTY_LABELS = {
   'basic': 'Basic',
@@ -23,12 +23,12 @@ export function showRulesModal() {
         <h2>How to Play</h2>
       </div>
       <div class="ft-rules">
-        <div class="ft-rules__section">
+        <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--goal">
           <div class="ft-rules__section-title">Goal</div>
           <div class="ft-rules__text">Collect patisserie reward cards by building colour patterns on your board. Each card is worth victory points, and every card you claim lets you move one tile onto your tiered cake stand, where filling a row scores escalating points.</div>
         </div>
 
-        <div class="ft-rules__section">
+        <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--turn">
           <div class="ft-rules__section-title">Your Turn (5 Steps)</div>
 
           <div class="ft-rules__step">
@@ -56,34 +56,29 @@ export function showRulesModal() {
 
           <div class="ft-rules__step">
             <div class="ft-rules__step-title">5. Deal a Card</div>
-            <div class="ft-rules__text">At the end of every turn, <strong>1 new card is dealt to the card market</strong> - whether or not you claimed. Claiming does not refill the gap it left, so the row grows steadily and there is <strong>no limit</strong> on its length. Only a fresh pot of tea cuts it back (see below).</div>
-            <div class="ft-rules__text">The tile market is <strong>never</strong> topped up at the end of a turn. Tiles you sweep leave holes that stay open until someone orders a fresh pot of tea.</div>
+            <div class="ft-rules__text">At the end of every turn, <strong>1 new card is dealt to the card market</strong> - whether or not you claimed - up to a maximum of ${MAX_MARKET_CARDS}. Claiming does not refill the gap it left, so the row grows steadily; only a fresh pot of tea cuts it back (see below).</div>
+            <div class="ft-rules__text">The tile market is <strong>never</strong> topped up. Tiles you sweep leave holes that stay open until a fresh pot of tea.</div>
           </div>
         </div>
 
-        <div class="ft-rules__section">
-          <div class="ft-rules__section-title">🫖 Ordering a Fresh Pot of Tea</div>
-          <div class="ft-rules__text">This is <strong>not a card</strong> - it is a standing option printed on the tile market board:</div>
+        <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--tea">
+          <div class="ft-rules__section-title">🫖 A Fresh Pot of Tea</div>
           <div class="ft-rules__quote">"${REFRESH_THRESHOLD} teapots showing? Order a fresh pot of tea"</div>
-          <div class="ft-rules__text">${CUPCAKE_SYMBOL_CELLS.length} teapot symbols are printed on the market board. A symbol is <strong>showing</strong> whenever the space it sits under is empty. <strong>At the start of your turn, before you sweep,</strong> if ${REFRESH_THRESHOLD} or more symbols are showing you may order a fresh pot. There is <strong>no once-per-game limit</strong> - any player may do it on any turn the board allows, as often as it allows.</div>
+          <div class="ft-rules__text">A teapot is <strong>showing</strong> when the space it is printed under is empty. At the end of your turn, if ${REFRESH_THRESHOLD} are showing, order a fresh pot instead of dealing a card:</div>
           <div class="ft-rules__text">1. Starting with you, each player in clockwise order may take 1 card from the card market into their personal reserve.</div>
-          <div class="ft-rules__text">2. Discard the <strong>whole</strong> remaining card row and deal 4 new cards.</div>
-          <div class="ft-rules__text">3. <strong>Cupcake pot:</strong> you (and only you) gain 1 cupcake for every teapot symbol showing - 2, 3 or 4 cupcakes.</div>
+          <div class="ft-rules__text">2. Discard the <strong>whole</strong> remaining card row and deal ${INITIAL_MARKET_CARDS} new cards.</div>
+          <div class="ft-rules__text">3. You gain ${TEA_POT_REWARD} cupcake${TEA_POT_REWARD === 1 ? '' : 's'}.</div>
           <div class="ft-rules__text">4. <strong>Flush the tile market.</strong> Every tile still on the market goes <strong>back into the bag</strong>, the bag is shuffled, and all 25 spaces are dealt afresh.</div>
-          <div class="ft-rules__text"><strong>The flush is destructive, and it hits everyone - including you.</strong> Tiles do not survive it. Any colour or ingredient you were saving up for is gone, so order the pot when the board is bad for your opponents rather than good for you.</div>
-          <div class="ft-rules__text">Then take your normal turn (sweep, place, move, claim) on the brand new board.</div>
-          <div class="ft-rules__text"><strong>Forced refresh:</strong> if the tile market is completely empty at the start of a turn, that player <strong>must</strong> order a fresh pot - there is nothing to sweep. It is a normal refresh in every way, so they collect the full 4-cupcake pot.</div>
-          <div class="ft-rules__text"><strong>Empty bag:</strong> with no tiles left in the bag there is nothing to refill with, so no pot can be ordered - and the game ends (see below).</div>
-          <div class="ft-rules__text"><strong>Your reserve:</strong> you may hold at most 1 reserved card, kept face-up beside your board (marked "On order"). If your reserve is already full you simply pass at the reserve step.</div>
-          <div class="ft-rules__text"><strong>Completing a reserved card</strong> works exactly like a normal claim (match the pattern on your board, remove a tile, place it, use your one claim for the turn). An uncompleted reserved card scores nothing; a completed one counts as a claimed card, including for the tiebreaker.</div>
+          <div class="ft-rules__text">Then play passes to the left as usual.</div>
+          <div class="ft-rules__text">Reserved cards are completed just like any other card, and there is no penalty for never completing one.</div>
         </div>
 
-        <div class="ft-rules__section">
+        <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--cupcakes">
           <div class="ft-rules__section-title">Cupcakes</div>
-          <div class="ft-rules__text">You start the game with 2 cupcakes - you gain more from the cupcake pot when you order a fresh pot of tea, or by plating a tile onto a cupcake plate. There is no limit on how many you may hold. Once per turn (step 3), you may spend 1 cupcake to move one tile or tart token on your board to a different empty cell. At game end, each unspent cupcake is worth 1 point.</div>
+          <div class="ft-rules__text">You start the game with 2 cupcakes - you gain more when you order a fresh pot of tea, or by plating a tile onto a cupcake plate. Once per turn (step 3), you may spend 1 cupcake to move one tile or tart token on your board to a different empty cell. At game end, each unspent cupcake is worth 1 point.</div>
         </div>
 
-        <div class="ft-rules__section">
+        <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--scoring">
           <div class="ft-rules__section-title">Scoring</div>
           <div class="ft-rules__text">Your final score adds up four things:</div>
           <div class="ft-rules__text"><strong>Cake stand:</strong> each row scores by how many plates it fills - the bottom row climbs 2 / 6 / 14 / 26, and shorter rows have their own (lower) totals printed under the plates.</div>
@@ -92,7 +87,7 @@ export function showRulesModal() {
           <div class="ft-rules__text"><strong>Cupcakes:</strong> 1 point for each remaining cupcake.</div>
         </div>
 
-        <div class="ft-rules__section">
+        <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--end">
           <div class="ft-rules__section-title">Game Ends When</div>
           <div class="ft-rules__text">• Enough cards have been claimed between all players (the counter above the card market tracks it), OR</div>
           <div class="ft-rules__text">• A player's board is completely full (tiles + tarts) at the start of their turn - the game ends immediately, OR</div>
@@ -271,7 +266,7 @@ export function renderSetupScreen(container, onStart) {
   });
 }
 
-export function renderGameScreen(container, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick, onOrderTea, onTeaReserve) {
+export function renderGameScreen(container, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick, onTeaReserve) {
   const playerCount = gameState.players.length;
 
   container.innerHTML = `
@@ -404,7 +399,6 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
     onSkipMove,
     onMoveTile,
     onCupcakeClick,
-    onOrderTea,
     onTeaReserve,
     gameState,
     selectedPlacements: [],
@@ -626,15 +620,16 @@ function updateMarket(gameState) {
   // it renders dimmed/small under where a tile would sit.
   const symbolCells = new Set(CUPCAKE_SYMBOL_CELLS);
 
-  // The gate itself, made visible. Once REFRESH_THRESHOLD symbols are showing a
-  // fresh pot becomes orderable, so at that moment every showing symbol switches
-  // from a dim printed marker to a lit "armed" one. This is the same count
-  // canOrderTea uses, so the board and the affordance below it can never disagree.
+  // The trigger itself, made visible. Once REFRESH_THRESHOLD symbols are showing,
+  // a fresh pot is ORDERED AT THE END OF THIS TURN (1 August rule) - so at that
+  // moment every showing symbol switches from a dim printed marker to a lit
+  // "armed" one. Same count the engine's isTeaDue uses, so the board and the
+  // gauge below it can never disagree.
   const visibleSymbols = getVisibleCupcakeSymbols(gameState);
   const gateArmed = visibleSymbols >= REFRESH_THRESHOLD;
   const symbolTitle = gateArmed
-    ? `Teapot symbol showing (${visibleSymbols} of ${CUPCAKE_SYMBOL_CELLS.length}) - a fresh pot of tea may be ordered, worth ${TEA_POT_REWARD} cupcake${TEA_POT_REWARD === 1 ? '' : 's'}`
-    : `Teapot symbol showing (${visibleSymbols} of ${CUPCAKE_SYMBOL_CELLS.length}) - ${REFRESH_THRESHOLD} are needed before a fresh pot may be ordered`;
+    ? `Teapot symbol showing (${visibleSymbols} of ${CUPCAKE_SYMBOL_CELLS.length}) - a fresh pot of tea is ordered at the end of this turn, worth ${TEA_POT_REWARD} cupcake${TEA_POT_REWARD === 1 ? '' : 's'} to the player taking it`
+    : `Teapot symbol showing (${visibleSymbols} of ${CUPCAKE_SYMBOL_CELLS.length}) - ${REFRESH_THRESHOLD} showing at the end of a turn orders a fresh pot`;
 
   market.innerHTML = gameState.market.map((tile, idx) => {
     const isEmpty = !tile;
@@ -658,66 +653,56 @@ function updateMarket(gameState) {
   // The row/column select buttons are ALWAYS re-rendered, enabled only while a
   // human may actually sweep. They must be actively disabled outside that
   // window: once rendered enabled they would otherwise linger clickable for the
-  // rest of the turn, letting a player "sweep" during the move/claim phases —
-  // e.g. after ordering tea (which replaces the sweep) — with the choice then
-  // silently discarded by onMarketClick's phase guard.
+  // rest of the turn, letting a player "sweep" during the move/claim phases or
+  // mid tea round, with the choice then silently discarded by onMarketClick's
+  // phase guard.
   const canSweep = gameState.gamePhase === 'sweep' && !gameState.bonusTileAvailable && player.isHuman;
   setupMarketSelectButtons(gameState, canSweep);
 }
 
-// The persistent "fresh pot of tea" affordance, drawn under the tile market.
+// The "fresh pot of tea" gauge, drawn under the tile market.
 //
-// Deliberately QUIET (30 July). This used to spell the whole action out on every
-// render - the printed trigger line, a pip gauge, a reason sentence and a standing
-// warning about the destructive flush - which made it the loudest thing on screen
-// and the first thing a new player read, ahead of the market itself. It is now
-// just a gauge: how close the board is to the gate, plus the button when the order
-// is actually legal. The rules panel explains what a fresh pot does, and the
-// confirm dialog (showTeaConfirm) still states the destructive flush in full
-// before anything is committed, so nothing that mattered has been lost.
+// NO BUTTON SINCE 1 AUGUST. This used to end in "🫖 Order a fresh pot of tea",
+// which opened a confirm dialog and started the round. Tea is not an action any
+// more - it fires by itself at the END of any turn that leaves REFRESH_THRESHOLD
+// teapots showing - so the panel is now purely a readout. That is the important
+// thing for it to communicate: the player is not being offered a choice, they are
+// being shown how close the current turn is to triggering the flush, because the
+// real decision is which line they sweep.
 //
-// The gate is canOrderTea() from the engine, never a local re-derivation, so the
-// button can never offer an order the engine would refuse.
+// The count comes from getVisibleCupcakeSymbols, the same function the engine's
+// isTeaDue reads, so the gauge and the trigger can never disagree.
 function updateTeaOption(gameState) {
   const el = document.getElementById('teaOption');
   if (!el) return;
 
-  const player = gameState.players[gameState.currentPlayerIndex];
   const potSize = getVisibleCupcakeSymbols(gameState);
-  const canTea = canOrderTea(gameState);
-  // refreshIsMandatory is only ever set for the duration of a forced round (the
-  // engine clears it in finishTeaRound), so it doubles as "a forced pot is being
-  // brewed right now".
-  const forced = gameState.refreshIsMandatory === true;
+  const brewing = gameState.gamePhase === 'teaReserve';
+  const bagDead = gameState.bag.length === 0;
+  // Same two clauses as the engine's isTeaDue. Deliberately re-read here rather
+  // than imported, because this must describe what will happen at the END of the
+  // turn, which is a statement about the board rather than about the phase.
+  const teaDue = !bagDead && potSize >= REFRESH_THRESHOLD;
 
-  // The gauge reads against the GATE (REFRESH_THRESHOLD), not against the number of
-  // printed symbols, because the gate is the only thing a player is tracking here.
-  // Surplus symbols beyond the gate carry no value now that the pot is a flat
+  // The gauge reads against the TRIGGER (REFRESH_THRESHOLD), not against the
+  // number of printed symbols, because the trigger is the only thing a player is
+  // tracking here. Surplus symbols carry no value now that the pot is a flat
   // TEA_POT_REWARD, so the count is clamped rather than reading "5/4".
   const shown = Math.min(potSize, REFRESH_THRESHOLD);
 
-  // A note is rendered ONLY for the two states a player could not infer from the
-  // gauge alone: a pot being force-brewed at them, and a dead bag that ends the
-  // option for the rest of the game. Every other blocker (wrong phase, bonus tile
-  // pending, not your turn) is left silent - the absent button says it, and the
-  // rules panel covers the detail.
-  let state, note, buttonLabel;
-  if (forced) {
+  let state, note;
+  if (brewing) {
     state = 'forced';
-    note = 'The market is empty - a fresh pot is being brewed for you.';
-    buttonLabel = null;
-  } else if (canTea && player.isHuman) {
+    note = 'Brewing a fresh pot - everyone may reserve a card before the flush.';
+  } else if (teaDue) {
     state = 'ready';
-    note = null;
-    buttonLabel = '🫖 Order a fresh pot of tea';
-  } else if (gameState.bag.length === 0) {
+    note = 'A fresh pot is ordered at the end of this turn.';
+  } else if (bagDead) {
     state = 'locked';
-    note = 'The tile bag is empty - no more pots can be ordered.';
-    buttonLabel = null;
+    note = 'The tile bag is empty - no more pots can be brewed.';
   } else {
     state = 'locked';
     note = null;
-    buttonLabel = null;
   }
 
   el.className = `ft-tea-option ft-tea-option--${state}`;
@@ -727,15 +712,7 @@ function updateTeaOption(gameState) {
       <strong>${shown}/${REFRESH_THRESHOLD}</strong> teapots visible
     </span>
     ${note ? `<span class="ft-tea-option__note">${note}</span>` : ''}
-    ${buttonLabel ? `<button id="orderTeaBtn" class="ft-btn ft-btn--tea ft-btn--small ft-tea-option__btn">${buttonLabel}</button>` : ''}
   `;
-
-  // Only wire the button when the engine agrees the order is legal; the button is
-  // not rendered at all otherwise, so there is no dead control to click.
-  const btn = el.querySelector('#orderTeaBtn');
-  if (btn) {
-    btn.addEventListener('click', () => showTeaConfirm(potSize));
-  }
 }
 
 function setupMarketSelectButtons(gameState, enabled) {
@@ -1162,22 +1139,24 @@ function updateTeaReserveBanner(gameState, cardMarketEl) {
 
   const mustPass = teaReserveMustPass(gameState);
   const passLabel = mustPass ? 'Pass (no card available)' : 'No, thank you';
-  // A MANDATORY refresh (empty tile market) opens exactly the same reserve round
-  // without anyone choosing it. That has to be unmistakable: otherwise it reads
-  // as an opponent taking a free action, or as the player's own click having
-  // misfired. Say it is forced, say why (nothing left to sweep), and say that it
-  // is otherwise a completely normal pot - the active player still collects the
-  // full cupcake pot. The persistent affordance under the market board carries
-  // the matching 'forced' state at the same time (see updateTeaOption).
-  const forced = gameState.refreshIsMandatory === true;
+  // NOBODY CHOOSES A TEA ROUND ANY MORE (1 August), so the banner must never
+  // read as though somebody did - otherwise it looks like an opponent taking a
+  // free action, or like the player's own click having misfired. Say who
+  // triggered it, say what triggered it (the fourth teapot showing at the end of
+  // their turn), and say what happens next.
+  //
+  // refreshIsMandatory now marks only the empty-market BACKSTOP, which should
+  // never fire in a real game. Kept wired so that if it ever does, the banner
+  // says so rather than quietly mislabelling it.
+  const backstop = gameState.refreshIsMandatory === true;
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
-  banner.className = forced ? 'ft-tea-banner ft-tea-banner--forced' : 'ft-tea-banner';
-  const title = forced
+  banner.className = backstop ? 'ft-tea-banner ft-tea-banner--forced' : 'ft-tea-banner';
+  const title = backstop
     ? '🫖 FORCED fresh pot of tea'
     : '🫖 Fresh pot of tea!';
-  const subtitle = forced
-    ? `The tile market is empty, so <strong>${activePlayer.name}</strong> has nothing to sweep and <strong>must</strong> brew a fresh pot. It counts as a normal pot in every way, so they collect the full cupcake pot.`
-    : `<strong>${activePlayer.name}</strong> ordered a pot. Every player gets one reserve, then the card row is flushed and the whole tile market is dealt afresh.`;
+  const subtitle = backstop
+    ? `The tile market is empty, so <strong>${activePlayer.name}</strong> has nothing to sweep and <strong>must</strong> brew a fresh pot before their turn. It counts as a normal pot in every way.`
+    : `<strong>${activePlayer.name}</strong> finished their turn with ${REFRESH_THRESHOLD} teapots showing. Every player may reserve a card, then the row and the whole tile market are dealt afresh.`;
   banner.innerHTML = `
     <div class="ft-tea-banner__head">
       <div class="ft-tea-banner__title">${title}</div>
@@ -1295,16 +1274,18 @@ function updatePlayerBoards(gameState) {
   });
 }
 
-// The "On order" slot shows a player's face-up reserved card (max 1) beside
-// their board, tagged with a teacup badge so it reads as ordered-not-yet-served.
-// During the OWNER's claim phase, if the reserved card's pattern is on their
-// board it becomes claimable exactly like a market card (click → showRemovalUI,
+// The "On order" slot shows a player's face-up reserved cards beside their
+// board, each tagged with a teacup badge so they read as ordered-not-yet-served.
+// There is no cap on how many a player may hold (1 Aug rule change), so this
+// renders a row of cards, oldest first, that wraps.
+// During the OWNER's claim phase, any reserved card whose pattern is on their
+// board becomes claimable exactly like a market card (click → showRemovalUI,
 // which claim() then resolves from the reserve). The container is created lazily
 // so it costs nothing until a card is actually reserved.
 function renderOnOrderSlot(gameState, player, playerIdx, boardEl) {
   let slotEl = document.getElementById(`onOrder${playerIdx + 1}`);
 
-  if (!player.reservedCard) {
+  if (player.reservedCards.length === 0) {
     if (slotEl) slotEl.innerHTML = '';
     return;
   }
@@ -1317,34 +1298,43 @@ function renderOnOrderSlot(gameState, player, playerIdx, boardEl) {
   }
 
   const isCurrentPlayer = playerIdx === gameState.currentPlayerIndex;
-  const card = player.reservedCard;
-  const isClaimable = isCurrentPlayer && player.isHuman && gameState.gamePhase === 'claim'
-    && getPatternMatches(player.board, card.pattern).length > 0;
+  const count = player.reservedCards.length;
 
-  const cardHTML = cardSpriteHTML(card, 150, {
-    extraClass: isClaimable ? 'ft-card--claimable' : '',
-    clickable: isClaimable,
-    badge: true,
-  });
+  const cardsHTML = player.reservedCards.map(card => {
+    const isClaimable = isCurrentPlayer && player.isHuman && gameState.gamePhase === 'claim'
+      && getPatternMatches(player.board, card.pattern).length > 0;
+    return cardSpriteHTML(card, 150, {
+      extraClass: isClaimable ? 'ft-card--claimable' : '',
+      clickable: isClaimable,
+      badge: true,
+    });
+  }).join('');
 
   slotEl.innerHTML = `
-    <div class="ft-on-order__label">🫖 On order</div>
-    ${cardHTML}
+    <div class="ft-on-order__label">🫖 On order${count > 1 ? ` (${count})` : ''}</div>
+    <div class="ft-on-order__cards">${cardsHTML}</div>
   `;
 
-  const cardEl = slotEl.querySelector('.card-market-sprite');
-  if (isClaimable && cardEl) {
-    cardEl.addEventListener('click', () => showRemovalUI(gameState, card.id));
-  } else if (cardEl && isCurrentPlayer && isSecondClaimBlocked(gameState)) {
-    // The reserved card is claimed through the SAME one-claim-per-turn budget as
-    // a market card, and it is the card a player is most likely to reach for
-    // second ("but it is mine, surely that one is free"). It must therefore say
-    // the same thing the market cards say rather than sit there inert.
-    cardEl.style.cursor = 'not-allowed';
-    cardEl.classList.add('ft-card--claim-used');
-    cardEl.title = SECOND_CLAIM_MESSAGE;
-    cardEl.addEventListener('click', () => showCardRowNotice(SECOND_CLAIM_MESSAGE));
-  }
+  // Wire each card by position — cardSpriteHTML emits them in reserve order.
+  const cardEls = slotEl.querySelectorAll('.card-market-sprite');
+  player.reservedCards.forEach((card, i) => {
+    const cardEl = cardEls[i];
+    if (!cardEl) return;
+    const isClaimable = isCurrentPlayer && player.isHuman && gameState.gamePhase === 'claim'
+      && getPatternMatches(player.board, card.pattern).length > 0;
+    if (isClaimable) {
+      cardEl.addEventListener('click', () => showRemovalUI(gameState, card.id));
+    } else if (isCurrentPlayer && isSecondClaimBlocked(gameState)) {
+      // A reserved card is claimed through the SAME one-claim-per-turn budget as
+      // a market card, and it is the card a player is most likely to reach for
+      // second ("but it is mine, surely that one is free"). It must therefore say
+      // the same thing the market cards say rather than sit there inert.
+      cardEl.style.cursor = 'not-allowed';
+      cardEl.classList.add('ft-card--claim-used');
+      cardEl.title = SECOND_CLAIM_MESSAGE;
+      cardEl.addEventListener('click', () => showCardRowNotice(SECOND_CLAIM_MESSAGE));
+    }
+  });
 }
 
 function setupDragAndDrop(gameState) {
@@ -1747,16 +1737,19 @@ function updatePhaseControls(gameState) {
       </div>
     `;
   } else if (gameState.gamePhase === 'sweep') {
-    // Plain sweep: the market row/column buttons drive the sweep itself. Ordering
-    // a fresh pot of tea happens BEFORE the sweep (the player then still takes
-    // their full turn), but it is NOT a control that belongs here: since 28 July
-    // it is not a card played from a hand, it is a standing option printed on the
-    // market board, so the whole affordance lives under the market (see
-    // updateTeaOption). All this bar does is point at it, so a player looking at
-    // their own controls still learns the option exists.
-    const canTea = canOrderTea(gameState);
-    const teaPointer = canTea
-      ? `<div class="ft-phase-bar__status success">🫖 A fresh pot of tea is available below</div>`
+    // Plain sweep: the market row/column buttons drive the sweep itself. There is
+    // no tea control to put here - since 1 August a fresh pot is not ordered by
+    // anybody, it fires automatically at the end of any turn that leaves
+    // REFRESH_THRESHOLD teapots showing.
+    //
+    // What the bar DOES do is warn, at the moment it matters most, that the sweep
+    // about to be chosen is the one that decides it. The gauge under the market
+    // (updateTeaOption) carries the count; this is the nudge to look at it while
+    // picking a line.
+    const oneAway = getVisibleCupcakeSymbols(gameState) === REFRESH_THRESHOLD - 1
+      && gameState.bag.length > 0;
+    const teaPointer = oneAway
+      ? `<div class="ft-phase-bar__status success">🫖 One teapot from a fresh pot of tea</div>`
       : '';
     html = `
       <div class="ft-phase-bar">
@@ -1830,11 +1823,11 @@ function updatePhaseControls(gameState) {
           claimableCards.push({ card, matches });
         }
       }
-      // The player's own reserved "on order" card is claimable the same way.
-      if (currentPlayer.reservedCard) {
-        const rMatches = getPatternMatches(currentPlayer.board, currentPlayer.reservedCard.pattern);
+      // The player's own reserved "on order" cards are claimable the same way.
+      for (const card of currentPlayer.reservedCards) {
+        const rMatches = getPatternMatches(currentPlayer.board, card.pattern);
         if (rMatches.length > 0) {
-          claimableCards.push({ card: currentPlayer.reservedCard, matches: rMatches });
+          claimableCards.push({ card, matches: rMatches });
         }
       }
 
@@ -1939,7 +1932,8 @@ function showRemovalUI(gameState, cardId) {
   // Card lookup mirrors claim(): market first, then this player's reserve. A
   // reserved "on order" card is claimed through exactly this path.
   const card = gameState.cardMarket.find(c => c.id === cardId)
-    || (player.reservedCard && player.reservedCard.id === cardId ? player.reservedCard : null);
+    || player.reservedCards.find(c => c.id === cardId)
+    || null;
   if (!card) {
     alert('Card not found');
     return;
@@ -2022,49 +2016,16 @@ function cardSpriteHTML(card, displayHeight, { extraClass = '', clickable = fals
   `;
 }
 
-// Confirm overlay for ordering a fresh pot of tea. Only ever opened when
-// canOrderTea is true, so the pot is at least REFRESH_THRESHOLD.
+// showTeaConfirm DELETED 1 AUGUST. It was the "Order a fresh pot of tea?" overlay
+// with its Cancel / Order the pot buttons, opened from the tea button under the
+// market. Its real job was to put the DESTRUCTIVE tile flush somewhere it could
+// not be skimmed past before the player committed to it.
 //
-// There is no card here to show: the 28 July rules delete the Fresh Pot of Tea
-// card, and this is a board-printed option. The overlay's job is to lay out the
-// four steps in order and put the DESTRUCTIVE tile flush where it cannot be
-// skimmed past, because that is the part of the action players misjudge - the
-// board they wipe is their own as much as anyone else's.
-function showTeaConfirm(potSize = 0) {
-  const potText = `You will collect a flat pot of <strong>${TEA_POT_REWARD} cupcake${TEA_POT_REWARD === 1 ? '' : 's'}</strong>, then take your full turn on the new board. You may order another pot on a later turn whenever ${REFRESH_THRESHOLD} teapots are showing again - there is no per-game limit.`;
-  const modal = document.createElement('div');
-  modal.className = 'ft-modal';
-  modal.innerHTML = `
-    <div class="ft-modal__inner ft-tea-confirm">
-      <button class="ft-modal__close" aria-label="Cancel">✕</button>
-      <div class="ft-modal__title">
-        <h2>🫖 Order a fresh pot of tea?</h2>
-        <p style="color: var(--color-text-secondary); margin: var(--spacing-sm) 0 0 0;">${potText}</p>
-      </div>
-      <ol class="ft-tea-confirm__steps">
-        <li>Starting with you, every player may reserve <strong>1 card</strong> from the card market.</li>
-        <li>The <strong>whole</strong> remaining card row is discarded and 4 fresh cards are dealt.</li>
-        <li>You gain a flat <strong>${TEA_POT_REWARD} cupcake${TEA_POT_REWARD === 1 ? '' : 's'}</strong> - the pot no longer varies with the teapots showing.</li>
-        <li class="ft-tea-confirm__steps-warning">Every tile on the market goes <strong>back into the bag</strong>, the bag is shuffled, and all spaces are dealt afresh.</li>
-      </ol>
-      <div class="ft-tea-confirm__warning">⚠ Step 4 wipes the tile market for <strong>everybody, you included</strong>. Any colour or ingredient you were lining up will be gone.</div>
-      <div class="ft-tea-confirm__buttons">
-        <button class="ft-btn ft-btn--secondary" id="teaCancelBtn">Cancel</button>
-        <button class="ft-btn ft-btn--primary" id="teaOrderBtn">🫖 Order the pot</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-
-  const close = () => modal.remove();
-  modal.querySelector('.ft-modal__close').addEventListener('click', close);
-  modal.querySelector('#teaCancelBtn').addEventListener('click', close);
-  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
-  modal.querySelector('#teaOrderBtn').addEventListener('click', () => {
-    close();
-    window._gameUI.onOrderTea?.();
-  });
-}
+// There is nothing left to confirm - tea fires from the engine at the end of any
+// turn that leaves REFRESH_THRESHOLD teapots showing, and a dialog cannot cancel
+// it. The warning it carried has moved to where it can still change a decision:
+// the rules panel, and the phase-bar line shown while a player is one teapot away
+// and choosing which line to sweep.
 
 function getColourCSS(colour) {
   const colourMap = {

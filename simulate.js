@@ -1,4 +1,4 @@
-import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, moveTile, refill, orderTea, teaReserve, teaReserveMustPass, getValidSweeps, getValidPlacements, calculateFinalScores, STAND_ROW_VALUES } from './src/engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, moveTile, refill, teaReserve, teaReserveMustPass, getValidSweeps, getValidPlacements, calculateFinalScores, STAND_ROW_VALUES } from './src/engine/game.js';
 import { createStatsCollector } from './src/engine/statsCollector.js';
 import * as fastBot from './src/bots/fastBot.js';
 import * as basicBot from './src/bots/basicBot.js';
@@ -51,16 +51,10 @@ function runGame(playerConfigs, botStrategy) {
           }
           break;
         }
-        // Driver contract: at the start of a turn, first offer the fresh-pot-of-
-        // tea flush; only if the strategy declines (or lacks the hook) do we
-        // sweep as before. The strategies gate themselves on canOrderTea, so a
-        // true here is always legal. A MANDATORY refresh (empty tile market)
-        // never reaches this branch — the engine has already put the game into
-        // the 'teaReserve' phase below before the turn starts.
-        if (strategy.decideOrderTea && strategy.decideOrderTea(gameState)) {
-          gameState = orderTea(gameState);
-          break;
-        }
+        // 1 August: there is no "order tea" decision to offer here any more. Tea
+        // fires automatically at the END of a turn, from inside refill(), so the
+        // sweep phase is just a sweep. The engine can leave refill() parked in
+        // 'teaReserve', which the case below picks up on the next loop pass.
         const decision = strategy.decideSweep(gameState);
         if (decision) {
           gameState = sweep(gameState, decision.rowOrCol, decision.isRow, decision.declaration, decision.declarationType);
@@ -242,10 +236,15 @@ console.log(`Sweep size:        mean=${meanOf(reports.map(r => parseFloat(r.avgS
 console.log(`Tiles taken/game:  mean=${meanOf(reports.map(r => r.totalTilesTaken)).toFixed(2)}, max=${maxOf(reports.map(r => r.totalTilesTaken))} (from a 100-tile bag)`);
 
 // ---------------------------------------------------------------------------
-// 1. REFRESH CADENCE. Target: spread through the game, realistic firing around 3
-//    symbols. Named failure modes: (A) firing at every legal opportunity - the
-//    knob for that is raising REFRESH_THRESHOLD to 3; (B) a bad-for-everyone
-//    market sitting unflushed while players wait each other out.
+// 1. REFRESH CADENCE. Target: spread through the game, flushing with 5-7 tiles
+//    left on the board.
+//
+//    THE OLD FAILURE MODES ARE GONE (1 August). Tea used to be a voluntary
+//    start-of-turn action, so the two things worth watching were (A) does it fire
+//    at every legal chance and (B) does a bad market sit unflushed while players
+//    wait each other out. Neither has a subject any more: tea fires automatically
+//    at the end of the turn that reaches the threshold. What replaces them is the
+//    TRIGGER INVARIANT - no turn should ever BEGIN with tea still due.
 // ---------------------------------------------------------------------------
 const allRefreshes = reports.flatMap(r => r.refreshes);
 const refreshesPerGame = reports.map(r => r.refreshCount);
@@ -261,13 +260,11 @@ for (const g of games) {
     quarters[Math.min(3, Math.floor(4 * r.turn / len))]++;
   }
 }
-// Failure mode A: voluntary refreshes as a share of the turn-starts where one was
-// legal. Mandatory ones are excluded - nobody chose those.
-const legalTurnStarts = sumOf(reports.map(r => r.refreshLegalTurns));
-const voluntaryRefreshes = allRefreshes.filter(r => !r.mandatory).length;
-// Failure mode B: the longest run of consecutive turns on which the refresh was
-// legal and nobody took it.
-const unflushedStreaks = reports.map(r => r.longestUnflushedStreak);
+// The trigger invariant: turns that BEGAN with a fresh pot of tea still owed.
+// The end-of-turn trigger is supposed to make this impossible, so anything above
+// zero is a bug, not a tuning result.
+const teaDueAtTurnStart = sumOf(reports.map(r => r.teaDueAtTurnStart));
+const totalTurnStarts = sumOf(reports.map(r => r.turnSampleCount));
 // Is one seat doing all the flushing? Largest share of a game's own refreshes
 // fired by a single player.
 const seatShares = games.filter(g => g.report.refreshCount > 0)
@@ -283,15 +280,16 @@ console.log(`Reward collected:  total=${sumOf(allRefreshes.map(r => r.reward))},
 console.log(`Firing turn:       mean=${meanOf(allRefreshes.map(r => r.turn)).toFixed(1)}, min=${minOf(allRefreshes.map(r => r.turn))}, max=${maxOf(allRefreshes.map(r => r.turn))}`);
 console.log(`Spread over game:  quarters Q1/Q2/Q3/Q4 = ${quarters.join('/')} (an even split is "spread through the game")`);
 console.log(`Fired by seat:     ${JSON.stringify(bySeat)}; one seat's share of its own game mean=${(100 * meanOf(seatShares)).toFixed(1)}%`);
-console.log(`FAILURE MODE A (fires at every legal chance): ${voluntaryRefreshes} voluntary refreshes over ${legalTurnStarts} legal turn-starts = ${pct(voluntaryRefreshes, legalTurnStarts)} take-up`);
-console.log(`FAILURE MODE B (bad market left unflushed):   longest legal-but-unflushed run mean=${meanOf(unflushedStreaks).toFixed(2)}, max=${maxOf(unflushedStreaks)} turns`);
+console.log(`TRIGGER INVARIANT: ${teaDueAtTurnStart}/${totalTurnStarts} turns began with tea still due (MUST be 0)`);
 
 // ---------------------------------------------------------------------------
-// 2. MANDATORY (EMPTY-BOARD) REFRESHES. Should be rare.
+// 2. BACKSTOP (EMPTY-BOARD) REFRESHES. Should now be ZERO, not merely rare: an
+//    empty market shows all five teapots, so the end-of-turn trigger refills it
+//    before the turn can pass on. Anything here means the trigger has a hole.
 // ---------------------------------------------------------------------------
 const mandatoryPerGame = reports.map(r => r.mandatoryRefreshCount);
 const mandatoryTurns = reports.flatMap(r => r.mandatoryRefreshTurns);
-console.log(`\n=== 2. MANDATORY (EMPTY-BOARD) REFRESHES ===\n`);
+console.log(`\n=== 2. BACKSTOP (EMPTY-BOARD) REFRESHES - should be 0 ===\n`);
 console.log(`Per game:          mean=${meanOf(mandatoryPerGame).toFixed(3)}, max=${maxOf(mandatoryPerGame)}, games affected=${mandatoryPerGame.filter(v => v > 0).length}/${nGames}`);
 console.log(`Share of all refreshes: ${pct(sumOf(mandatoryPerGame), allRefreshes.length)}`);
 console.log(`Turn numbers:      ${mandatoryTurns.length ? mandatoryTurns.slice(0, 30).join(', ') + (mandatoryTurns.length > 30 ? ' ...' : '') : '(none)'}`);

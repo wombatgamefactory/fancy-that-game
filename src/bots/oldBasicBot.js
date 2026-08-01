@@ -1,11 +1,11 @@
-import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleCupcakeSymbols, canOrderTea, STAND_ROW_VALUES, CUPCAKE_PLATES, BOARD_SIZE } from '../engine/game.js';
+import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleCupcakeSymbols, STAND_ROW_VALUES, CUPCAKE_PLATES, BOARD_SIZE } from '../engine/game.js';
 
 // Approximate value of a completed claim beyond the card's printed VP: the
 // sacrificed tile is banked on the stand or crumb tray. A conservative floor —
 // a crumb is 1 VP, a shallow plate 2-3 — kept low so the sweep/placement demand
 // weighting below stays a relative ranking, not an absolute score. (Realized
 // plate marginals under the escalating table average higher, ~4-5, but bumping
-// this would need TEA_WEAK_SWEEP_MAX and the pruning cutoffs re-tuned in lockstep,
+// this would need the pruning cutoffs re-tuned in lockstep,
 // so it is deliberately left as a stable floor.)
 const CLAIM_EXTRA = 2;
 
@@ -23,29 +23,12 @@ function isCupcakePlate(rowIndex, plateIndex) {
 }
 
 // ── Tea-round tuning constants ─────────────────────────────────────────────
-// Ordering a fresh pot of tea NO LONGER costs the sweep (the player takes their
-// full turn afterwards) and, since 28 July, is no longer a once-per-game card
-// either: it is a repeatable board option gated on visible teapot symbols
-// (canOrderTea). The "use it before it goes to waste" pressure is therefore gone
-// — what remains is a genuine timing call, weighing the cupcake pot on offer
-// against the fact that the flush DESTROYS the current tile market (the refresh
-// is destructive now, not additive) for everyone including us. Knobs tuned
-// against simulate.js.
+// The three tea-TIMING knobs that used to live here (TEA_STRONG_POT,
+// TEA_MODEST_POT, TEA_WEAK_SWEEP_MAX) were deleted on 1 August with
+// decideOrderTea - see the note further down. They tuned a voluntary
+// start-of-turn flush, and there is no longer any such action to tune. Only the
+// reserve-round knobs below survive, because the reserve round itself does.
 //
-// PLACEHOLDER POLICY (step 2 of the rework): deliberately conservative and
-// simple — proper refresh-timing AI (denial value, the race against opponents
-// firing first, symbol steering) is a later step. What it must NOT do is fire at
-// every legal opportunity, which with a repeatable refresh would flush the
-// market every single turn.
-//
-// TEA_STRONG_POT: a cupcake pot this size (or larger) fires tea on its own.
-const TEA_STRONG_POT = 3;
-// TEA_MODEST_POT: a pot this size fires tea only when the market is ALSO poor for
-//   us (so the fresh market we sweep first is the real prize alongside the pot).
-const TEA_MODEST_POT = 2;
-// TEA_WEAK_SWEEP_MAX: best scoreSweeps() score at/below which the current market
-//   counts as "poor" for us (little lost, much gained from a fresh market).
-const TEA_WEAK_SWEEP_MAX = 2.5;
 // RESERVE_MAX_MISSING: a market card whose best window on THIS player's board is
 //   missing more than this many tiles is hopeless — never reserved.
 const RESERVE_MAX_MISSING = 4;
@@ -258,7 +241,7 @@ export function decideDestination(player, tile, gameState = null) {
 
 // All valid sweeps scored best-first by the window-aware heuristic, returning
 // { sweep, score } pairs. Shared by rankSweeps (which drops the scores) and by
-// decideOrderTea (which needs the best score to judge whether tea beats sweep).
+// the sweep choice itself (decideSweep takes the top-ranked entry).
 function scoreSweeps(gameState) {
   const validSweeps = getValidSweeps(gameState);
   if (validSweeps.length === 0) return [];
@@ -333,9 +316,9 @@ function minMissingForCard(board, card) {
 //
 // This began life as a workaround for a rules hole: once the bag was short, the
 // redeal left cells empty - including teapot-symbol cells - so the gate stayed
-// OPEN and a bot that only checked canOrderTea would order tea again, on the same
+// armed and a bot that only checked legality would order tea again, on the same
 // turn, for another pot, forever (~200 refreshes, games that never ended). That
-// hole is CLOSED in the rules now: canOrderTea requires a non-empty bag, and the
+// hole is CLOSED in the rules now: a refresh requires a non-empty bag, and the
 // game ends on an empty bag ('bagEmpty'), so nothing here is load-bearing for
 // termination any more.
 // It stays purely as PLAY JUDGEMENT, and it is deliberately stricter than the
@@ -349,47 +332,26 @@ export function refreshWouldRestockBoard(gameState) {
   return gameState.bag.length + onBoard >= gameState.market.length;
 }
 
-// Whether to order a fresh pot of tea at the start of this turn. Tea is pure
-// upside once legal (the player still takes their full turn after), so the whole
-// decision is timing:
-//   - canOrderTea is the ONLY legality gate (right phase, no pending bonus tile,
-//     enough visible teapot symbols). The bot never re-derives it, and there is
-//     no once-per-game check any more;
-//   - a STRONG pot (>= TEA_STRONG_POT visible teapot symbols) fires on its own;
-//   - a MODEST pot (>= TEA_MODEST_POT) fires only when the current market is ALSO
-//     poor for us — the flush destroys the market we would otherwise sweep, so a
-//     market we like is a real reason to leave the pot on the table;
-//   - never a refresh that cannot restock the board (see refreshWouldRestockBoard).
-// There is deliberately no late-game "use it or lose it" clause any more: with a
-// repeatable refresh that would fire on every remaining turn.
-export function decideOrderTea(gameState) {
-  if (!canOrderTea(gameState)) return false;
-  if (!refreshWouldRestockBoard(gameState)) return false;
-
-  const potSize = getVisibleCupcakeSymbols(gameState);
-
-  // A strong pot alone justifies tea.
-  if (potSize >= TEA_STRONG_POT) return true;
-
-  // A modest pot plus a market that is poor for us (a fresh market is the prize
-  // alongside the pot — we sweep it first).
-  if (potSize >= TEA_MODEST_POT) {
-    const scored = scoreSweeps(gameState);
-    const bestSweepScore = scored.length > 0 ? scored[0].score : 0;
-    if (bestSweepScore <= TEA_WEAK_SWEEP_MAX) return true;
-  }
-
-  return false;
-}
+// decideOrderTea DELETED 1 AUGUST, along with its TEA_STRONG_POT /
+// TEA_MODEST_POT / TEA_WEAK_SWEEP_MAX thresholds. This bot is kept as the
+// historical baseline for arena comparisons, and its old policy was "a strong pot
+// fires on its own; a modest pot fires only if the market in front of us is also
+// poor". None of that survives the rule change: tea is no longer ordered by a
+// player at the start of a turn, it fires from the engine at the end of one.
+//
+// This bot has no symbol steering of its own (it predates it), so with the
+// decision gone it simply never thinks about tea at all - which is exactly what a
+// baseline should be for measuring whether basicBot's symbolTriggerValue earns
+// its keep.
 
 // Which market card players[reserverIndex] should reserve during a tea round
 // (returns a cardId), or null to pass. Scores every market card by
 // vp / (1 + minMissingTiles) on THAT player's board (near-complete, high-vp
-// cards win); passes if the reserve is already full or every card is hopeless
-// (best window missing > RESERVE_MAX_MISSING, or no viable window at all).
+// cards win); passes if every card is hopeless (best window missing >
+// RESERVE_MAX_MISSING, or no viable window at all). The reserve itself is
+// uncapped since 1 Aug, so a held card never blocks a take.
 export function decideTeaReserve(gameState, reserverIndex) {
   const player = gameState.players[reserverIndex];
-  if (player.reservedCard !== null) return null;
 
   let bestId = null;
   let bestScore = -Infinity;
@@ -514,11 +476,10 @@ export function decideMove(gameState) {
   const player = gameState.players[gameState.currentPlayerIndex];
   if (gameState.cupcakesUsedThisTurn || player.cupcakes <= 0) return null;
 
-  // Claimable candidates are the market cards PLUS this player's reserved card
-  // (which completes as a normal claim). A cupcake move that finishes either is
-  // fair game.
-  const candidateCards = [...gameState.cardMarket];
-  if (player.reservedCard) candidateCards.push(player.reservedCard);
+  // Claimable candidates are the market cards PLUS this player's reserved cards
+  // (which complete as normal claims). A cupcake move that finishes any of them
+  // is fair game.
+  const candidateCards = [...gameState.cardMarket, ...player.reservedCards];
 
   let bestNowVp = 0;
   const matchedNow = new Set();
@@ -587,10 +548,9 @@ export function decideMove(gameState) {
 export function decideClaim(gameState) {
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
-  // Candidates are the market cards PLUS this player's reserved card, which
-  // completes as a normal claim (claim() resolves a reserved id transparently).
-  const candidateCards = [...gameState.cardMarket];
-  if (currentPlayer.reservedCard) candidateCards.push(currentPlayer.reservedCard);
+  // Candidates are the market cards PLUS this player's reserved cards, which
+  // complete as normal claims (claim() resolves a reserved id transparently).
+  const candidateCards = [...gameState.cardMarket, ...currentPlayer.reservedCards];
 
   // Find all claimable cards.
   const claimableCards = [];

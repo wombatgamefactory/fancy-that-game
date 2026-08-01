@@ -1,21 +1,19 @@
 import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, moveTile, refill, teaReserve, teaReserveMustPass, calculateFinalScores, getLegalDestinations, STAND_ROW_VALUES, REWARD_CARDS, BOARD_SIZE, getPatternMatches, getPatternWindows } from '../engine/game.js';
-import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacements, decideClaim as greedyClaim, decideMove as greedyMove, decideOrderTea as basicOrderTea, decideTeaReserve as basicTeaReserve, rankSweeps, rankBonusTiles } from './basicBot.js';
+import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacements, decideClaim as greedyClaim, decideMove as greedyMove, decideTeaReserve as basicTeaReserve, rankSweeps, rankBonusTiles } from './basicBot.js';
 
-// Tea-round decisions (v1): delegate to the basicBot heuristics rather than
-// expanding the MCTS move space. Adding orderTea/teaReserve as tree actions
-// would balloon branching and rollout cost; the shared basicBot core makes this
-// a clean two-function delegation. Known limitation — revisit if simulation
-// shows MCTS losing ground after the feature, and note that the refresh is now
-// repeatable and destructive, which makes its timing a much bigger decision than
-// the old once-per-game card was. NOTE: rollouts never CHOOSE to order tea
-// (selectHeuristicSweep only returns real sweeps), but a playout can still enter
-// the 'teaReserve' phase without asking, because an empty tile market at the
-// start of a turn forces a mandatory refresh — hence the live guard in rollout()
-// below.
-export function decideOrderTea(gameState) {
-  return basicOrderTea(gameState);
-}
-
+// Tea-round decisions: delegate the RESERVE pick to the basicBot heuristic rather
+// than expanding the MCTS move space. Adding it as a tree action would balloon
+// branching and rollout cost; the shared basicBot core makes it a clean
+// one-function delegation.
+//
+// decideOrderTea is gone (1 August). There is no longer any decision to delegate:
+// tea fires from the engine at the END of any turn that leaves four teapots
+// showing. That makes the guard in rollout() below MORE important, not less - a
+// playout now enters the 'teaReserve' phase routinely, on a good fraction of all
+// turns, rather than only on the rare forced-empty-market case it was written
+// for. The trigger's real decision has moved into the sweep, where rankSweeps
+// already prices it (see symbolTriggerValue in basicBot), so the search does
+// account for it - through the sweep ordering rather than as an action of its own.
 export function decideTeaReserve(gameState, reserverIndex) {
   return basicTeaReserve(gameState, reserverIndex);
 }
@@ -93,6 +91,10 @@ function cloneState(state) {
       stand: p.stand.map(r => ({ ...r, tiles: [...r.tiles] })),
       crumbTray: [...p.crumbTray],
       claimedCards: [...p.claimedCards],
+      // MUST be copied: the reserve became an ARRAY when the one-card cap was
+      // dropped (1 Aug), and a rollout that reserves or completes a card would
+      // otherwise push/splice the REAL player's reserve.
+      reservedCards: [...p.reservedCards],
     })),
     market: [...state.market],
     bag: [...state.bag],
@@ -516,10 +518,12 @@ function rollout(state, playerIndex) {
           skipClaim(cloned);
         }
       } else if (cloned.gamePhase === 'teaReserve') {
-        // Reachable: the rollout policy never orders tea itself, but an empty
-        // tile market at the start of a turn forces a mandatory refresh, which
-        // opens a reserve round mid-playout. Resolve each reserve with the basic
-        // heuristic (or a forced pass) so playouts neither stall nor throw.
+        // ROUTINELY reachable since 1 August: refill() fires a fresh pot at the
+        // end of any turn that leaves four teapots showing, so a playout of any
+        // length runs several reserve rounds. (It used to be a rare corner - an
+        // empty tile market forcing a refresh - which is why this branch reads as
+        // a guard.) Resolve each reserve with the basic heuristic, or a forced
+        // pass, so playouts neither stall nor throw.
         const idx = cloned.teaReserverIndex;
         const cardId = teaReserveMustPass(cloned) ? null : basicTeaReserve(cloned, idx);
         teaReserve(cloned, cardId);

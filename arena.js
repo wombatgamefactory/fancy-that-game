@@ -6,7 +6,7 @@
 //
 // Usage: node arena.js <games> <playerCount> <modA> <modB>
 //   where modA/modB are module names under src/bots/ (without .js).
-import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, moveTile, refill, orderTea, teaReserve, teaReserveMustPass, calculateFinalScores } from './src/engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, moveTile, refill, teaReserve, teaReserveMustPass, calculateFinalScores } from './src/engine/game.js';
 
 const games = parseInt(process.argv[2]) || 100;
 const playerCount = parseInt(process.argv[3]) || 2;
@@ -30,10 +30,9 @@ function runGame(strategies) {
           else gameState = declineBonusTile(gameState);
           break;
         }
-        if (strategy.decideOrderTea && strategy.decideOrderTea(gameState)) {
-          gameState = orderTea(gameState);
-          break;
-        }
+        // 1 August: tea is no longer a start-of-turn decision - refill() fires it
+        // at the end of a turn and parks the game in 'teaReserve' for the case
+        // below.
         const decision = strategy.decideSweep(gameState);
         if (decision) gameState = sweep(gameState, decision.rowOrCol, decision.isRow, decision.declaration, decision.declarationType);
         else gameState.gamePhase = 'place';
