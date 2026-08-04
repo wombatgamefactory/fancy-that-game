@@ -1,4 +1,4 @@
-import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, refill, moveTile, teaReserve, teaReserveMustPass, getValidSweeps, getValidPlacements, getPatternMatches, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, canBuyExtraTile, place, claim, skipClaim, skipSpend, refill, moveTile, removePlate, canRemovePlate, getMoveCost, reserveCard, canReserveCard, canClaimMore, getValidSweeps, getValidPlacements, getPatternMatches, getWinningPlayers, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
 import { createStatsCollector } from '../engine/statsCollector.js';
 import { renderSetupScreen, renderGameScreen, updateGameDisplay, setThinkingState, setThinkingProgress, renderEndScreen } from './board.js';
 import * as basicBot from '../bots/basicBot.js';
@@ -40,23 +40,32 @@ function undoAction() {
     window._gameUI.removedBoardIndex = null;
     window._gameUI.destinationChoices = null;
     window._gameUI.cupcakeMode = false;
+    window._gameUI.extraTileMode = false;
+    window._gameUI.reserveMode = false;
   }
   updateDisplay();
 }
 
+// THE END IS A TRIGGER, NOT A STOP (4 August). Nothing here changes, and that is
+// worth stating: refill() still either rotates the turn or ends the game, so
+// polling gameState.gameOver after it is still the whole of the driver's job. What
+// changed is WHEN the flag arrives. An end condition now only ARMS the ending
+// (gameState.endTriggered), and play continues until the turn comes back round to
+// the start player so that everybody has had the same number of turns - so
+// gameOver can land several turns after the plate pool ran out. Do not add a
+// check on endTriggered here and stop early; that is the bug the rule change
+// fixed. The end screen names the reason (endGameReasonText in board.js).
 function confirmTurn() {
   undoStack.length = 0;
   refill(gameState);
   updateDisplay();
   if (gameState.gameOver) {
     onGameEnd();
-  } else if (gameState.gamePhase === 'teaReserve') {
-    // Ending the turn with four teapots showing forces a fresh pot of tea
-    // (1 August rule) - refill() opens the reserve round and leaves the rotation
-    // owed. driveTeaReserves owns the whole round, passes the turn on, and
-    // resumes bot autoplay itself afterwards.
-    driveTeaReserves();
   } else {
+    // Ending the turn with four teapots showing brews a fresh pot of tea. Since
+    // 3 August that is MECHANICAL - refill() flushes the cards, pays the pot,
+    // flushes the tiles and rotates, all inside the one call - so there is
+    // nothing for the UI to drive and no reserve round to sit through.
     setTimeout(() => {
       const nextPlayer = gameState.players[gameState.currentPlayerIndex];
       if (!nextPlayer.isHuman) {
@@ -73,7 +82,13 @@ function onGameStart(playerConfigs) {
   autoPlayMode = playerConfigs.every(p => !p.isHuman);
 
   const app = document.getElementById('app');
-  renderGameScreen(app, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick, onTeaReserve);
+  renderGameScreen(app, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick, {
+    onExtraTile,
+    onExtraTileToggle,
+    onReserveCard,
+    onRemovePlate,
+    onReserveToggle,
+  });
 
   updateDisplay();
 
@@ -151,7 +166,7 @@ function onSkipClaim() {
 function onSkipMove() {
   try {
     pushUndoSnapshot();
-    skipMove(gameState);
+    skipSpend(gameState);
     updateDisplay();
     checkAutoAdvance();
   } catch (e) {
@@ -170,97 +185,93 @@ function onMoveTile(fromIndex, toIndex) {
   }
 }
 
-function onCupcakeClick() {
-  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-  if (currentPlayer.cupcakes > 0 && gameState.gamePhase === 'move' && !gameState.cupcakesUsedThisTurn) {
-    window._gameUI.cupcakeMode = !window._gameUI.cupcakeMode;
-    updateDisplay();
-  }
-}
-
-// onOrderTea DELETED 1 AUGUST. A human used to click a button to order a fresh
-// pot at the start of their turn; it was also the one place a tea round pushed an
-// undo snapshot, so undo rewound the whole round in a step. Neither is needed
-// now: the engine opens every tea round itself, from inside refill(), and
-// confirmTurn / checkAutoAdvance / autoPlayGame all drive it. Undo is not a
-// concern either, because confirmTurn clears the undo stack before calling
-// refill - by the time tea fires, the turn it belongs to is already over.
-
-// A human reserver resolves their tea-round decision: cardId to take a market
-// card into their reserve, or null to pass ("No, thank you"). The deciding
-// player is gameState.teaReserverIndex, NOT necessarily the current player
-// (hotseat: someone may act on the tea player's turn). No snapshot here — a tea
-// round is never undoable, see above.
-function onTeaReserve(cardId) {
-  if (gameState.gamePhase !== 'teaReserve') return;
-  const reserver = gameState.players[gameState.teaReserverIndex];
-  if (!reserver.isHuman) return;
-
+// SPEND 3 CUPCAKES: REMOVE AN EMPTY PLATE, to the box. One click on the plate -
+// unlike a tile move there is no destination to choose, because the plate leaves
+// the game rather than going anywhere on the board.
+function onRemovePlate(index) {
   try {
-    teaReserve(gameState, cardId);
+    pushUndoSnapshot();
+    removePlate(gameState, index);
+    window._gameUI.cupcakeMode = false;
     updateDisplay();
-    driveTeaReserves();
   } catch (e) {
     alert(e.message);
   }
 }
 
-// Resolve tea-round reserve decisions in clockwise order. Bots decide via their
-// decideTeaReserve heuristic (with the usual thinking affordance + ~500ms pacing);
-// a human who is forced to pass (empty card market — the only forced pass left
-// now that a reserve is uncapped) is auto-passed without a click. The loop stops when a human reserver who CAN act is reached
-// (the banner/market UI then waits for onTeaReserve) or when the round ends.
-//
-// WHAT THE GAME LOOKS LIKE WHEN THE ROUND ENDS (1 August). The normal route fires
-// at the END of a turn, so finishTeaRound passes the turn on: currentPlayerIndex
-// is the NEXT player and the phase is 'sweep'. That rotation runs the two
-// turn-boundary end conditions, so the round CAN end the game - hence the
-// gameOver check below, which the old start-of-turn round never needed.
-async function driveTeaReserves() {
-  while (gameState.gamePhase === 'teaReserve') {
-    const reserver = gameState.players[gameState.teaReserverIndex];
-
-    if (reserver.isHuman) {
-      if (teaReserveMustPass(gameState)) {
-        // Forced pass — no card can be taken, so resolve it without a click.
-        teaReserve(gameState, null);
-        updateDisplay();
-        continue;
-      }
-      // A human with a real choice: hand control to the UI and wait.
-      return;
-    }
-
-    // Bot reserver.
-    const isMCTS = reserver.aiDifficulty && reserver.aiDifficulty.startsWith('mcts');
-    const bot = isMCTS ? mctsBot : basicBot;
-    setThinkingState(reserver.name, true);
-    updateDisplay();
-    await new Promise(r => setTimeout(r, 500));
-
-    let cardId = null;
-    if (!teaReserveMustPass(gameState)) {
-      cardId = bot.decideTeaReserve ? bot.decideTeaReserve(gameState, gameState.teaReserverIndex) : null;
-    }
-    teaReserve(gameState, cardId);
-    setThinkingState(reserver.name, false);
-    updateDisplay();
-  }
-
-  // Round finished. The turn has rotated, so gameState.currentPlayerIndex is now
-  // the INCOMING player, sitting in front of a freshly dealt 25-tile market with
-  // every teapot symbol covered again.
-  if (gameState.gameOver) {
-    // The rotation inside finishTeaRound hit a turn-boundary end condition (a
-    // full personal board, or a flush that drained the last of the bag).
-    onGameEnd();
-    return;
-  }
+function onCupcakeClick() {
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-  if (!currentPlayer.isHuman) {
-    autoPlayGame();
+  // Board-spend mode covers TWO actions with separate prices and separate
+  // per-turn allowances: move a tile (1) and remove an empty plate (3). Open the
+  // mode if either is still available - the engine gates the specific cell.
+  const canMoveTile = currentPlayer.cupcakes >= 1 && !gameState.moveUsedThisTurn;
+  if (gameState.gamePhase === 'spend' && (canMoveTile || canRemovePlate(gameState))) {
+    window._gameUI.cupcakeMode = !window._gameUI.cupcakeMode;
+    updateDisplay();
   }
 }
+
+// SPEND 1 CUPCAKE: TAKE 1 EXTRA TILE (3 August). Offered at the sweep step, once
+// the sweep has resolved and before the swept tiles are placed - the bought tile
+// joins them, so the placement UI must see it. Reuses the bonus-tile click path.
+function onExtraTile(marketIndex) {
+  if (!canBuyExtraTile(gameState)) return;
+  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  if (!currentPlayer.isHuman) return;
+  try {
+    pushUndoSnapshot();
+    takeExtraTile(gameState, marketIndex);
+    window._gameUI.extraTileMode = false;
+    updateDisplay();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+function onExtraTileToggle() {
+  if (!canBuyExtraTile(gameState)) return;
+  window._gameUI.extraTileMode = !window._gameUI.extraTileMode;
+  updateDisplay();
+}
+
+// SPEND 1 CUPCAKE: RESERVE A CARD (3 August). Offered at the spend step on the
+// player's own turn. The reserve holds one card, and the card cannot be claimed
+// on the turn it was reserved - the engine enforces both.
+function onReserveCard(cardId) {
+  if (!canReserveCard(gameState)) return;
+  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  if (!currentPlayer.isHuman) return;
+  try {
+    pushUndoSnapshot();
+    reserveCard(gameState, cardId);
+    window._gameUI.reserveMode = false;
+    updateDisplay();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+function onReserveToggle() {
+  if (!canReserveCard(gameState)) return;
+  window._gameUI.reserveMode = !window._gameUI.reserveMode;
+  updateDisplay();
+}
+
+// onOrderTea DELETED 1 AUGUST, and the whole TEA RESERVE ROUND deleted 3 August.
+//
+// A human used to click a button to order a fresh pot at the start of their turn
+// (1 August: the engine fires it automatically at the end of the turn instead).
+// Every player then took a turn in a clockwise reserve round, which the UI drove
+// through onTeaReserve / driveTeaReserves and rendered with its own banner.
+//
+// None of that exists now. A fresh pot is mechanical and single-player: refill()
+// flushes the card row, pays the tea player TEA_POT_REWARD, flushes and redeals
+// the tiles, and rotates the turn - all in the one synchronous call. Reserving is
+// a PAID action a player takes on their own turn instead (onReserveCard).
+//
+// Undo was never a concern for a tea round and still is not: confirmTurn clears
+// the undo stack before calling refill, so by the time tea fires the turn it
+// belongs to is already over.
 
 // A claim phase with nothing claimable is a dead stop for a human: the only
 // control is "Skip Claim", which does nothing but reveal "Confirm Turn". Skip it
@@ -272,8 +283,11 @@ function autoSkipEmptyClaim() {
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   if (!currentPlayer.isHuman) return;
 
+  // An exhausted empty-plate supply makes every match unclaimable, so treat it
+  // exactly like having no match at all and skip the dead step for the player.
   const cards = [...gameState.cardMarket, ...currentPlayer.reservedCards];
-  const anyMatch = cards.some(card => getPatternMatches(currentPlayer.board, card.pattern).length > 0);
+  const anyMatch = canClaimMore(gameState)
+    && cards.some(card => getPatternMatches(currentPlayer.board, card.pattern).length > 0);
   if (anyMatch) return;
 
   skipClaim(gameState);
@@ -289,16 +303,12 @@ function checkAutoAdvance() {
       updateDisplay();
       return;
     }
-    // AI player: auto-advance as before
+    // AI player: auto-advance as before. refill() may brew a pot of tea on the
+    // way out; that is mechanical now, so it needs no handling here.
     refill(gameState);
     updateDisplay();
     if (gameState.gameOver) {
       onGameEnd();
-    } else if (gameState.gamePhase === 'teaReserve') {
-      // The turn ended with four teapots showing — same handling as in
-      // confirmTurn: driveTeaReserves runs the round, passes the turn on and
-      // resumes autoplay (or ends the game).
-      driveTeaReserves();
     } else {
       setTimeout(() => {
         const nextPlayer = gameState.players[gameState.currentPlayerIndex];
@@ -350,30 +360,42 @@ async function autoPlayGame() {
             }
             sweep(gameState, sweepMove.rowOrCol, sweepMove.isRow, sweepMove.declaration, sweepMove.declarationType);
           }
-        } else if (gameState.gamePhase === 'teaReserve') {
-          // Reservers are keyed on teaReserverIndex, not currentPlayerIndex, and
-          // may include hotseat humans — driveTeaReserves owns the whole round and
-          // resumes autoplay itself once the turn has passed on.
-          await driveTeaReserves();
-          return;
         } else if (gameState.gamePhase === 'place') {
           // Board overflow is handled by the engine at the transition into this
           // phase (checkBoardOverflowOnPlace), so any state seen here is placeable.
           setThinkingState(currentPlayer.name, true);
           updateDisplay();
+          // Buy an extra tile FIRST (3 August): it is a sweep-step option and the
+          // tile it buys is placed with the swept tiles, so the placement decision
+          // has to see it.
+          const extraIndex = bot.decideExtraTile ? bot.decideExtraTile(gameState) : null;
+          if (extraIndex !== null && extraIndex !== undefined) {
+            takeExtraTile(gameState, extraIndex);
+          }
           const placements = await bot.decidePlacements(gameState, currentPlayer.aiDifficulty);
           setThinkingState(currentPlayer.name, false);
           updateDisplay();
 
           place(gameState, placements);
-        } else if (gameState.gamePhase === 'move') {
-          // Cupcake move: relocate one tile if it completes a card we could
+        } else if (gameState.gamePhase === 'spend') {
+          // Cupcake move: relocate one tile (1) if it completes a card we could
           // not otherwise claim this turn.
           const moveDecision = bot.decideMove ? await bot.decideMove(gameState, currentPlayer.aiDifficulty) : null;
           if (moveDecision) {
             moveTile(gameState, moveDecision.fromIndex, moveDecision.toIndex);
           }
-          skipMove(gameState);
+          // Remove an empty plate to the box (3) - a separate allowance from the
+          // move, so both can happen on the same turn.
+          const plateIndex = bot.decideRemovePlate ? await bot.decideRemovePlate(gameState, currentPlayer.aiDifficulty) : null;
+          if (plateIndex !== null && plateIndex !== undefined) {
+            removePlate(gameState, plateIndex);
+          }
+          // Paid reserve: 1 cupcake for a market card, not claimable this turn.
+          const reserveId = bot.decideReserve ? bot.decideReserve(gameState) : null;
+          if (reserveId !== null && reserveId !== undefined) {
+            reserveCard(gameState, reserveId);
+          }
+          skipSpend(gameState);
         } else if (gameState.gamePhase === 'claim') {
           setThinkingState(currentPlayer.name, true);
           updateDisplay();
@@ -404,10 +426,9 @@ async function autoPlayGame() {
 
       await new Promise(r => setTimeout(r, 500));
     } else {
-      // Handing control back to a human. A tea round may still be open (the
-      // reserve round runs clockwise, so a human can owe a decision on a bot's
-      // tea), in which case it must be driven rather than dropped.
-      if (gameState.gamePhase === 'teaReserve') driveTeaReserves();
+      // Handing control back to a human. Nothing can be left owed here since
+      // 3 August: a pot of tea resolves inside refill() rather than opening an
+      // interactive round a human might still owe a decision to.
       break;
     }
   }

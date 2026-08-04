@@ -15,9 +15,8 @@
 //    4  Card-lock incidence - turns a player reached their claim step with no legal
 //       claim anywhere, and the longest such streak per player.
 //    5  Multi-match frequency - turns a player could legally have claimed 2+ cards.
-//    6  Claims from reserves as a fraction of all claims. (The doc also wants the
-//       reserve round's TIME cost; that is a stopwatch measure of a real table and
-//       is deliberately not faked here.)
+//    6  Claims from reserves as a fraction of all claims. (3 August: reserving is
+//       a PAID own-turn action, so the reserve ROUND and its time cost are gone.)
 //    7  Deck reshuffles per game.
 //    8  Cupcake economy - influx by source, spend by use, and the high-water mark
 //       of cupcakes held simultaneously across all players (the 16-token physical
@@ -26,6 +25,15 @@
 //    9  Bag skew - colours flushed back to the bag versus colours dealt out again.
 //   10  Per-player claims, final score spread and game length - all readable from
 //       the finished game state, so simulate.js reports them from there.
+//
+// THE INGREDIENT-OBJECTIVE METRIC IS DELETED (4 August), along with the rule it
+// measured - see the pantry-goals note at the top of game.js. It was an unnumbered
+// section rather than one of the ten above, so nothing here is renumbered and
+// there is no gap: recordObjectiveClaimed, the objectivesClaimed log, the
+// per-seat breakdown and the "turn taken as a fraction of game length" report
+// fields are simply gone. The design question it existed to answer - were the
+// objectives resolving in the first two turns and becoming a turn-order lottery -
+// has no subject any more.
 //
 // TWO HARD RULES FOR EVERYTHING IN THIS FILE.
 //   - Collection must never change the game. gameState.statsCollector may be null
@@ -55,7 +63,7 @@ export function createStatsCollector() {
     reserveClaimsCount: 0, // claims completed from a personal reserve (subset of the above)
     // Times the tile market was REFILLED after setup: one per fresh pot of tea,
     // whether ordered or forced by the empty-market rule. The opening deal is
-    // NOT a refill and is deliberately not counted here — the end screen calls
+    // NOT a refill and is deliberately not counted here - the end screen calls
     // this "Market Refills" and it should read 0 in a game where nobody ever
     // refreshed the market.
     marketFillCount: 0,
@@ -77,7 +85,13 @@ export function createStatsCollector() {
     // step earlier than the matching `refreshes` entry, which carries the same
     // fact as its `mandatory` flag.
     mandatoryRefreshTurns: [],
-    teaReserves: [], // Array of { playerId, cardId } for each card reserved
+    // Every PAID reserve (3 August): { playerId, cardId, turn }. The free
+    // tea-round reserve is deleted, so this is now a record of a cupcake spend,
+    // not of a round everybody sat through.
+    reserves: [],
+    // (The objectivesClaimed log lived here until 4 August, one entry per
+    // ingredient-objective pair taken. The pantry goals are deleted, so it is
+    // gone rather than left collecting an empty array - see the header note.)
     deckReshuffles: 0, // times the card discard was reshuffled into a fresh deck
 
     // --- 3. Card row size (and the trigger invariant) -----------------------
@@ -86,8 +100,8 @@ export function createStatsCollector() {
     //   { turn, playerId, rowSize, symbols, teaStillDue }
     // rowSize is gameState.cardMarket.length - the variable-length CARD row, not
     // the 5x5 tile market and not the player's personal board. teaStillDue is
-    // isTeaDue at that instant, which must be FALSE on every turn start under the
-    // end-of-turn trigger - see the teaDueAtTurnStart derivation in getReport.
+    // isTeaDue at that instant - see the teaDueAtTurnStart derivation in getReport
+    // for what it must read now that a due pot does not always get brewed.
     turnSamples: [],
     firstClaimRowSize: null, // row length when the game's FIRST claim landed
     firstClaimTurn: null,
@@ -107,9 +121,23 @@ export function createStatsCollector() {
     // start = the 2 opening cupcakes; pot = the refresh reward; plates = cupcake
     // plates covered on the stand.
     cupcakeInflux: {},
-    // Per-player cupcake spend by use: { playerId: { move, extraClaim } }.
-    // move = the one-tile cupcake move; extraClaim = the pre-agreed extra-claim
-    // variant, which ships disabled and so normally stays 0.
+    // Per-player cupcake spend by use:
+    //   { playerId: { moveTile, removePlate, extraTile, reserve, extraClaim } }
+    // moveTile    = relocate a tile on your own board (1)
+    // removePlate = buy an empty plate off your board, to the box (3)
+    // extraTile   = buy 1 extra tile from anywhere at the sweep step (2, was 1)
+    // reserve     = pay to take a market card into your personal reserve (1)
+    // extraClaim  = the pre-agreed extra-claim variant, which ships disabled and
+    //               so normally stays 0.
+    //
+    // THE TILE/PLATE SPLIT IS DELIBERATE AND WAS ONCE A BLOCKER. The two shared a
+    // single `move` bucket until 3 August, so when the plate price changed there
+    // was no way to tell whether that repriced something common or something
+    // already rare. Do not merge them again.
+    //
+    // `movePlate` IS GONE, not renamed: moving a plate was deleted when removing
+    // one was introduced, and they are different actions at different prices.
+    // A run whose report still shows a movePlate bucket is running old code.
     cupcakeSpend: {},
     // High-water mark of cupcakes held SIMULTANEOUSLY across every player, sampled
     // after each influx (spends only ever lower the total, so the peak is always
@@ -191,10 +219,15 @@ export function createStatsCollector() {
       });
     },
 
-    recordTeaReserve(playerId, cardId) {
+    // A player PAID to reserve `cardId` on `turn`. Was recordTeaReserve, when
+    // reserving was a free step of the tea round.
+    recordReserve(playerId, cardId, turn) {
       if (!cardId) return;
-      this.teaReserves.push({ playerId: playerId, cardId: cardId });
+      this.reserves.push({ playerId: playerId, cardId: cardId, turn: parseInt(turn) || 0 });
     },
+
+    // (recordObjectiveClaimed was here. Deleted 4 August with the pantry goals;
+    // the engine no longer calls it and nothing else should start.)
 
     // An empty tile market FORCED a refresh on `turn` (the mandatory route).
     // Called from the empty-market rule, i.e. before the reserve round opens.
@@ -243,13 +276,14 @@ export function createStatsCollector() {
       this.cupcakeInflux[playerId][source] += amt;
     },
 
-    // Spend `amount` cupcakes from `playerId` under `use` ('move' | 'extraClaim').
+    // Spend `amount` cupcakes from `playerId` under `use`
+    // ('moveTile' | 'removePlate' | 'extraTile' | 'reserve' | 'extraClaim').
     recordCupcakeSpend(playerId, use, amount) {
       if (playerId === undefined || playerId === null) return;
       const amt = amount | 0;
       if (amt <= 0) return;
       if (!this.cupcakeSpend[playerId]) {
-        this.cupcakeSpend[playerId] = { move: 0, extraClaim: 0 };
+        this.cupcakeSpend[playerId] = { moveTile: 0, removePlate: 0, extraTile: 0, reserve: 0, extraClaim: 0 };
       }
       if (this.cupcakeSpend[playerId][use] === undefined) {
         this.cupcakeSpend[playerId][use] = 0;
@@ -352,9 +386,22 @@ export function createStatsCollector() {
 
       // --- 3. Card row size, plus the TRIGGER INVARIANT, from the turn samples -
       // teaDueAtTurnStart counts turns that BEGAN with a fresh pot of tea still
-      // owed. Since the 1 August rule change tea fires at the end of the turn
-      // that reaches the threshold, so this must be ZERO: a non-zero count means
-      // a tea round was skipped, or a flush failed to re-cover the symbols.
+      // owed. Since the 1 August rule change tea fires at the end of the turn that
+      // reaches the threshold, so through the body of a game this must be ZERO: a
+      // non-zero count there means a tea round was skipped, or a flush failed to
+      // re-cover the symbols.
+      //
+      // 4 AUGUST: THE INVARIANT NOW HAS A LEGITIMATE EXCEPTION, and reading it as
+      // a flat "must be 0" would report the new end rule as a bug. When a pot is
+      // due and the bag is already empty the game does NOT brew - it triggers the
+      // 'bagEmpty' ending and play carries on to the end of the round. Nothing
+      // refills the market after that, so the symbols stay uncovered and EVERY
+      // remaining turn of that final round begins with tea still due.
+      //
+      // That is why the turn numbers are reported alongside the count. A driver
+      // judging the invariant must check WHERE the samples fall: inside the last
+      // round they are the end rule working, anywhere earlier they are the hole
+      // the metric was built to catch. See simulate.js's reading of it.
       //
       // It replaces the old refreshLegalTurns / longestUnflushedStreak pair, which
       // measured "was a voluntary refresh available and did anyone take it". Tea
@@ -363,11 +410,15 @@ export function createStatsCollector() {
       let rowSizeTotal = 0;
       let maxRowSize = 0;
       let teaDueAtTurnStart = 0;
+      const teaDueTurns = [];
       for (const s of this.turnSamples) {
         rowSizes.push(s.rowSize);
         rowSizeTotal += s.rowSize;
         if (s.rowSize > maxRowSize) maxRowSize = s.rowSize;
-        if (s.teaStillDue) teaDueAtTurnStart++;
+        if (s.teaStillDue) {
+          teaDueAtTurnStart++;
+          teaDueTurns.push(s.turn);
+        }
       }
       const meanRowSize = rowSizes.length > 0 ? rowSizeTotal / rowSizes.length : 0;
 
@@ -416,21 +467,35 @@ export function createStatsCollector() {
         cupcakeInfluxTotals.pot += cupcakeInflux[pid].pot;
         cupcakeInfluxTotals.plates += cupcakeInflux[pid].plates;
       }
+      const SPEND_USES = ['moveTile', 'removePlate', 'extraTile', 'reserve', 'extraClaim'];
       const cupcakeSpend = {};
-      const cupcakeSpendTotals = { move: 0, extraClaim: 0 };
+      const cupcakeSpendTotals = {};
+      for (const use of SPEND_USES) cupcakeSpendTotals[use] = 0;
       for (const pid in this.cupcakeSpend) {
         const src = this.cupcakeSpend[pid];
-        cupcakeSpend[pid] = { move: src.move || 0, extraClaim: src.extraClaim || 0 };
-        cupcakeSpendTotals.move += cupcakeSpend[pid].move;
-        cupcakeSpendTotals.extraClaim += cupcakeSpend[pid].extraClaim;
+        cupcakeSpend[pid] = {};
+        for (const use of SPEND_USES) {
+          cupcakeSpend[pid][use] = src[use] || 0;
+          cupcakeSpendTotals[use] += cupcakeSpend[pid][use];
+        }
       }
+
+      // (The ingredient-objective block was computed here - how many of the five
+      // pairs were claimed, when as a fraction of game length, and by which seat.
+      // Deleted 4 August with the rule; see the header note.)
 
       return {
         marketFills: this.marketFillCount,
-        // Reported raw. This used to be clamped to the 100-tile bag size, which
-        // did not fix an over-count — it just hid one behind a permanent
-        // "100 / 100" on the end screen. If this ever exceeds the bag, that is a
-        // real bug worth seeing.
+        // Reported raw and DELIBERATELY unclamped. It used to be clamped to the
+        // bag size, which did not fix an over-count - it just hid one behind a
+        // permanent "bag / bag" reading on the end screen. If this ever exceeds
+        // TILE_BAG_SIZE, that is a real bug worth seeing.
+        //
+        // NO LITERAL HERE, EVER. This clamp was written for a 100-tile bag, was
+        // silently wrong for the whole life of the 125-tile bag, and the bag is
+        // 100 again since 4 August - which is exactly why any consumer that wants
+        // to show the total against the bag must import TILE_BAG_SIZE from
+        // tiles.js rather than typing the number.
         totalTilesTaken: totalTilesTaken,
         totalCardsClaimed: this.cardsClaimedCount,
         reserveClaims: this.reserveClaimsCount,
@@ -446,6 +511,9 @@ export function createStatsCollector() {
         refreshesByPlayer: refreshesByPlayer,
         refreshRewardTotal: refreshRewardTotal,
         teaDueAtTurnStart: teaDueAtTurnStart,
+        // The turns those samples fell on, so a driver can tell the final round's
+        // legitimate firings from a real hole in the trigger - see above.
+        teaDueTurns: teaDueTurns,
 
         // 2. Mandatory (empty-board) refreshes
         mandatoryRefreshCount: this.mandatoryRefreshTurns.length,
@@ -468,8 +536,13 @@ export function createStatsCollector() {
         claimableHistogram: claimableHistogram,
         meanClaimableCards: this.claimChances.length > 0 ? claimableTotal / this.claimChances.length : 0,
 
-        // 6. Reserves
-        teaReservesTaken: this.teaReserves.length,
+        // 6. Reserves (PAID since 3 August)
+        reservesTaken: this.reserves.length,
+        reserves: this.reserves.map(r => ({ ...r })),
+
+        // (objectivesClaimedCount / objectivesClaimed / objectivesBySeat were
+        // reported here until 4 August. A report that still carries them is
+        // running old code.)
 
         // 7. Deck reshuffles
         deckReshuffles: this.deckReshuffles,

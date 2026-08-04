@@ -85,78 +85,42 @@ function parseCSV(filePath) {
   return cards.sort((a, b) => a.id - b.id);
 }
 
-function generateTilesJS(cards) {
+// Render just the REWARD_CARDS array literal. This used to render the WHOLE of
+// tiles.js from a hardcoded template, which made the generator a silent
+// rule-reverter: the template still said "4 copies each = 100 tiles" and
+// "CARDS_TO_END_2P = 16" long after both were changed, and had never heard of
+// TILE_COPIES or EMPTY_PLATES_PER_PLAYER at all. Running it to pick up a card
+// edit would have quietly rolled back three unrelated rule changes.
+//
+// So it SPLICES now: everything in tiles.js outside the REWARD_CARDS block is
+// left exactly as found. The CSV owns the cards and nothing else.
+function renderRewardCards(cards) {
   const cardDefs = cards.map(card => {
     const patternStr = JSON.stringify(card.pattern);
-    return `  { id: ${card.id}, name: '${card.name.replace(/'/g, "\\'")}', family: '${card.family}', pattern: ${patternStr}, vp: ${card.vp} }`;
+    return `  { id: ${card.id}, name: '${card.name.replace(/'/g, "\'")}', family: '${card.family}', pattern: ${patternStr}, vp: ${card.vp} }`;
   }).join(',\n');
-
-  return `// Card definitions (from reward_cards.csv)
-// Each card: id, name, family (cosmetic ingredient family — art/grouping only, no
-// mechanical effect), pattern (3×2 grid with nulls), vp (per-card victory points,
-// data-driven from reward_cards.csv — no fixed band)
-export const REWARD_CARDS = [
-${cardDefs}
-];
-
-// Tile system: 5 colours × 5 ingredients = 25 unique tile types, 4 copies each = 100 tiles
-export const COLOURS = ['yellow', 'pink', 'green', 'blue', 'orange'];
-export const INGREDIENTS = ['lemon', 'chocolate', 'caramel', 'strawberry', 'almond'];
-
-// Generate all tile types (colour, ingredient)
-export function generateTileTypes() {
-  const tiles = [];
-  for (const colour of COLOURS) {
-    for (const ingredient of INGREDIENTS) {
-      tiles.push({ colour, ingredient });
-    }
-  }
-  return tiles;
-}
-
-// Create a shuffled tile bag with 4 copies of each tile type
-export function createTileBag() {
-  const tileTypes = generateTileTypes();
-  const bag = [];
-
-  for (const tileType of tileTypes) {
-    for (let i = 0; i < 4; i++) {
-      bag.push({ ...tileType });
-    }
-  }
-
-  // Fisher-Yates shuffle
-  for (let i = bag.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [bag[i], bag[j]] = [bag[j], bag[i]];
-  }
-
-  return bag;
-}
-
-// The PLAYER's personal 5×5 tile board (25 cells). Unrelated to the tile market
-// (see MARKET_SIZE in game.js), which is separately 5×5 - do not substitute one
-// for the other.
-export const BOARD_SIZE = 5;
-// Cards dealt face-up to the card market at setup, and dealt back after a tea
-// flush (30 July: reduced from 4; the row grows on its own each turn).
-export const INITIAL_MARKET_CARDS = 3;
-// Hard ceiling on the card row (30 July rule change). The end-of-turn deal
-// (dealEndOfTurnCard) is skipped while the row already holds this many cards.
-export const MAX_MARKET_CARDS = 8;
-// Cards a 2-player game must see claimed before the card-count end condition
-// fires (8 tarts × 2 players). This is NOT a deck size — the deck holds all 47
-// cards left after the market is dealt (see initGameDeck). 3p/4p scale this up
-// (24/32) in createGame.
-export const CARDS_TO_END_2P = 16;
-`;
+  return `export const REWARD_CARDS = [\n${cardDefs}\n];`;
 }
 
 const csvPath = path.join(__dirname, 'reward_cards.csv');
 const cards = parseCSV(csvPath);
-const tilesContent = generateTilesJS(cards);
 
 const tilesPath = path.join(__dirname, 'src', 'engine', 'tiles.js');
-fs.writeFileSync(tilesPath, tilesContent);
+const existing = fs.readFileSync(tilesPath, 'utf8');
 
-console.log(`Generated ${cards.length} cards in ${tilesPath}`);
+// Match the array literal only, from the export to its closing bracket. The
+// patterns inside contain no `]`, so a non-greedy match to the first `\n];` is
+// unambiguous; if that ever changes this throws rather than mangling the file.
+const BLOCK = /export const REWARD_CARDS = \[[\s\S]*?\n\];/;
+if (!BLOCK.test(existing)) {
+  throw new Error(`Could not find the REWARD_CARDS block in ${tilesPath} - refusing to write.`);
+}
+// Match the file's existing line endings. tiles.js is CRLF; splicing in LF-only
+// text would rewrite every card line as a spurious diff and leave the file mixed.
+const eol = existing.includes('\r\n') ? '\r\n' : '\n';
+const block = renderRewardCards(cards).replace(/\n/g, eol);
+
+const updated = existing.replace(BLOCK, block);
+fs.writeFileSync(tilesPath, updated);
+
+console.log(`Spliced ${cards.length} cards into ${tilesPath} (everything else left untouched)`);

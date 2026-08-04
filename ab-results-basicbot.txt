@@ -1,0 +1,75 @@
+
+=== 2 PLAYERS (120 games per cell) ===
+
+                            OLD  bag 100, extra tile 1     bag 125, extra tile 1     bag 100, extra tile 2NEW  bag 125, extra tile 2
+game length (turns)                               16.0                      16.0                      17.0                      17.0
+tiles taken/game                                 39.39                     39.71                     40.99                     41.13
+pots of tea/game                                  2.23                      2.41                      2.31                      2.28
+card-locked turns %                               26.0                      27.0                      30.4                      30.7
+claims/player                                     5.82                      5.74                      5.85                      5.79
+final score                                       46.1                      45.8                      46.2                      46.4
+score spread (D1)                                 10.6                      11.7                      10.5                      10.6
+last as % of winner                               80.2                      78.3                      80.5                      80.3
+cupcakes: move tile                                255                       231                       309                       321
+cupcakes: extra tile                               467                       475                       540                       500
+cupcakes: remove plate                               0                         0                         0                         0
+cupcakes: reserve                                  260                       253                       236                       231
+cupcake influx spent %                            68.1                      65.6                      73.8                      73.0
+games with a broke player %                       31.7                      23.3                      30.0                      30.0
+
+  end reasons:
+    OLD  bag 100, extra tile 1   {"cardMarket":84,"boardOverflow":25,"boardFull":11}
+    bag 125, extra tile 1        {"boardOverflow":30,"cardMarket":77,"boardFull":13}
+    bag 100, extra tile 2        {"cardMarket":85,"boardFull":13,"boardOverflow":22}
+    NEW  bag 125, extra tile 2   {"cardMarket":81,"boardFull":14,"boardOverflow":25}
+
+=== 3 PLAYERS (120 games per cell) ===
+
+                            OLD  bag 100, extra tile 1     bag 125, extra tile 1     bag 100, extra tile 2NEW  bag 125, extra tile 2
+game length (turns)                               24.3                      24.1                      25.5                      25.6
+tiles taken/game                                 59.42                     59.30                     61.35                     61.63
+pots of tea/game                                  3.64                      3.74                      3.64                      3.74
+card-locked turns %                               26.7                      26.9                      30.0                      30.7
+claims/player                                     5.84                      5.79                      5.86                      5.84
+final score                                       44.5                      44.7                      44.3                      43.9
+score spread (D1)                                 16.3                      15.2                      14.7                      16.3
+last as % of winner                               69.9                      71.7                      72.4                      69.6
+cupcakes: move tile                                383                       405                       443                       446
+cupcakes: extra tile                               700                       701                       908                       912
+cupcakes: remove plate                               0                         6                         0                         0
+cupcakes: reserve                                  407                       402                       348                       371
+cupcake influx spent %                            62.1                      63.3                      71.3                      72.0
+games with a broke player %                       22.5                      25.0                      34.2                      44.2
+
+  end reasons:
+    OLD  bag 100, extra tile 1   {"cardMarket":76,"boardOverflow":35,"boardFull":9}
+    bag 125, extra tile 1        {"boardFull":9,"boardOverflow":30,"cardMarket":81}
+    bag 100, extra tile 2        {"cardMarket":77,"boardOverflow":31,"boardFull":12}
+    NEW  bag 125, extra tile 2   {"cardMarket":74,"boardFull":11,"boardOverflow":35}
+
+=== 4 PLAYERS (120 games per cell) ===
+
+                            OLD  bag 100, extra tile 1     bag 125, extra tile 1     bag 100, extra tile 2NEW  bag 125, extra tile 2
+game length (turns)                               29.6                      32.6                      30.9                      34.0
+tiles taken/game                                 72.26                     80.05                     73.83                     81.94
+pots of tea/game                                  4.97                      5.22                      4.94                      5.05
+card-locked turns %                               27.0                      27.1                      31.3                      30.7
+claims/player                                     5.39                      5.83                      5.30                      5.80
+final score                                       39.8                      43.2                      39.1                      42.8
+score spread (D1)                                 16.5                      18.9                      17.2                      17.4
+last as % of winner                               66.3                      64.7                      64.7                      66.9
+cupcakes: move tile                                537                       556                       609                       631
+cupcakes: extra tile                               891                       963                      1298                      1236
+cupcakes: remove plate                               0                         6                         0                         0
+cupcakes: reserve                                  542                       541                       493                       522
+cupcake influx spent %                            58.2                      59.6                      71.7                      69.8
+games with a broke player %                       31.7                      30.0                      57.5                      49.2
+
+  end reasons:
+    OLD  bag 100, extra tile 1   {"cardMarket":27,"bagEmpty":79,"boardOverflow":12,"boardFull":2}
+    bag 125, extra tile 1        {"boardOverflow":50,"cardMarket":60,"boardFull":10}
+    bag 100, extra tile 2        {"bagEmpty":79,"cardMarket":28,"boardOverflow":9,"boardFull":4}
+    NEW  bag 125, extra tile 2   {"boardOverflow":41,"cardMarket":66,"boardFull":13}
+
+Note: cupcake spend rows are CUPCAKES SPENT, not actions taken - divide the
+extra-tile figure by its price to compare purchase counts across cells.

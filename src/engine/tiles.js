@@ -55,9 +55,34 @@ export const REWARD_CARDS = [
   { id: 50, name: 'Battenberg', family: 'almond', pattern: ["pink","yellow",null,"yellow","pink",null], vp: 5 }
 ];
 
-// Tile system: 5 colours × 5 ingredients = 25 unique tile types, 4 copies each = 100 tiles
+// Tile system: 5 colours × 5 ingredients = 25 unique tile types, TILE_COPIES each.
 export const COLOURS = ['yellow', 'pink', 'green', 'blue', 'orange'];
 export const INGREDIENTS = ['lemon', 'chocolate', 'caramel', 'strawberry', 'almond'];
+
+// Copies of each of the 25 colour/ingredient combinations in the bag.
+//
+// 4 AUGUST: 5 -> 4, taking the bag back from 125 tiles to 100. A 4-player game
+// was played to completion on 3 August and the table did not run out of tiles or
+// come close, so the extra 25 were buying nothing. Read TILE_COPIES and
+// TILE_BAG_SIZE rather than writing 4 or 100 anywhere - those figures have twice
+// been hardcoded into report strings and a bag-skew baseline, which is exactly
+// the kind of thing that silently keeps reporting the previous rule set.
+//
+// WHY IT MATTERS BEYOND SUPPLY. Every pot of tea flushes the whole market back
+// into the bag and redeals 25 cells. Since 4 August a bag that cannot cover the
+// board no longer ends the game on the spot - it deals what it has and play goes
+// on across a thinning market until the NEXT refill is needed (see isTeaDue and
+// endTurn in game.js). The bag size therefore sets how many full laps of the
+// market the table gets before that last thin lap, not a hard stop.
+export const TILE_COPIES = 4;
+
+// Total tiles in the bag at setup. Derived, never asserted separately.
+export const TILE_BAG_SIZE = COLOURS.length * INGREDIENTS.length * TILE_COPIES;
+
+// Share of the bag each colour holds, as a percentage - the flat baseline the
+// bag-skew report (metric 9) measures drift against. Derived so it survives a
+// change to either COLOURS or TILE_COPIES.
+export const TILE_COLOUR_SHARE_PCT = 100 / COLOURS.length;
 
 // Generate all tile types (colour, ingredient)
 export function generateTileTypes() {
@@ -70,13 +95,14 @@ export function generateTileTypes() {
   return tiles;
 }
 
-// Create a shuffled tile bag with 4 copies of each tile type
+// Create a shuffled tile bag with TILE_COPIES copies of each tile type
+// (TILE_BAG_SIZE tiles in total).
 export function createTileBag() {
   const tileTypes = generateTileTypes();
   const bag = [];
 
   for (const tileType of tileTypes) {
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < TILE_COPIES; i++) {
       bag.push({ ...tileType });
     }
   }
@@ -100,8 +126,42 @@ export const INITIAL_MARKET_CARDS = 3;
 // Hard ceiling on the card row (30 July rule change). The end-of-turn deal
 // (dealEndOfTurnCard) is skipped while the row already holds this many cards.
 export const MAX_MARKET_CARDS = 8;
+// EMPTY PLATE TOKENS per player (3 August rule change: 8 -> 6). Claiming a card
+// plants an empty plate on the board cell the sacrificed tile came from, so a
+// player's pool of plates IS their claim allowance, and the pool running out is
+// the game's clock. The card-count end condition therefore fires at
+// EMPTY_PLATES_PER_PLAYER × playerCount claims (see cardsNeededToEnd).
+//
+// WHY 6. At 8 the pool ended only 12.2 / 5.6 / 0.2% of games at 2/3/4 players -
+// claims per player ran 5.9-6.9 against 8 plates each, so the advertised clock
+// almost never struck and 85.6% of 4-player games ended on an empty bag instead.
+// At 6 the pool becomes the ending in 93.9 / 93.1 / 54.6% of games and takes
+// 4.3 / 5.3 / 1.6 turns off the length, with near-identical pacing at every count
+// (7.88 / 8.15 / 8.02 turns per player).
+//
+// DO NOT PRE-CORRECT 4 PLAYERS TO 5. It was tested: it drops the worst-off
+// player at 4p to 3.93 claims, below the 4 needed to fill the bottom stand row at
+// all, which locks the trailing player out of the stand's headline scoring
+// option. The 4-player coin flip against 'bagEmpty' is expected to resolve itself
+// as the paid extra tile (EXTRA_TILE_CUPCAKE_COST) lifts claim rates - 4 players
+// needs just one more total claim to cross.
+//
+// PHYSICAL COMPONENT COUNT IS NOT THIS NUMBER x PLAYERS. Since the 4 August
+// ruling the pool is purely a CLOCK: emptying it triggers the ending, and the
+// round that is then finished out may claim on from an UNLIMITED supply of spare
+// plates (see canClaimMore in game.js). So a game can finish having placed more
+// plates than the pool holds, and the box has to cover the overrun.
+//
+// MEASURED over 1,000 basicBot games per count: the overrun runs 0.21 / 0.36 /
+// 0.40 on average and tops out at 1 / 2 / 3 at 2/3/4 players, so 30.4% of
+// 4-player games need at least one spare. The box therefore wants 27 rather than
+// 24. The ceiling is structural rather than empirical - at most playerCount - 1
+// turns follow the trigger and each may claim once - so 24 + (players - 1) is
+// the number to punch, and simulate.js metric 10 reports it every run.
+export const EMPTY_PLATES_PER_PLAYER = 6;
+
 // Cards a 2-player game must see claimed before the card-count end condition
-// fires (8 tarts × 2 players). This is NOT a deck size — the deck holds all 47
-// cards left after the market is dealt (see initGameDeck). 3p/4p scale this up
-// (24/32) in createGame.
-export const CARDS_TO_END_2P = 16;
+// fires (6 empty plates × 2 players). This is NOT a deck size — the deck holds
+// all 47 cards left after the market is dealt (see initGameDeck). Every player
+// count derives the same way in createGame (3p = 18, 4p = 24).
+export const CARDS_TO_END_2P = EMPTY_PLATES_PER_PLAYER * 2;

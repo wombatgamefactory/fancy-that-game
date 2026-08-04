@@ -24,6 +24,11 @@
   /* Sizing tokens */
   --tile-size: 60px;
   --tile-gap: 2px;
+  /* The tile market's two gutter tracks, which hold the sweep buttons. They were
+     a full --tile-size each; the buttons only ever needed enough room for an
+     arrow and a label, and the height of that top row is pure page height. */
+  --market-gutter-h: 26px;
+  --market-gutter-w: 34px;
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
@@ -409,39 +414,91 @@ label {
   border-color: var(--color-accent);
 }
 
-.ft-btn--small {
-  padding: var(--spacing-xs) var(--spacing-md);
-  font-size: 12px;
-}
+/* ---- "It's your turn: sweep" -------------------------------------------
+   All ten sweep buttons pulse while a HUMAN is in the sweep step and has not
+   swept yet. Sweeping is the one move a new player cannot guess - the tiles
+   look clickable and the buttons look like labels, which is exactly backwards -
+   so the buttons say so themselves.
 
-.ft-btn-rules {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--spacing-sm);
-  width: 80px;
-  height: 100px;
-  padding: var(--spacing-md);
-  border: 2px solid var(--color-border);
-  background: var(--color-card);
-  border-radius: var(--radius-md);
+   Design decisions worth keeping:
+   - ONE animation on all ten, so they pulse IN PHASE. Ten independently-timed
+     pulses read as a fault; ten in unison read as one object asking to be used.
+   - Colour and shade only, no transform. These buttons are grid gutters aligned
+     pixel-for-pixel with the rows and columns they sweep; scaling them would
+     break that alignment, which is the one thing making them legible.
+   - It clears itself the instant the sweep resolves (the class is derived from
+     the same `enabled` flag that gates the click handlers), so it teaches once
+     per turn instead of becoming wallpaper.
+   - Hover still wins: a player who has found the button gets the normal, calmer
+     hover state rather than a control that keeps flashing under the cursor. */
+/* ---- "It's your turn: sweep" -------------------------------------------
+   The sweep buttons are the one control a new player cannot guess, so while a
+   HUMAN is in the sweep step and has not swept yet, all ten advertise
+   themselves. This follows the ordinary web-game convention for marking valid
+   options rather than inventing a treatment:
+
+     - ONE interactive colour, the product accent, used consistently. The
+       previous version cycled through gold, amber, apricot and terracotta,
+       which is a carnival cue, not an affordance - shifting hue makes a control
+       look broken or decorative, and it competes with the tiles, which are the
+       only things here that are supposed to be colourful.
+     - The RESTING state already reads as actionable on its own: white surface,
+       accent border, accent label. If the animation never ran, you would still
+       know these are the buttons. Animation is the nudge, never the message.
+     - The breathe is slow (1.8s) and stays INSIDE the button - a tint and a soft
+       glow, no expanding ring. These buttons sit 2px apart in a strip of ten;
+       an expanding halo on each would merge into one blob and lose the
+       per-button definition that tells you which line you are about to sweep.
+     - HOVER is a decisive commit, not more of the same: the animation stops
+       dead, the button fills solid, the label and arrow invert to white and it
+       lifts. That is the moment of "yes, this one".
+     - Nothing moves the layout. transform and box-shadow only, so every button
+       still points at exactly the row or column it sweeps. */
+.ft-btn--sweep.is-awaiting {
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: 'Inter', sans-serif;
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.ft-btn-rules:hover {
+  font-weight: 700;
+  background: var(--color-card);
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px rgba(193, 123, 92, 0.1);
-  transform: translateY(-2px);
-  background: linear-gradient(135deg, var(--color-card) 0%, rgba(193, 123, 92, 0.05) 100%);
+  color: var(--color-accent-hover);
+  animation: sweep-ready 1.8s ease-in-out infinite;
 }
 
-.ft-btn-rules:active {
-  transform: translateY(0);
+@keyframes sweep-ready {
+  0%, 100% {
+    background: var(--color-card);
+    box-shadow: 0 0 0 rgba(193, 123, 92, 0);
+  }
+  50% {
+    background: #F7E6DC;
+    box-shadow: 0 0 10px rgba(193, 123, 92, 0.55);
+  }
+}
+
+.ft-btn--sweep.is-awaiting:hover:not(:disabled) {
+  animation: none;
+  background: var(--color-accent);
+  border-color: var(--color-accent-hover);
+  color: #FFFFFF;
+  transform: scale(1.1);
+  box-shadow: 0 0 0 3px rgba(193, 123, 92, 0.3), 0 3px 10px rgba(61, 43, 31, 0.3);
+}
+
+/* The arrow glyphs are dark PNGs, so on the filled hover state they would sink
+   into the background. Flatten to black then invert to get a clean white arrow
+   without needing a second image. */
+.ft-btn--sweep.is-awaiting:hover:not(:disabled) img {
+  filter: brightness(0) invert(1);
+}
+
+/* Motion is an accessibility concern and this one repeats forever. Anyone who
+   has asked their system for less of it keeps the full resting cue and the full
+   hover response - only the breathing stops. */
+@media (prefers-reduced-motion: reduce) {
+  .ft-btn--sweep.is-awaiting {
+    animation: none;
+    background: #F7E6DC;
+    box-shadow: 0 0 0 2px rgba(193, 123, 92, 0.35);
+  }
 }
 
 /* ======= Game Screen ======= */
@@ -960,7 +1017,25 @@ label {
   position: relative;
 }
 
-.ft-tile:hover:not(.ft-tile--empty):not(.ft-tile--ghost) {
+/* The hover lift means "this responds to a click". It applies to the PLAYER
+   BOARD, where tiles really are clickable - to place, to pick a sacrifice, to
+   move with a cupcake.
+
+   It deliberately does NOT apply to the tile market. You sweep a whole LINE
+   there, with the row and column buttons; clicking an individual market tile
+   does nothing, and lifting it on hover was promising an interaction the game
+   does not have. That was actively working against the sweep buttons, which are
+   the real control. */
+.ft-tile:hover:not(.ft-tile--empty):not(.ft-tile--ghost):not(.market-tile) {
+  transform: scale(1.08);
+  box-shadow: var(--shadow-card);
+  border-color: var(--color-accent);
+}
+
+/* ...except on the two occasions a single market tile IS the move: the free
+   line-clear bonus tile, and the paid extra tile. Then the lift is honest and
+   it comes back. */
+.market-tile.ft-tile--pickable:hover {
   transform: scale(1.08);
   box-shadow: var(--shadow-card);
   border-color: var(--color-accent);
@@ -1134,44 +1209,420 @@ label {
 
 /* ======= Card Market ======= */
 
-/* The card row is VARIABLE-LENGTH AND UNCAPPED (28 July rework): it starts at 4,
-   grows by one at the end of every turn, shrinks by one per market claim, and
-   only a fresh pot of tea cuts it back to 4. Measured lengths run to ~13 against
-   a competent bot and past 20 against a weak one, so the layout is designed for
-   ~20 cards on screen.
+/* The card row is VARIABLE-LENGTH (28 July rework, CAPPED at MAX_MARKET_CARDS on
+   30 July): it starts at 3, grows by one at the end of every turn up to 8,
+   shrinks by one per market claim, and a fresh pot of tea cuts it back to 3.
 
-   The row is framed as its own strip so its length is legible and contained:
-   a header states the count, and .ft-card-grid below caps its height and scrolls
-   internally, so a growing row can never push the info panel (or the rest of the
-   page) around. Card SIZE also steps down as the row grows - that half lives in
-   cardDisplayHeight() in board.js, because the sprite maths needs the number. */
-.ft-card-row {
+   The row is framed as its own strip so its length is legible: a header states
+   the count. It no longer caps its height or scrolls, and the cards no longer
+   step down in size as it grows - the art carries the PATTERN a player has to
+   match, so the panel takes the height instead. Since 4 August the strip is the
+   full width of the centre column, and CARD_DISPLAY_HEIGHT in board.js is derived
+   from that width; the derivation is written out in full there. */
+/* ---------------------------------------------------------------------------
+   THE PLAYER PANEL'S LEFT COLUMN: score breakdown, cake stand, cupcake supply.
+
+   IT MUST NEVER SCROLL. This carried an inline `overflow-y: auto; max-height:
+   550px` on all four player panels, which was fine until the 3 August cupcake
+   spend menu added two buttons to the supply block and pushed it past the cap -
+   at which point a scrollbar appeared and quietly hid the bottom of the stand,
+   which is the single most important thing on the panel to be able to read.
+
+   A fixed pixel cap could only ever be right for one content length. Instead the
+   column simply stretches: the panel is a flex ROW, so the default align-items:
+   stretch makes this full height, and the panel's height is set by the taller
+   right-hand column (header + swept tiles + board + phase controls). The two
+   columns therefore end level, at the bottom of the action area, whatever either
+   of them contains.
+   --------------------------------------------------------------------------- */
+.ft-player-score {
+  flex-shrink: 0;
+  min-width: 200px;
+  /* No max-height and no overflow: see above. If this column ever genuinely
+     needs to be bounded, bound the PANEL and let both columns agree - never this
+     one alone, or the stand goes back under a scrollbar. */
+}
+
+/* The INGREDIENT OBJECTIVES design note stood here - why the panel sat beside the
+   tile market (a pair was won by declaring an ingredient on a sweep), why its
+   requirements were symbols rather than words, why it was tinted, and its three
+   states. The pantry goals are deleted from the game, 4 August, and the rules
+   they documented no longer exist anywhere. */
+
+/* ===========================================================================
+   THE CENTRE COLUMN
+   ===========================================================================
+   Three horizontal BANDS, top to bottom in the order a player needs them:
+
+     1. head   - whose turn, which step, and the way into the rules
+     2. table  - the shared tile market, plus the two clocks that measure the
+                 game's state (cards claimed, fresh pot)
+     3. cards  - the card market, full width. This was `split` until 4 August: two
+                 scoring tracks side by side, ingredient objectives | card market.
+                 The objectives are deleted, so the cards have the band to
+                 themselves and were resized for it.
+
+   Every block inside them is a .ft-section and they all share one heading
+   treatment, so the column reads as one designed thing rather than five
+   separately-invented boxes. Each section carries its OWN background tint and a
+   coloured left rule, which is what separates them - not gaps, which only add
+   height. The tints are all drawn from the warm tea palette and kept low in
+   saturation: enough to say "different area", never enough to compete with the
+   tiles and cards, which are the only things here that are meant to be colourful.
+   =========================================================================== */
+
+/* ONE panel spanning BOTH grid rows, sized to its own content.
+   It used to be two panels, one per grid row, and that was the white gap: a grid
+   row is as tall as its tallest cell, the player panels beside it are ~490px, so
+   the centre panel stretched to match and left ~88px of empty panel under the
+   tile market. Spanning both rows removes the row boundary; align-self: start
+   stops the merged panel stretching, so slack falls BELOW the cards as page
+   background rather than being trapped as white in the middle. */
+.ft-centre {
+  grid-column: 2;
+  align-self: start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+}
+
+/* ---- The shared section component ---------------------------------------- */
+.ft-section {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
-  padding: var(--spacing-sm);
-  background: #FAFAFA;
+  padding: var(--spacing-sm) var(--spacing-md);
   border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-text-secondary);
   border-radius: var(--radius-md);
+  background: var(--color-card);
+  min-width: 0;
 }
 
-.ft-card-row__header {
+/* One heading treatment for every section: small, uppercase, letterspaced, with
+   an optional figure hard right. Uppercase rather than title case because these
+   are labels for areas, not titles of documents - and at 11px it stays legible
+   where a 16px serif would eat a row of height. */
+.ft-section__head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--spacing-sm);
+  padding-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--color-border);
 }
 
-.ft-card-row__title {
-  font-size: 12px;
-  font-weight: 600;
+.ft-section__title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.ft-section__meta {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.ft-section__meta strong {
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A figure that IS the point of its section (a score, a ratio) rather than an
+   aside - sized and coloured to be read from across the table. */
+.ft-section__meta--figure {
+  font-family: 'Fraunces', serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The one-line plain-language note some sections end on. */
+.ft-section__note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
   color: var(--color-text-secondary);
 }
 
-.ft-card-row__count {
+/* ---- Per-section identity ------------------------------------------------
+   Each area gets a tint and a matching left rule. Same hue family, different
+   temperature, so they separate without turning the page into a quilt. */
+
+/* Tiles: oat. Deliberately the most neutral of the five - the market grid is the
+   most colourful thing on the page and the surface behind it must not compete. */
+.ft-section--tiles {
+  background: #F7F2E6;
+  border-left-color: #B79B6E;
+}
+
+/* Cards claimed: the clock. Terracotta, matching the progress bar it contains. */
+.ft-section--claims {
+  background: #FAF0EA;
+  border-left-color: var(--color-accent);
+}
+
+/* .ft-section--objectives was here - gold, the colour a pantry goal lit up in
+   when it was ready to take. Deleted 4 August with the goals themselves, which
+   is also why there are four section tints now rather than five. */
+
+/* Card market: blush, the pink of the patisserie cards it holds. */
+.ft-section--cards {
+  background: #FBF1F0;
+  border-left-color: #C98B8B;
+}
+
+/* Fresh pot: gold, the colour of something that "becomes due". (It used to share
+   this reading with the objectives panel, which is gone.) The gauge's own
+   --ready / --locked state modifiers are declared later in the file and
+   deliberately win over this base tint - a gauge that cannot go loud when the pot
+   is due is not a gauge. */
+.ft-section--tea {
+  border-left-color: var(--color-accent-gold);
+}
+
+/* ---- BAND 1: the title bar ----------------------------------------------- */
+.ft-centre-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-md);
+  /* The one dark surface in the layout. It gives the column a top edge with real
+     weight, and makes "whose turn is it" readable from across the table. */
+  background: linear-gradient(135deg, #4A3527 0%, #3D2B1F 100%);
+  box-shadow: inset 0 -2px 0 rgba(212, 175, 55, 0.5);
+}
+
+.ft-centre-head__turn {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ft-centre-head__player {
+  margin: 0;
+  font-family: 'Fraunces', serif;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: #FBF5EC;
+  white-space: nowrap;
+}
+
+/* Hidden until a bot is thinking; setThinkingState toggles the container, so it
+   must not reserve height when idle. */
+.ft-centre-head__thinking {
+  display: none;
+  width: 180px;
+}
+
+.ft-centre-head__thinking-track {
+  height: 4px;
+  background-color: rgba(251, 245, 236, 0.25);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ft-centre-head__thinking-bar {
+  height: 100%;
+  width: 0%;
+  background-color: var(--color-accent-gold);
+  transition: width 0.2s ease;
+}
+
+.ft-centre-head__right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.ft-centre-head__stat {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(251, 245, 236, 0.65);
+  white-space: nowrap;
+}
+
+.ft-centre-head__stat strong {
+  font-size: 14px;
+  color: #FBF5EC;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- The How to Play button ---------------------------------------------
+   The only control in this column, so it is FILLED rather than outlined and it
+   says what it does. On the dark bar it reads as the obvious next click. */
+.ft-btn-howto {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 7px var(--spacing-md);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-gold);
+  color: #3D2B1F;
+  font-family: 'Inter', sans-serif;
   font-size: 12px;
   font-weight: 700;
-  color: var(--color-accent);
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ft-btn-howto:hover {
+  background: #E4C24B;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+}
+
+.ft-btn-howto:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.ft-btn-howto__icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.ft-btn-howto__label {
+  letter-spacing: 0.02em;
+}
+
+/* ---- BAND 2: market + the two clocks ------------------------------------- */
+.ft-centre-table {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--spacing-sm);
+  align-items: start;
+}
+
+.ft-centre-meters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+/* The market grid is a fixed size, so its section hugs it rather than stretching. */
+.ft-section--tiles {
+  width: max-content;
+}
+
+/* The market is the thing everyone is looking at, and it was sitting tight
+   against its own section border. The generous padding is the point - it lets
+   the grid read as an object on a table rather than a bitmap in a box. */
+.ft-market-wrap {
+  display: flex;
+  justify-content: center;
+  padding: var(--spacing-lg) var(--spacing-xl) var(--spacing-xl);
+}
+
+/* ---- BAND 3: the card row ------------------------------------------------
+   .ft-centre-split lived here: a two-column grid, `260px 1fr`, with the Pantry
+   Goals panel on the left and the card market on the right. The pantry goals are
+   deleted from the game (4 August), so there is no second column and no wrapper -
+   .ft-section--cards is a plain full-width child of .ft-centre.
+
+   THE 260px WAS LOAD-BEARING and its removal is not cosmetic: cardDisplayHeight()
+   in board.js was tuned to the width the split left over. It has been re-derived
+   against the full 782px band - see the comment on CARD_DISPLAY_HEIGHT, which
+   carries the whole subtraction. If the centre column ever moves, that comment is
+   the thing to redo. */
+
+/* ---- The cards-claimed bar ------------------------------------------------ */
+.ft-claim-meter__track {
+  height: 10px;
+  background-color: rgba(61, 43, 31, 0.12);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.ft-claim-meter__bar {
+  height: 100%;
+  width: 0%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--color-accent) 0%, #D89A78 100%);
+  transition: width 0.3s ease;
+}
+
+/* THE PANTRY GOALS STYLESHEET IS DELETED (4 August), all ~195 lines of it:
+   .ft-objectives__list, .ft-objective and its --ready / --taken states, the
+   .ft-objective__reqs / __req / __req--met chips, __symbol, __count-text,
+   __owner and __owner--ready, plus the objective-ready keyframes and their
+   prefers-reduced-motion off-switch. (Two near-identical copies of the set had
+   accumulated, one overriding the other; both go.)
+
+   The ingredient objectives are gone from the game, so nothing emits any of
+   these class names any more - see the note at the top of src/engine/game.js
+   for why the module was cut, and the note left where renderObjectives stood in
+   src/ui/board.js for what the markup used to be. */
+
+/* ---------------------------------------------------------------------------
+   THE PAID CUPCAKE SPENDS (3 August). Two buttons in the cupcake panel that ARM
+   a mode; the actual target is then clicked on the market (extra tile) or the
+   card row (reserve). They are disabled rather than hidden when unavailable, so
+   the menu is always legible - a player needs to know the option exists on the
+   turn they cannot use it, not only on the turn they can.
+   --------------------------------------------------------------------------- */
+.ft-cupcake-spends {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: var(--spacing-xs);
+}
+
+.ft-cupcake-spend-btn {
+  padding: 4px var(--spacing-sm);
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: #FFFFFF;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.ft-cupcake-spend-btn:hover:not(:disabled) {
+  background: #FFF6DC;
+  border-color: var(--color-accent-gold, #C9A227);
+}
+
+.ft-cupcake-spend-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Armed: the next market/card click spends. */
+.ft-cupcake-spend-btn--active {
+  background: #FFF1C2;
+  border-color: var(--color-accent-gold, #C9A227);
+  box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.35);
+}
+
+/* A market tile that the armed extra-tile purchase can lift. Deliberately the
+   same visual language as the free line-clear bonus tile, because it is the same
+   operation at a price. */
+.ft-tile--buyable {
+  outline: 2px solid var(--color-accent-gold, #C9A227);
+  outline-offset: -2px;
+  animation: ft-buyable-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes ft-buyable-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(201, 162, 39, 0.55); }
+  50%      { box-shadow: 0 0 0 5px rgba(201, 162, 39, 0); }
 }
 
 /* A long row is a standing invitation to order a fresh pot of tea (the only
@@ -1210,14 +1661,15 @@ label {
   flex-wrap: wrap;
   align-content: flex-start;
   gap: var(--spacing-md);
-  /* Cap + scroll. Paired with cardDisplayHeight()'s steps this shows everything
-     up to ~18 cards outright and scrolls a 20+ row by about one line, instead of
-     letting it grow to over a thousand pixels and shove the page around. The
-     padding is not decoration - .ft-card--claimable draws a glow ring 8px outside
-     the card, which a scroll container would otherwise clip. */
-  max-height: 480px;
-  overflow-y: auto;
-  overflow-x: hidden;
+  /* NO HEIGHT CAP AND NO SCROLL. The section grows with the row instead.
+     It used to cap at 480px and scroll, which worked with the old
+     cardDisplayHeight() steps that shrank the cards to fit - and shrinking the
+     cards is exactly what we do not want, because the art carries the PATTERN a
+     player has to match. Cards are one fixed size now and the panel takes the
+     height. The row is capped at MAX_MARKET_CARDS (8), so the worst case is
+     three rows, which is bounded and fine.
+     The padding is not decoration - .ft-card--claimable draws a glow ring 8px
+     outside the card, which a scroll container would clip. */
   padding: 10px;
   background: transparent;
   border-radius: 0;
@@ -1245,18 +1697,31 @@ label {
   filter: grayscale(0.35);
 }
 
+/* A card is NOT clickable by default, and the cursor must say so.
+   This carried `cursor: pointer` unconditionally, which meant every card in the
+   game claimed to be a button: the market row outside the claim step, and the
+   read-only "On order" reserve slots in the player panels, which are pure
+   display and can never be clicked at all.
+
+   A card responds to a click in exactly two situations, and each carries its own
+   class and its own cursor:
+     .ft-card--claimable  - the claim step, and this card's pattern is on your board
+     .ft-card--reservable - you have armed the paid reserve
+   Plus .ft-card--claim-used, which sets `not-allowed` deliberately: you have
+   already claimed this turn, and that is worth saying rather than going inert. */
 .ft-card {
   border: 2px solid var(--color-border);
   border-radius: var(--radius-md);
   overflow: hidden;
-  cursor: pointer;
+  cursor: default;
   transition: all 0.2s ease;
   background: white;
 }
 
-.ft-card:hover {
-  box-shadow: var(--shadow-card);
-}
+/* The hover lift means "this responds". It belongs to the two interactive
+   states, which declare it themselves below (.ft-card--claimable:hover and
+   .ft-card--reservable:hover) - there is deliberately no blanket .ft-card:hover
+   any more, because it lifted cards that do nothing. */
 
 .ft-card--claimable {
   border: 5px solid var(--color-accent-gold);
@@ -1943,6 +2408,9 @@ select:focus {
   --rule-tint: rgba(212, 175, 55, 0.14);
 }
 
+/* .ft-rules__section--objectives stood here, gold to match the objectives panel
+   on the game screen. Both are deleted with the pantry goals, 4 August. */
+
 .ft-rules__section--cupcakes {
   --rule-accent: var(--tile-pink);
   --rule-tint: rgba(244, 169, 187, 0.20);
@@ -2091,6 +2559,28 @@ select:focus {
   50% { box-shadow: 0 0 0 6px rgba(192, 57, 43, 0); }
 }
 
+/* ---- The gauge AS A SECTION (3 August) -----------------------------------
+   It carries .ft-section as well as .ft-tea-option now, so it sits in the meters
+   rail looking like every other block in the centre column. These rules come
+   AFTER the base .ft-tea-option above deliberately: they are the reconciliation,
+   and they must win on the handful of properties the two classes both set.
+
+   What changes: it stacks (it is a narrow rail item, not a wide banner under the
+   board), it loses the free-floating margin (the rail's flex gap spaces it), and
+   its border goes solid with a gold left rule to match the other sections. What
+   does NOT change is the state tinting - --ready and --forced still override the
+   background and border above, because a gauge that cannot go loud when the pot
+   is due is not a gauge. */
+.ft-section.ft-tea-option {
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  gap: var(--spacing-sm);
+  margin-top: 0;
+  border-style: solid;
+  border-left-width: 3px;
+}
+
 /* The whole affordance in its resting state: "3/4 teapots visible". */
 .ft-tea-option__count {
   display: inline-flex;
@@ -2123,116 +2613,6 @@ select:focus {
 .ft-tea-option--forced .ft-tea-option__note {
   color: var(--color-danger);
   font-weight: 600;
-}
-
-/* Pushed to the far end of the row, so the gauge reads first. */
-.ft-tea-option__btn {
-  margin-left: auto;
-}
-
-/* Confirm overlay reuses .ft-modal. There is no card image any more - the Fresh
-   Pot of Tea card is deleted, so the overlay explains the board option instead. */
-.ft-tea-confirm {
-  text-align: center;
-  max-width: 460px;
-}
-
-.ft-tea-confirm__steps {
-  text-align: left;
-  margin: var(--spacing-lg) 0 var(--spacing-md);
-  padding-left: var(--spacing-2xl);
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--color-text-primary);
-}
-
-.ft-tea-confirm__steps li {
-  margin-bottom: var(--spacing-xs);
-}
-
-.ft-tea-confirm__steps-warning {
-  color: var(--color-danger);
-  font-weight: 600;
-}
-
-.ft-tea-confirm__warning {
-  text-align: left;
-  font-size: 12px;
-  line-height: 1.5;
-  background: rgba(192, 57, 43, 0.08);
-  border-left: 3px solid var(--color-danger);
-  border-radius: var(--radius-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
-  margin-bottom: var(--spacing-lg);
-}
-
-.ft-tea-confirm__buttons {
-  display: flex;
-  gap: var(--spacing-md);
-  justify-content: center;
-}
-
-/* Banner above the card market during a tea round. The reserver name must be
-   unmissable — in hotseat it is often NOT the current player. */
-.ft-tea-banner {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
-  flex-wrap: wrap;
-  padding: var(--spacing-sm) var(--spacing-md);
-  margin-bottom: var(--spacing-md);
-  background: linear-gradient(135deg, #FBF5EC 0%, rgba(212, 175, 55, 0.14) 100%);
-  border: 1px solid var(--color-accent-gold);
-  border-left: 4px solid var(--color-accent-gold);
-  border-radius: var(--radius-md);
-  animation: slide-in 0.3s ease;
-}
-
-/* A FORCED round (empty tile market) is not a choice anyone made, so it must not
-   look like the celebratory voluntary one. Red, not gold. */
-.ft-tea-banner--forced {
-  background: linear-gradient(135deg, #FBF5EC 0%, rgba(192, 57, 43, 0.12) 100%);
-  border: 1px solid var(--color-danger);
-  border-left: 4px solid var(--color-danger);
-}
-
-.ft-tea-banner__head {
-  flex: 1 1 260px;
-}
-
-.ft-tea-banner__title {
-  font-family: 'Fraunces', serif;
-  font-weight: 700;
-  font-size: 15px;
-  color: var(--color-accent);
-}
-
-.ft-tea-banner--forced .ft-tea-banner__title {
-  color: var(--color-danger);
-  letter-spacing: 0.03em;
-}
-
-.ft-tea-banner__subtitle {
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--color-text-secondary);
-  margin-top: 2px;
-}
-
-.ft-tea-banner__text {
-  font-size: 13px;
-  color: var(--color-text-primary);
-  flex: 1;
-}
-
-.ft-tea-banner__text strong {
-  color: var(--color-accent-hover);
-}
-
-.ft-tea-banner__waiting {
-  font-size: 12px;
-  font-style: italic;
-  color: var(--color-text-secondary);
 }
 
 /* Market cards invite a click during a human's reserve step. */

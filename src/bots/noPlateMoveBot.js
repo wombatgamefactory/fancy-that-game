@@ -1,4 +1,24 @@
-import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleCupcakeSymbols, getMoveCost, canReserveCard, canBuyExtraTile, canRemovePlate, canClaimMore, countBoardIngredient, STAND_ROW_VALUES, CUPCAKE_PLATES, CUPCAKE_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST } from '../engine/game.js';
+// A/B CONTROL, 3 August. A frozen copy of basicBot as it stood BEFORE it did
+// anything about empty plates - the arm to run `node arena.js <games> <players>
+// basicBot noPlateMoveBot` against when tuning the plate constants
+// (PLATE_REMOVE_MAX_GAP, PLATE_REMOVE_SECONDARY_SHARE) or the price itself
+// (REMOVE_PLATE_CUPCAKE_COST).
+//
+// STILL A VALID CONTROL AFTER THE RULE CHANGE, for a slightly different reason.
+// It was written as "basicBot that cannot MOVE a plate"; moving a plate has since
+// been deleted and replaced by removing one, and this file exports no
+// decideRemovePlate at all. Every driver calls that as
+// `strategy.decideRemovePlate ? ... : null`, so this arm simply never clears a
+// plate - which is exactly the comparison the control is for.
+//
+// Its decideMove only ever moves a coloured TILE, which is now all decideMove can
+// do in either bot, so the two arms differ ONLY in plate clearing.
+//
+// IT DOES NOT TRACK basicBot. Every other improvement made to basicBot from here
+// on is missing from this file, so a widening win gap eventually stops meaning
+// anything about plates. Re-snapshot it or delete it once the plate numbers are
+// settled.
+import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleCupcakeSymbols, getMoveCost, canReserveCard, canBuyExtraTile, canClaimMore, countBoardIngredient, STAND_ROW_VALUES, CUPCAKE_PLATES, CUPCAKE_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE } from '../engine/game.js';
 
 // Approximate value of a completed claim beyond the card's printed VP: the
 // sacrificed tile is banked on the stand or crumb tray. A conservative floor —
@@ -142,11 +162,9 @@ const RESERVE_FLUSH_RESCUE_VALUE = 3;
 // ── Ingredient-objective constants: DELETED 4 AUGUST ───────────────────────
 // OBJECTIVE_STEP_VALUE, OBJECTIVE_CLOSE_BONUS and OBJECTIVE_BREAK_COST are gone
 // with the pantry goals themselves (see the note at the top of the engine). They
-// scaled off OBJECTIVE_VP, which no longer exists, and every heuristic they fed -
-// the ingredient term in sweep scoring and the sacrifice penalty in claim scoring
-// - has gone with them. Nothing replaces them: an ingredient is now worth exactly
-// what the stand rows and the crumb tray pay for it, which is what the rest of
-// this file already prices.
+// scaled off OBJECTIVE_VP, which no longer exists. The deletion is identical in
+// basicBot, which is what keeps this a CONTROL: the two arms must still differ
+// only in plate clearing.
 
 // ── Claim-selection constants ──────────────────────────────────────────────
 // Two incentives changed on 28 July: the card row GROWS on every claimless turn
@@ -737,15 +755,9 @@ export function decideExtraTile(gameState) {
     }
   }
   if (bestColour === null) return null;
-  // Worth the cupcakes at all? The unlocked claim must beat what else they buy,
-  // priced the same way the reserve decision prices them.
-  //
-  // MULTIPLIED BY THE PRICE, which it was not before: this read
-  // `bestVp < RESERVE_CUPCAKE_VALUE` back when an extra tile cost exactly 1
-  // cupcake, so the two happened to coincide. At EXTRA_TILE_CUPCAKE_COST = 2 that
-  // form would let the bot pay two cupcakes for a one-cupcake payoff and the price
-  // rise would show up in the report as no behaviour change at all.
-  if (bestVp < EXTRA_TILE_CUPCAKE_COST * RESERVE_CUPCAKE_VALUE) return null;
+  // Worth the cupcake at all? The unlocked claim must beat what else the cupcake
+  // buys, priced the same way the reserve decision prices it.
+  if (bestVp < RESERVE_CUPCAKE_VALUE) return null;
 
   // Among tiles of the winning colour, prefer one on a teapot cell, then one
   // whose ingredient we already hold. The ingredient half used to be about the
@@ -880,80 +892,22 @@ export function decidePlacements(gameState) {
   return placements;
 }
 
-// ── Empty-plate removal constants ──────────────────────────────────────────
-// These were written for the 2-cupcake plate MOVE. That action is deleted; the
-// plate is now REMOVED to the box for REMOVE_PLATE_CUPCAKE_COST (3), and the
-// same valuation applies with one term dropped and one term raised.
-//
-// PLATE_REMOVE_MAX_GAP: how many cells a window may still need AFTER the plate is
-//   cleared before the bot stops caring. The freed cell always counts as one of
-//   them, so 2 means "the plate, plus at most one more tile". Beyond that the
-//   measured completion odds collapse (see RESERVE_COMPLETION_ODDS) and the
-//   spend is a lottery ticket.
-const PLATE_REMOVE_MAX_GAP = 3;
-// PLATE_REMOVE_SECONDARY_SHARE: a plate sits in the middle of the board and
-//   sterilises EVERY window running through its cell, not just the best one, so
-//   pricing the purchase off a single card badly undercounts it. The value is the
-//   best card's gain in full plus this share of every other card's gain. It is
-//   below 1 because only one card can be claimed per turn and the cards revived
-//   compete with each other for the same freed cell.
-//
-//   RAISED 0.35 -> 0.5 WITH THE RULE CHANGE, and this is the one judgement call
-//   in porting the heuristic. Under the old move the freed cell came at the price
-//   of a NEW sterilised cell somewhere else, so the secondary windows were only
-//   partly bought; a removal sterilises nothing, so more of that secondary value
-//   is really collected. It remains below 1 for the one-claim-per-turn reason.
-const PLATE_REMOVE_SECONDARY_SHARE = 0.5;
-
-// DELETED WITH THE MOVE: PLATE_MOVE_DUMP_TRIES, and rankDumpCells below it. Both
-// existed to answer "where do we put the plate we picked up", which a removal
-// does not ask - the plate goes back in the box. This is why the removal is worth
-// more than the move it replaces even at a higher price: the old option always
-// had to spend a good cell somewhere to free a good cell here.
-
-// Probability a window `missing` tiles short is ever completed. Reuses the
-// measured RESERVE_COMPLETION_ODDS table - it answers exactly this question for
-// reserved cards, and a market card's board-side arithmetic is the same. A
-// window already complete is claimable now, so it is certainty rather than the
-// table's 0.55 (which is measured on cards that cannot be claimed the turn they
-// are taken). An unreachable window is 0.
-function windowCompletionOdds(missing) {
-  if (missing === 0) return 1;
-  if (!Number.isFinite(missing) || missing < 0) return 0;
-  const i = Math.min(missing, RESERVE_COMPLETION_ODDS.length - 1);
-  return RESERVE_COMPLETION_ODDS[i];
-}
-
-// How close this card is to done on `board`, counting only windows a tile can
-// actually be placed into. Infinity when a plate or a wrong-coloured tile has
-// killed every window - which is precisely the state a plate move can undo.
-function bestOpenGap(board, pattern) {
-  let best = Infinity;
-  for (const win of getPatternWindows(board, pattern)) {
-    if (win.missing.length < best) best = win.missing.length;
-  }
-  return best;
-}
-
-// Cupcake TILE move at the spend step. ONE move per turn: relocate a tile
-// (MOVE_TILE_CUPCAKE_COST) to complete a card we could not otherwise claim this
-// turn. Immediate, certain, and only worth it if the unlocked card beats the best
-// card already claimable, because a turn allows one claim either way.
-//
+// Cupcake move: relocate a board tile when that single move completes a market
+// card we could not otherwise claim this turn. Only fires when the unlocked card
+// strictly beats the best already-claimable card (max one claim per turn).
 // Returns { fromIndex, toIndex } or null.
 //
-// THE PLATE HALF OF THIS FUNCTION HAS MOVED OUT to decideRemovePlate. It used to
-// be branch B here because a plate move and a tile move shared one per-turn
-// allowance and so had to be compared against each other. They are separate
-// actions with separate allowances now, and a turn can buy both, so comparing
-// them would only stop the bot doing something legal.
+// 3 AUGUST: the price is read from the engine (getMoveCost) rather than assumed
+// to be 1. That was written when an empty plate cost 2 to move; plates cannot be
+// moved at all now and getMoveCost returns null for one, so the read is what
+// keeps this loop skipping plates without knowing the rule changed.
 export function decideMove(gameState) {
   const player = gameState.players[gameState.currentPlayerIndex];
   if (gameState.moveUsedThisTurn || player.cupcakes <= 0) return null;
 
   // Claimable candidates are the market cards PLUS this player's reserved cards
-  // (which complete as normal claims). A cupcake move that helps any of them is
-  // fair game.
+  // (which complete as normal claims). A cupcake move that finishes any of them
+  // is fair game.
   const candidateCards = [...gameState.cardMarket, ...player.reservedCards];
 
   let bestNowVp = 0;
@@ -977,11 +931,14 @@ export function decideMove(gameState) {
     }
   }
 
-  // Complete a card this turn by relocating one tile.
-  let bestTile = null;
+  let best = null;
   for (const card of candidateCards) {
     if (matchedNow.has(card.id)) continue;
     const vp = card.vp || 0;
+    // Card vp + banked sacrifice tile (~CLAIM_EXTRA) must beat what the cupcake
+    // is worth spent elsewhere (RESERVE_CUPCAKE_VALUE - it no longer scores a VP
+    // of its own) AND the best claim already available without moving.
+    if (vp + CLAIM_EXTRA - RESERVE_CUPCAKE_VALUE <= bestNowVp) continue;
 
     for (const win of windowsByCard.get(card.id)) {
       if (win.missing.length !== 1) continue;
@@ -1002,16 +959,10 @@ export function decideMove(gameState) {
         }
       }
       if (source === -1) continue;
-      // Can we actually pay for THIS move? A tile move is 1, but read it from
-      // the engine rather than assuming.
+      // Can we actually pay for THIS move? A tile move is 1, but read it from the
+      // engine rather than assuming (see the note on decideMove).
       const moveCost = getMoveCost(player, source);
       if (moveCost === null || player.cupcakes < moveCost) continue;
-
-      // Card vp + banked sacrifice tile (~CLAIM_EXTRA) must beat what the
-      // cupcakes are worth spent elsewhere AND the best claim already available
-      // without moving.
-      const net = vp + CLAIM_EXTRA - moveCost * RESERVE_CUPCAKE_VALUE - bestNowVp;
-      if (net <= 0) continue;
 
       // Safety: verify the move really completes the card.
       const trial = [...player.board];
@@ -1019,90 +970,13 @@ export function decideMove(gameState) {
       trial[source] = null;
       if (getPatternMatches(trial, card.pattern).length === 0) continue;
 
-      if (!bestTile || net > bestTile.net ||
-          (net === bestTile.net && bestTile.sourceProtected && !sourceProtected)) {
-        bestTile = { fromIndex: source, toIndex, net, sourceProtected };
+      if (!best || vp > best.vp || (vp === best.vp && best.sourceProtected && !sourceProtected)) {
+        best = { fromIndex: source, toIndex, vp, sourceProtected };
       }
     }
   }
 
-  return bestTile ? { fromIndex: bestTile.fromIndex, toIndex: bestTile.toIndex } : null;
-}
-
-// SPEND 3 CUPCAKES: REMOVE AN EMPTY PLATE, revive the windows it was killing.
-// Returns a board index to remove, or null.
-//
-// Every claim leaves a plate behind on the sacrificed tile's cell - by
-// construction in the middle of good territory - and a plate is the one
-// obstruction that cannot be built around, because no tile may be placed on it.
-//
-// VALUED ON EXPECTED FUTURE VP, not on this turn. Clearing a cell can never
-// complete a card the same turn: the spend step runs AFTER the place step, so the
-// freed cell stays empty until next turn's placements. An earlier version of this
-// tested "does this complete a card THIS TURN" and therefore scored the option at
-// zero by construction, at every price - which is why it never once fired in a
-// full simulation run. The value is instead each revived card's worth times the
-// measured odds of ever filling the cells it still needs
-// (windowCompletionOdds / RESERVE_COMPLETION_ODDS), net of the cupcakes spent at
-// RESERVE_CUPCAKE_VALUE each.
-//
-// IT DOES NOT COMPETE WITH THE TILE MOVE. Removing a plate does not touch the
-// claim step, so a turn can buy this AND a tile move AND still claim whatever was
-// already claimable; the two have separate per-turn allowances in the engine.
-export function decideRemovePlate(gameState) {
-  if (!canRemovePlate(gameState)) return null;
-  const player = gameState.players[gameState.currentPlayerIndex];
-
-  const candidateCards = [...gameState.cardMarket, ...player.reservedCards];
-  const matchedNow = new Set();
-  for (const card of candidateCards) {
-    if (getPatternMatches(player.board, card.pattern).length > 0) matchedNow.add(card.id);
-  }
-
-  // Which plates are even worth considering, and how close each card is today.
-  const gapBefore = new Map();
-  const platesWorthClearing = new Set();
-  for (const card of candidateCards) {
-    gapBefore.set(card.id, bestOpenGap(player.board, card.pattern));
-    if (matchedNow.has(card.id)) continue; // claimable already - nothing to unblock
-    for (const win of getPatternWindows(player.board, card.pattern, { allowBlocked: true })) {
-      // Only a SINGLE plate is actionable: one removal per turn, and a window
-      // needing two cleared is two turns and six cupcakes away.
-      if (win.blocked.length !== 1) continue;
-      if (win.missing.length + 1 > PLATE_REMOVE_MAX_GAP) continue;
-      platesWorthClearing.add(win.blocked[0].index);
-    }
-  }
-  if (platesWorthClearing.size === 0) return null;
-
-  let best = null;
-  for (const plateIndex of platesWorthClearing) {
-    // The board as it WOULD BE with the plate gone. No dump cell to pick and no
-    // collateral to weigh - that whole search belonged to the move, not this.
-    const trial = [...player.board];
-    trial[plateIndex] = null;
-
-    const gains = [];
-    for (const card of candidateCards) {
-      const before = gapBefore.get(card.id);
-      const after = bestOpenGap(trial, card.pattern);
-      if (!(after < before)) continue;
-      const weight = (card.vp || 0) + CLAIM_EXTRA;
-      const gain = weight * (windowCompletionOdds(after) - windowCompletionOdds(before));
-      if (gain > 0) gains.push(gain);
-    }
-    if (gains.length === 0) continue;
-
-    gains.sort((a, b) => b - a);
-    let value = gains[0];
-    for (let i = 1; i < gains.length; i++) value += gains[i] * PLATE_REMOVE_SECONDARY_SHARE;
-
-    const net = value - REMOVE_PLATE_CUPCAKE_COST * RESERVE_CUPCAKE_VALUE;
-    if (net <= 0) continue;
-    if (!best || net > best.net) best = { index: plateIndex, net };
-  }
-
-  return best ? best.index : null;
+  return best ? { fromIndex: best.fromIndex, toIndex: best.toIndex } : null;
 }
 
 // VP actually banked by sending `tile` to the destination decideDestination

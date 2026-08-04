@@ -9,7 +9,7 @@
 // symbol-avoidance knobs are gone with the decision they tuned;
 // TEA_TRIGGER_PRIORITY_VALUE and TEA_TRIGGER_HANDOVER_COST replace them.
 const K = (n, d) => (process.env[n] !== undefined ? parseFloat(process.env[n]) : d);
-import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleCupcakeSymbols, STAND_ROW_VALUES, CUPCAKE_PLATES, CUPCAKE_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE } from '../engine/game.js';
+import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleCupcakeSymbols, canClaimMore, STAND_ROW_VALUES, CUPCAKE_PLATES, CUPCAKE_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE } from '../engine/game.js';
 
 // Approximate value of a completed claim beyond the card's printed VP: the
 // sacrificed tile is banked on the stand or crumb tray. A conservative floor —
@@ -501,9 +501,11 @@ function minMissingForCard(board, card) {
 // redeal left cells empty - including teapot-symbol cells - so the trigger stayed
 // armed and a bot that only checked legality would order tea again, on the same
 // turn, for another pot, forever (~200 refreshes, games that never ended). That
-// hole is CLOSED in the rules: a refresh needs a non-empty bag (isTeaDue) and the
-// game ends on an empty bag ('bagEmpty'), so nothing here is load-bearing for
-// termination any more.
+// hole is CLOSED in the rules, though not the way it was on 1 August: since
+// 4 August isTeaDue is a pure symbol count with no bag check in it, a short bag
+// deals what it has and play continues over the thinner market, and it is the
+// NEXT needed refill against an empty bag that ends the game ('bagEmpty'). Either
+// way nothing here is load-bearing for termination.
 //
 // NOTHING USES IT AS A VETO SINCE 1 AUGUST, because there is no longer a decision
 // to veto - tea fires automatically at the end of a turn. Kept as a small public
@@ -695,7 +697,7 @@ export function decidePlacements(gameState) {
 // card (max one claim per turn). Returns { fromIndex, toIndex } or null.
 export function decideMove(gameState) {
   const player = gameState.players[gameState.currentPlayerIndex];
-  if (gameState.cupcakesUsedThisTurn || player.cupcakes <= 0) return null;
+  if (gameState.moveUsedThisTurn || player.cupcakes <= 0) return null;
 
   // Claimable candidates are the market cards PLUS this player's reserved cards
   // (which complete as normal claims). A cupcake move that finishes any of them
@@ -796,6 +798,12 @@ function destinationValue(player, tile, gameState) {
 //     armed right now, in which case the whole row can be discarded before our
 //     next turn and the row card is the one to bank (CLAIM_FLUSH_RISK_BONUS).
 export function decideClaim(gameState) {
+  // ADDED 4 AUGUST, and it is a LEGALITY fix rather than a re-tune. The end of
+  // the game used to stop play the moment the table's empty plates ran out, so
+  // this bot could never be asked to claim without one; now the ending is a
+  // trigger and the round plays on, so a claim past the supply is offered,
+  // refused by claim() and throws. See canClaimMore.
+  if (!canClaimMore(gameState)) return null;
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
   // Candidates are the market cards PLUS this player's reserved cards, which
@@ -819,9 +827,11 @@ export function decideClaim(gameState) {
   // Is the card row itself about to be flushed? Since 1 August this is a
   // CERTAINTY rather than a risk: if the threshold is met and the bag can still
   // refill, tea fires at the end of this very turn and the whole row goes to the
-  // discard. Anything we do not claim (or reserve) now is gone. Same expression
-  // as the engine's isTeaDue, deliberately - claim scoring must not disagree with
-  // the trigger.
+  // discard. Anything we do not claim (or reserve) now is gone. The symbol half
+  // is the engine's isTeaDue, deliberately - claim scoring must not disagree with
+  // the trigger - and the bag half is the 4 August rule that isTeaDue no longer
+  // carries: a needed refill against an empty bag ends the game rather than
+  // brewing, so no flush happens and the row is not perishable after all.
   const rowAtRisk = gameState.bag.length > 0
     && getVisibleCupcakeSymbols(gameState) >= REFRESH_THRESHOLD;
 
@@ -922,3 +932,11 @@ export function decideClaim(gameState) {
     destination: best.destination,
   };
 }
+
+// ── 3 AUGUST COMPATIBILITY SHIM ────────────────────────────────────────────
+// This bot predates the cupcake spend menu. It is kept as a fixed BASELINE for
+// arena.js, so its own heuristics are deliberately left alone - but a baseline
+// that simply never spends a cupcake would lose to anything for the wrong reason.
+// The two new paid decisions therefore delegate to the current basicBot, which
+// keeps the comparison about the heuristics this file exists to test.
+export { decideReserve, decideExtraTile } from './basicBot.js';

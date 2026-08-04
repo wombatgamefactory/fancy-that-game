@@ -1,4 +1,4 @@
-import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleCupcakeSymbols, STAND_ROW_VALUES, CUPCAKE_PLATES, BOARD_SIZE } from '../engine/game.js';
+import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleCupcakeSymbols, canClaimMore, STAND_ROW_VALUES, CUPCAKE_PLATES, BOARD_SIZE } from '../engine/game.js';
 
 // Approximate value of a completed claim beyond the card's printed VP: the
 // sacrificed tile is banked on the stand or crumb tray. A conservative floor —
@@ -318,9 +318,11 @@ function minMissingForCard(board, card) {
 // redeal left cells empty - including teapot-symbol cells - so the gate stayed
 // armed and a bot that only checked legality would order tea again, on the same
 // turn, for another pot, forever (~200 refreshes, games that never ended). That
-// hole is CLOSED in the rules now: a refresh requires a non-empty bag, and the
-// game ends on an empty bag ('bagEmpty'), so nothing here is load-bearing for
-// termination any more.
+// hole is CLOSED in the rules now, though not the way it was: since 4 August a
+// refresh does NOT require a non-empty bag (isTeaDue stopped checking it), a
+// short bag simply deals what it has, and it is the NEXT needed refill against an
+// empty bag that ends the game ('bagEmpty'). Either way nothing here is
+// load-bearing for termination.
 // It stays purely as PLAY JUDGEMENT, and it is deliberately stricter than the
 // rule: a flush that cannot refill the whole board is mostly just a reshuffle,
 // and it hands the game its ending. A bot willing to spend the last of the bag
@@ -474,7 +476,7 @@ export function decidePlacements(gameState) {
 // card (max one claim per turn). Returns { fromIndex, toIndex } or null.
 export function decideMove(gameState) {
   const player = gameState.players[gameState.currentPlayerIndex];
-  if (gameState.cupcakesUsedThisTurn || player.cupcakes <= 0) return null;
+  if (gameState.moveUsedThisTurn || player.cupcakes <= 0) return null;
 
   // Claimable candidates are the market cards PLUS this player's reserved cards
   // (which complete as normal claims). A cupcake move that finishes any of them
@@ -546,6 +548,12 @@ export function decideMove(gameState) {
 }
 
 export function decideClaim(gameState) {
+  // ADDED 4 AUGUST, and it is a LEGALITY fix rather than a strategy change to
+  // this frozen baseline. The end of the game used to stop play the moment the
+  // table's empty plates ran out, so a bot could never be asked to claim without
+  // one; now the ending is a trigger and the round plays on, so a claim past the
+  // supply is offered, refused by claim() and throws. See canClaimMore.
+  if (!canClaimMore(gameState)) return null;
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
   // Candidates are the market cards PLUS this player's reserved cards, which
@@ -629,3 +637,11 @@ export function decideClaim(gameState) {
 
   return { cardId: card.id, removedBoardIndex: bestRemoveIndex, destination };
 }
+
+// ── 3 AUGUST COMPATIBILITY SHIM ────────────────────────────────────────────
+// This bot predates the cupcake spend menu. It is kept as a fixed BASELINE for
+// arena.js, so its own heuristics are deliberately left alone - but a baseline
+// that simply never spends a cupcake would lose to anything for the wrong reason.
+// The two new paid decisions therefore delegate to the current basicBot, which
+// keeps the comparison about the heuristics this file exists to test.
+export { decideReserve, decideExtraTile } from './basicBot.js';

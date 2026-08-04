@@ -6,7 +6,7 @@
 //   B. reserve completion rate BUCKETED BY minMissing at the moment of reserving,
 //      which is the evidence for or against "the bot reserves cards it cannot
 //      realistically complete".
-import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, moveTile, refill, teaReserve, teaReserveMustPass, calculateFinalScores, getValidSweeps, getPatternWindows, getVisibleCupcakeSymbols, CUPCAKE_SYMBOL_CELLS } from './src/engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, calculateFinalScores, getValidSweeps, getPatternWindows, getVisibleCupcakeSymbols, CUPCAKE_SYMBOL_CELLS } from './src/engine/game.js';
 import { COLOURS, INGREDIENTS } from './src/engine/tiles.js';
 import * as basicBot from './src/bots/basicBot.js';
 
@@ -118,22 +118,29 @@ for (let g = 0; g < games; g++) {
         else gameState.gamePhase = 'place';
         break;
       }
-      case 'teaReserve': {
-        const ri = gameState.teaReserverIndex;
-        let cardId = null;
-        if (!teaReserveMustPass(gameState)) cardId = basicBot.decideTeaReserve(gameState, ri);
+      case 'place': {
+        // 3 August: the extra tile is bought at the sweep step, before placements.
+        const extra = basicBot.decideExtraTile ? basicBot.decideExtraTile(gameState) : null;
+        if (extra !== null && extra !== undefined) gameState = takeExtraTile(gameState, extra);
+        gameState = place(gameState, basicBot.decidePlacements(gameState));
+        break;
+      }
+      case 'spend': {
+        const mv = basicBot.decideMove(gameState);
+        if (mv) gameState = moveTile(gameState, mv.fromIndex, mv.toIndex);
+        const rp = basicBot.decideRemovePlate ? basicBot.decideRemovePlate(gameState) : null;
+        if (rp !== null && rp !== undefined) gameState = removePlate(gameState, rp);
+        // The reserve moved here on 3 August: a PAID own-turn action, so the
+        // reserve sample is taken on the acting player rather than on a
+        // separately-tracked reserver index.
+        const ri = gameState.currentPlayerIndex;
+        const cardId = basicBot.decideReserve ? basicBot.decideReserve(gameState) : null;
         if (cardId !== null && cardId !== undefined) {
           const card = gameState.cardMarket.find(c => c.id === cardId);
           myReserves.push({ playerId: ri, mm: minMissingForCard(gameState.players[ri].board, card), vp: card.vp, cardId, turn: gameState.stats.turnsPlayed });
+          gameState = reserveCard(gameState, cardId);
         }
-        gameState = teaReserve(gameState, cardId);
-        break;
-      }
-      case 'place': gameState = place(gameState, basicBot.decidePlacements(gameState)); break;
-      case 'move': {
-        const mv = basicBot.decideMove(gameState);
-        if (mv) gameState = moveTile(gameState, mv.fromIndex, mv.toIndex);
-        gameState = skipMove(gameState);
+        gameState = skipSpend(gameState);
         break;
       }
       case 'claim': {

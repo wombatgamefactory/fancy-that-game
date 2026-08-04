@@ -22,7 +22,10 @@ A 100% JavaScript implementation of the Fancy That! board game for 2–4 players
 4. **Play**:
    - **Human players**: Click a market tile to SWEEP, then click your board cells to PLACE tiles
    - **AI players**: Watch them play automatically with a 500ms pause between moves
-   - Game ends when players can't place tiles or market runs out
+   - The game ends when the empty plate pool runs out, the bag is empty at the
+     moment the tile market needs refilling, or a player's board is full. Whichever
+     fires, the round is finished out so every player has had the same number of
+     turns, and only then is the game scored
 
 ### Run Headless (Node)
 
@@ -35,14 +38,24 @@ node src/engine/game.js
 
 - **Players**: 2–4
 - **Turn Structure**:
-  1. **SWEEP**: Select a market tile, take entire row
+  1. **SWEEP**: Declare a colour or an ingredient and take every matching tile from
+     one market row or column (optionally paying 2 cupcakes for 1 extra tile from
+     anywhere on the market before you place)
   2. **PLACE**: Position tiles on your 5×5 personal board
-  3. **CLAIM**: Earn cards by completing 2×2 colour patterns
-  4. **REFILL**: Replenish market from bag if needed
+  3. **SPEND**: Optionally spend cupcakes (move a tile, reserve a card, remove an
+     empty plate)
+  4. **CLAIM**: Earn a card by completing its colour pattern on your board
+  5. **END OF TURN**: Deal 1 card to the card market, or - when 4 of the 5 teapot
+     symbols are showing - order a fresh pot of tea instead, which flushes the card
+     row and refreshes the whole tile market. A refresh deals as many tiles as the
+     bag holds; a partly filled market is played on, not an ending
 
 - **Scoring**: Each claimed card scores points = its ingredient's track level (1–5)
 - **Cards**: 50 unique patisserie cards with specific colour patterns
-- **Tiles**: 5 colours × 5 ingredients = 100 types, 4 copies each
+- **Tiles**: 5 colours × 5 ingredients = 25 types, 4 copies each = 100 tiles
+- **Cupcakes**: spend 1 to move a tile, 1 to reserve a card, 2 to take an extra
+  tile, 3 to remove an empty plate from your board (it returns to the box and does
+  not go back into circulation)
 
 ## Architecture
 

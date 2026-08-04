@@ -1,12 +1,50 @@
-import { getValidSweeps, getValidPlacements, getPatternMatches } from '../engine/game.js';
-import { decideDestination, decideTeaReserve as basicTeaReserve } from './basicBot.js';
+import { getValidSweeps, getValidPlacements, getPatternMatches, canClaimMore } from '../engine/game.js';
+import { decideDestination, decideReserve as basicReserve, decideExtraTile as basicExtraTile, decideMove as basicMove, decideRemovePlate as basicRemovePlate } from './basicBot.js';
 
 // decideOrderTea is gone (1 August): tea is no longer a decision, it fires from
-// the engine at the end of any turn that leaves four teapots showing. The RESERVE
-// decision inside a tea round is still real, and still reuses the basicBot
-// heuristic (cheap window scans — no rollout cost).
-export function decideTeaReserve(gameState, reserverIndex) {
-  return basicTeaReserve(gameState, reserverIndex);
+// the engine at the end of any turn that leaves four teapots showing. The tea
+// ROUND is gone too (3 August), and with it the free reserve.
+//
+// The two PAID decisions that replaced it - reserving a card and buying an extra
+// tile - are real decisions, and both reuse the basicBot heuristics (cheap window
+// scans, no rollout cost). The fast bot is random about sweeps and placements
+// precisely so the cupcake economy is the part being measured; leaving these two
+// random would make every cupcake figure noise.
+export function decideReserve(gameState) {
+  return basicReserve(gameState);
+}
+
+// CAVEAT worth knowing when reading fast-bot cupcake numbers: basicExtraTile
+// projects the board forward using basicBot's placement plan, and this bot places
+// at random. So it buys against a better placement than it will actually make and
+// will slightly OVERSTATE how often the tile unlocks a claim. Use the basic bot
+// for the card-lock verification figure.
+export function decideExtraTile(gameState) {
+  return basicExtraTile(gameState);
+}
+
+// THIS WAS MISSING, AND IT SILENTLY BROKE A HEADLINE METRIC (3 August). Every
+// harness calls the move as `strategy.decideMove ? strategy.decideMove(s) : null`,
+// so a bot without one simply never moves - and simulate.js runs THIS bot by
+// default. Metric 8 therefore reported `move tile=0, move plate=0` over any
+// number of games, which reads as "nobody ever wants to buy a move" when it
+// actually meant "the bot being measured cannot buy one". Two of the four
+// cupcake outlets were missing from the cupcake-economy measurement entirely.
+//
+// Same caveat as decideExtraTile above: this reasons over windows built by
+// basicBot's placement logic while this bot places at random, so its moves are
+// chosen against a tidier board than it will actually have. Use basicBot for the
+// move-rate figure; this exists so the spend totals are not structurally zero.
+export function decideMove(gameState) {
+  return basicMove(gameState);
+}
+
+// The plate outlet, delegated for exactly the reason above: a driver calls it as
+// `strategy.decideRemovePlate ? ... : null`, so an absent export reports the
+// 3-cupcake action as never wanted rather than never offered. Same placement
+// caveat as decideMove.
+export function decideRemovePlate(gameState) {
+  return basicRemovePlate(gameState);
 }
 
 export function decideSweep(gameState) {
@@ -41,6 +79,8 @@ export function decidePlacements(gameState) {
 }
 
 export function decideClaim(gameState) {
+  // The table's empty-plate supply is exhausted - no claim is legal.
+  if (!canClaimMore(gameState)) return null;
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
   // Candidates are the market cards plus this player's reserved cards (which

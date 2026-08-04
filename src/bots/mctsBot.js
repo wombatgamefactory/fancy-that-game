@@ -1,21 +1,24 @@
-import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipMove, moveTile, refill, teaReserve, teaReserveMustPass, calculateFinalScores, getLegalDestinations, STAND_ROW_VALUES, REWARD_CARDS, BOARD_SIZE, getPatternMatches, getPatternWindows } from '../engine/game.js';
-import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacements, decideClaim as greedyClaim, decideMove as greedyMove, decideTeaReserve as basicTeaReserve, rankSweeps, rankBonusTiles } from './basicBot.js';
+import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, calculateFinalScores, canClaimMore, getLegalDestinations, STAND_ROW_VALUES, REWARD_CARDS, BOARD_SIZE, getPatternMatches, getPatternWindows } from '../engine/game.js';
+import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacements, decideClaim as greedyClaim, decideMove as greedyMove, decideRemovePlate as greedyRemovePlate, decideReserve as greedyReserve, decideExtraTile as greedyExtraTile, rankSweeps, rankBonusTiles } from './basicBot.js';
 
-// Tea-round decisions: delegate the RESERVE pick to the basicBot heuristic rather
-// than expanding the MCTS move space. Adding it as a tree action would balloon
-// branching and rollout cost; the shared basicBot core makes it a clean
-// one-function delegation.
+// The two PAID cupcake decisions (3 August) are delegated to the basicBot
+// heuristics rather than expanded into the MCTS move space. Adding either as a
+// tree action would balloon branching and rollout cost; the shared basicBot core
+// makes it a clean one-function delegation, and the same greedy policy then runs
+// inside the playouts, so search and rollout agree about how cupcakes are spent.
 //
-// decideOrderTea is gone (1 August). There is no longer any decision to delegate:
-// tea fires from the engine at the END of any turn that leaves four teapots
-// showing. That makes the guard in rollout() below MORE important, not less - a
-// playout now enters the 'teaReserve' phase routinely, on a good fraction of all
-// turns, rather than only on the rare forced-empty-market case it was written
-// for. The trigger's real decision has moved into the sweep, where rankSweeps
-// already prices it (see symbolTriggerValue in basicBot), so the search does
-// account for it - through the sweep ordering rather than as an action of its own.
-export function decideTeaReserve(gameState, reserverIndex) {
-  return basicTeaReserve(gameState, reserverIndex);
+// decideOrderTea is gone (1 August): tea fires from the engine at the end of any
+// turn that leaves four teapots showing. The tea ROUND is gone too (3 August),
+// so the 'teaReserve' guard the rollout used to carry is gone with it - refill()
+// now brews the pot and rotates in one call, and a playout never parks mid-round.
+// The trigger's real decision lives in the sweep, where rankSweeps already prices
+// it (see symbolTriggerValue in basicBot).
+export function decideReserve(gameState) {
+  return greedyReserve(gameState);
+}
+
+export function decideExtraTile(gameState) {
+  return greedyExtraTile(gameState);
 }
 
 // Action-space pruning: with a few hundred iterations, spreading visits over
@@ -25,7 +28,12 @@ const MAX_SWEEP_ACTIONS = 8;
 const MAX_BONUS_ACTIONS = 5;
 
 // Committed (already-banked) score: mirror of calculateFinalScores on a live
-// state — stand row values + 1/crumb + Σ claimed card vp + unspent cupcakes.
+// state — stand row values + 1/crumb + Σ claimed card vp. The ingredient-
+// objective term (OBJECTIVE_VP per pantry goal taken) is deleted with the goals
+// themselves on 4 August, exactly as it is in calculateFinalScores, so the two
+// still agree line for line. CUPCAKES ARE NOT IN IT since 3 August: they score
+// nothing and are only a tiebreaker, so counting them here would make the search
+// hoard exactly the resource the rule change exists to make it spend.
 function committedScore(player) {
   let s = 0;
   for (let i = 0; i < player.stand.length; i++) {
@@ -37,7 +45,6 @@ function committedScore(player) {
     const card = REWARD_CARDS.find(c => c.id === cardId);
     if (card) s += card.vp;
   }
-  s += player.cupcakes || 0;
   return s;
 }
 
@@ -82,6 +89,19 @@ const ITERATIONS_MAP = {
 
 const CHUNK_SIZE = 20;
 
+// THE ROLLOUT'S COPY OF THE WORLD. Everything the engine MUTATES has to be
+// copied here, or an imaginary playout edits the real game.
+//
+// THE SPREAD DOES THE SCALARS, AND THAT INCLUDES THE END STATE (4 August).
+// `endTriggered`, `startPlayerIndex`, `endGameReason`, `gameOver` and
+// `turnsSinceLastClaim` are all plain values on the state object, so `...state`
+// carries them across by value and a rollout that arms the ending cannot arm the
+// real one. This matters more than it used to: the end is a TRIGGER now, and
+// advanceToNextTurn stops the game only when endTriggered is set AND the turn has
+// come back round to startPlayerIndex - a clone that dropped either field would
+// let every playout run past the end of the game and score a position that cannot
+// happen. Do not "tidy" the spread away into an explicit field list without
+// carrying both of them.
 function cloneState(state) {
   return {
     ...state,
@@ -95,6 +115,12 @@ function cloneState(state) {
       // dropped (1 Aug), and a rollout that reserves or completes a card would
       // otherwise push/splice the REAL player's reserve.
       reservedCards: [...p.reservedCards],
+      // (player.objectiveCards was copied here, and the shared objectivePairs
+      // deep-copied below it, until 4 August. Both fields are deleted with the
+      // pantry goals, and nothing in a rollout can write to them any more - which
+      // retires the nastiest clone hazard this file had: resolveObjectives wrote
+      // takenBy onto a pair object, so a shallow copy let an imaginary rollout
+      // spend a real objective for the whole table.)
     })),
     market: [...state.market],
     bag: [...state.bag],
@@ -322,12 +348,25 @@ function getActionsForPhase(state) {
       return [];
     }
     return ['greedy', 'ingredient', 'spread'];
-  } else if (phase === 'move') {
+  } else if (phase === 'spend') {
     // Offer the heuristic cupcake move (complete a card we couldn't otherwise
-    // claim) alongside skipping; the search decides if it pays off.
-    const suggestion = greedyMove(state);
-    return suggestion ? [suggestion, null] : [null];
+    // claim) and the heuristic paid reserve alongside skipping; the search decides
+    // if either pays off. They are offered as ALTERNATIVES rather than as a
+    // combined action - the pair is legal together, but enumerating the cross
+    // product would double the branching here for a combination the greedy policy
+    // inside the rollouts already explores.
+    const actions = [];
+    const move = greedyMove(state);
+    if (move) actions.push({ kind: 'move', ...move });
+    const plateIndex = greedyRemovePlate(state);
+    if (plateIndex !== null && plateIndex !== undefined) actions.push({ kind: 'removePlate', index: plateIndex });
+    const reserveId = greedyReserve(state);
+    if (reserveId !== null && reserveId !== undefined) actions.push({ kind: 'reserve', cardId: reserveId });
+    actions.push(null); // spend nothing
+    return actions;
   } else if (phase === 'claim') {
+    // No plates left in the table's supply means skipping is the only action.
+    if (!canClaimMore(state)) return [null];
     // Only actually claimable cards, and for each give MCTS a real plate-vs-crumb
     // choice: one action per legal destination of the tile the removal heuristic
     // would pick, plus null to skip.
@@ -377,13 +416,18 @@ function applyAction(state, action) {
       }
       place(cloned, placements);
       return cloned;
-    } else if (phase === 'move') {
-      // A move action carries {fromIndex, toIndex}; either way the phase then
-      // advances (only one cupcake move is allowed per turn).
-      if (action && typeof action.fromIndex === 'number') {
+    } else if (phase === 'spend') {
+      // A spend action is tagged {kind}: 'move' carries {fromIndex, toIndex},
+      // 'reserve' carries {cardId}, null spends nothing. Either way the phase
+      // then advances - each allowance is once per turn.
+      if (action && action.kind === 'move') {
         moveTile(cloned, action.fromIndex, action.toIndex);
+      } else if (action && action.kind === 'removePlate') {
+        removePlate(cloned, action.index);
+      } else if (action && action.kind === 'reserve') {
+        reserveCard(cloned, action.cardId);
       }
-      skipMove(cloned);
+      skipSpend(cloned);
       return cloned;
     } else if (phase === 'claim') {
       // Execute the action's OWN chosen card/removal/destination — do not
@@ -485,6 +529,15 @@ function rollout(state, playerIndex) {
         } else {
           const validSweeps = getValidSweeps(cloned);
           if (validSweeps.length === 0) {
+            // A ROLLOUT ABORT, NOT A RULES ENDING. An empty tile market is no
+            // longer an ending in itself (4 August): the engine's empty-market
+            // valve either brews the incoming player a fresh board or, with the
+            // bag dry, arms 'marketTiles' and drops them into the spend phase so
+            // they can still claim. Neither route is reachable from here -
+            // brewFreshPot is private to the engine, and applyEmptyMarketRule
+            // only runs on a real rotation - so the playout stops and is scored
+            // where it stands. It is an approximation of the last turn or two of
+            // a game that is ending anyway, which is why it is tolerable.
             cloned.gameOver = true;
             break;
           }
@@ -497,19 +550,34 @@ function rollout(state, playerIndex) {
         const board = cloned.players[cloned.currentPlayerIndex].board;
         const empty = getValidPlacements(board).length;
         if (cloned.pendingSweepTiles.length > empty) {
-          cloned.endGameReason = 'boardOverflow';
-          cloned.remainingTurnsInEndGame = cloned.players.length - 1;
+          // Mirrors triggerEndGame + checkBoardOverflowOnPlace as they stand
+          // since 4 August: overflow ARMS the ending and the swept tiles are
+          // discarded, and play then runs on until the turn comes back round to
+          // startPlayerIndex. It no longer seeds a countdown of its own - the old
+          // remainingTurnsInEndGame field is deleted from the engine, and it gave
+          // the wrong number of turns anyway (one more each to the OTHER players,
+          // leaving the triggering seat short). FIRST REASON WINS, as in the
+          // engine, so an ending already armed keeps its own reason.
+          if (!cloned.endTriggered) {
+            cloned.endTriggered = true;
+            cloned.endGameReason = 'boardOverflow';
+          }
           cloned.pendingSweepTiles = [];
           cloned.gamePhase = 'refill';
         } else {
           place(cloned, greedyPlacements(cloned));
         }
-      } else if (cloned.gamePhase === 'move') {
-        // Use the cupcake move in playouts too — completing an otherwise
-        // unclaimable card is a real part of both players' strength.
+      } else if (cloned.gamePhase === 'spend') {
+        // Spend the cupcakes in playouts too — an otherwise unclaimable card
+        // completed by a move, and a card banked into the reserve, are both real
+        // parts of both players' strength now that cupcakes buy rather than score.
         const mv = greedyMove(cloned);
         if (mv) moveTile(cloned, mv.fromIndex, mv.toIndex);
-        skipMove(cloned);
+        const rp = greedyRemovePlate(cloned);
+        if (rp !== null && rp !== undefined) removePlate(cloned, rp);
+        const reserveId = greedyReserve(cloned);
+        if (reserveId !== null && reserveId !== undefined) reserveCard(cloned, reserveId);
+        skipSpend(cloned);
       } else if (cloned.gamePhase === 'claim') {
         const claimDec = greedyClaim(cloned);
         if (claimDec) {
@@ -517,16 +585,6 @@ function rollout(state, playerIndex) {
         } else {
           skipClaim(cloned);
         }
-      } else if (cloned.gamePhase === 'teaReserve') {
-        // ROUTINELY reachable since 1 August: refill() fires a fresh pot at the
-        // end of any turn that leaves four teapots showing, so a playout of any
-        // length runs several reserve rounds. (It used to be a rare corner - an
-        // empty tile market forcing a refresh - which is why this branch reads as
-        // a guard.) Resolve each reserve with the basic heuristic, or a forced
-        // pass, so playouts neither stall nor throw.
-        const idx = cloned.teaReserverIndex;
-        const cardId = teaReserveMustPass(cloned) ? null : basicTeaReserve(cloned, idx);
-        teaReserve(cloned, cardId);
       } else if (cloned.gamePhase === 'refill') {
         refill(cloned);
       }
@@ -659,6 +717,13 @@ export async function decideClaim(gameState, difficulty) {
 
 export async function decideMove(gameState, difficulty) {
   // Cupcake move: complete a card this turn if it strictly beats what is
-  // already claimable (same heuristic the MCTS tree explores).
+  // already claimable (same heuristic the MCTS tree explores). TILES ONLY now -
+  // a plate is removed rather than moved, and that is decideRemovePlate below.
   return greedyMove(gameState);
+}
+
+export async function decideRemovePlate(gameState, difficulty) {
+  // Buy an empty plate off the board for REMOVE_PLATE_CUPCAKE_COST. Same
+  // heuristic the tree explores as the 'removePlate' spend action.
+  return greedyRemovePlate(gameState);
 }
