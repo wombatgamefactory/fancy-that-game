@@ -7,17 +7,34 @@
 # --- internal design & working documents ---
 CLAUDE.md
 fancy-that.md
-RULES_SUMMARY.txt
 UNDO_FEATURE.md
 build-changes-*.md
 DESIGN_UPDATE_*.md
+DESIGN_CHANGES_*.md
+FELD_LENS_REVIEW_*.md
+RESPONSIVE_PLAN_*.md
+*_HANDOFF*.md
 implementation-plan.md
-simulation-results-*.md
 .claude/
+
+# --- simulation / balance output (stats, not code) ---
+# Every .txt in this repo has been sim output or an internal note.
+# robots.txt is the one exception the site itself would need.
+*.txt
+!robots.txt
+simulation-results-*.md
+*-results-*.csv
+
+# --- AI art masters (24 MB of source PNGs; the site only ever
+#     loads the exported assets under images/) ---
+AI Art/
 
 # --- debug & scratch scripts ---
 debug-*.js
 test_patterns.js
+
+# --- UI measurement / screenshot output (local only) ---
+tools/screenshots/
 
 # --- print / Tabletop Simulator production assets (web game uses
 #     the combined sprite sheet images/reward_card_layout.png only) ---
