@@ -6,7 +6,7 @@
 //   B. reserve completion rate BUCKETED BY minMissing at the moment of reserving,
 //      which is the evidence for or against "the bot reserves cards it cannot
 //      realistically complete".
-import { createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, calculateFinalScores, getValidSweeps, getPatternWindows, getVisibleCupcakeSymbols, CUPCAKE_SYMBOL_CELLS } from './src/engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, calculateFinalScores, getValidSweeps, getPatternWindows, getVisibleTeapotSymbols, TEAPOT_SYMBOL_CELLS } from './src/engine/game.js';
 import { COLOURS, INGREDIENTS } from './src/engine/tiles.js';
 import * as basicBot from './src/bots/basicBot.js';
 

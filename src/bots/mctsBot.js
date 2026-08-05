@@ -1,4 +1,4 @@
-import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, calculateFinalScores, canClaimMore, getLegalDestinations, STAND_ROW_VALUES, REWARD_CARDS, BOARD_SIZE, getPatternMatches, getPatternWindows } from '../engine/game.js';
+import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, calculateFinalScores, canClaimMore, getLegalDestinations, STAND_ROW_VALUES, REWARD_CARDS, BOARD_SIZE, getPatternMatches, getPatternWindows, TASTING_MENU_VP } from '../engine/game.js';
 import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacements, decideClaim as greedyClaim, decideMove as greedyMove, decideRemovePlate as greedyRemovePlate, decideReserve as greedyReserve, decideExtraTile as greedyExtraTile, rankSweeps, rankBonusTiles } from './basicBot.js';
 
 // The two PAID cupcake decisions (3 August) are delegated to the basicBot
@@ -45,6 +45,12 @@ function committedScore(player) {
     const card = REWARD_CARDS.find(c => c.id === cardId);
     if (card) s += card.vp;
   }
+  // THE TASTING MENU. The search picks it up through the evaluation function, and
+  // the evaluation function is this. A taken menu is ALREADY-BANKED VP, so it
+  // belongs here rather than in the board-progress term - and this is why the
+  // greedy claim policy the rollouts share (decideClaim in basicBot) steers toward
+  // removals that close a menu deficit inside the playouts too.
+  s += (player.tastingMenus ? player.tastingMenus.length : 0) * TASTING_MENU_VP;
   return s;
 }
 
@@ -102,6 +108,21 @@ const CHUNK_SIZE = 20;
 // let every playout run past the end of the game and score a position that cannot
 // happen. Do not "tidy" the spread away into an explicit field list without
 // carrying both of them.
+// THE TASTING MENU NEEDS TWO EXPLICIT COPIES, and this is the single most likely
+// bug in this build. The Freshness Bonus had exactly the same shape - two mutable
+// containers, both written by the engine - and both had to be copied here or a
+// rollout took real tokens off the real table. This module inherits the hazard:
+//   - `state.tastingMenus` is an array of OBJECTS the engine WRITES to (claim sets
+//     an entry's takenBy when somebody qualifies). A SPREAD OF THE ARRAY IS NOT
+//     ENOUGH - it copies the array and shares every entry - so it must be MAPPED
+//     with each entry spread, or an imaginary rollout takes a real card off the
+//     real table permanently, for every player, for the rest of the game. There is
+//     no reset in this module, so that damage is not even self-healing.
+//   - `player.tastingMenus` is an ARRAY the engine PUSHES to, so a shared
+//     reference would score rollout menus on the real player.
+// Nothing else the module adds is mutable: TASTING_MENU_VP is a constant, and the
+// deck in tastingMenus.js is never written to (createGame deals fresh entries).
+// There is a test for this - section 12 of test-rules-2026-08-05-tasting-menu.mjs.
 function cloneState(state) {
   return {
     ...state,
@@ -115,6 +136,9 @@ function cloneState(state) {
       // dropped (1 Aug), and a rollout that reserves or completes a card would
       // otherwise push/splice the REAL player's reserve.
       reservedCards: [...p.reservedCards],
+      // MUST be copied - see the Tasting Menu note above. claim() pushes the taken
+      // menu id onto this, so a shared reference scores rollout menus for real.
+      tastingMenus: [...p.tastingMenus],
       // (player.objectiveCards was copied here, and the shared objectivePairs
       // deep-copied below it, until 4 August. Both fields are deleted with the
       // pantry goals, and nothing in a rollout can write to them any more - which
@@ -122,6 +146,11 @@ function cloneState(state) {
       // takenBy onto a pair object, so a shallow copy let an imaginary rollout
       // spend a real objective for the whole table.)
     })),
+    // MUST be a MAP, NOT A SPREAD of the array - each entry is itself mutated when
+    // takenBy is set. This is the same shape of hazard the deleted objectivePairs
+    // had: one shallow-copied shared object that a rollout writes a claim into,
+    // affecting every player for the rest of the real game.
+    tastingMenus: state.tastingMenus.map(m => ({ ...m })),
     market: [...state.market],
     bag: [...state.bag],
     gameDeck: [...state.gameDeck],

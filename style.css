@@ -21,14 +21,64 @@
   --tile-blue: #7EC8E3;
   --tile-orange: #F0974A;
 
-  /* Sizing tokens */
+  /* ---- Sizing tokens ------------------------------------------------------
+     EVERY load-bearing dimension in the game screen is a token, and the values
+     here are the XL (1800px+) ones, which is the signed-off layout. The
+     responsive bands below XL override TOKEN VALUES ONLY and never touch a
+     component rule - that separation is the whole reason the breakpoints stay
+     small and the XL layout stays frozen. See RESPONSIVE_PLAN_2026-08-04_v4.md
+     section 4 for the per-band table.
+
+     Two of these have hard floors that are not negotiable by any breakpoint:
+       - a tile a player must TAP cannot go below 44px (platform touch target),
+         which is why --tile-size bottoms out at 44 and --tile-size-opp does not;
+       - opponent boards are display-only, so --tile-size-opp is free to go all
+         the way down to 14px, and that asymmetry is what makes the single-column
+         layout fit an iPad at all. */
   --tile-size: 60px;
+  /* Opponent boards. Identical to --tile-size at XL, so this token is inert
+     until the L band; below that the opponents shrink and eventually drop their
+     ingredient symbols entirely, leaving colour-only boards. */
+  --tile-size-opp: 60px;
   --tile-gap: 2px;
+  /* THE WIDTH OF A BOARD COLUMN. A 5x5 grid of tiles, the gaps between them,
+     .ft-board-grid's padding, and its 1px border each side.
+
+     Two things are sized from it and they must agree or the seat tears: the
+     board column itself, and - from the L band down, where the two stack - the
+     score column above it.
+
+     IT MUST BE RE-DECLARED WHEREVER --tile-size IS, and .ft-seat--opp does
+     exactly that. A var() inside a custom property is substituted at the element
+     that DECLARES it, not at the element that uses it; the result then inherits
+     already resolved. So this one is frozen at :root's --tile-size, and an
+     opponent seat redefining --tile-size underneath would otherwise keep
+     inheriting a width computed from the wrong one - a 226px board sitting in a
+     266px column, which is precisely what it did before the redeclaration was
+     added. */
+  --board-col-width: calc(5 * var(--tile-size) + 4 * var(--tile-gap)
+                          + 2 * var(--spacing-sm) + 2px);
   /* The tile market's two gutter tracks, which hold the sweep buttons. They were
      a full --tile-size each; the buttons only ever needed enough room for an
-     arrow and a label, and the height of that top row is pure page height. */
+     arrow and a label, and the height of that top row is pure page height.
+     BOTH are under the 44px touch floor, so both go to 44 at M and below - the
+     sweep buttons are the primary control and must be tappable. */
   --market-gutter-h: 26px;
   --market-gutter-w: 34px;
+  /* The centre column's fixed width. Band 3 (the card row) flex-wraps and sets
+     no floor, so this is bounded only by band 2 (market + meters) - about 658px
+     at a 60px tile. The 800 here is headroom, not a requirement. */
+  --centre-width: 800px;
+  /* The score column beside each player's board. */
+  --score-col-min: 200px;
+  /* One plate on the cake stand. */
+  --stand-plate: 34px;
+  /* Reward card height. Width follows from the sprite sheet's aspect ratio
+     rather than being computed in JS - see .card-market-sprite. */
+  --card-height: 235px;
+  /* Minimum height forced onto controls that become tap targets. Zero at XL and
+     L (mouse-driven widths), 44px at M and below. */
+  --touch-target: 0px;
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
@@ -259,14 +309,49 @@ label {
   opacity: 0.75;
 }
 
-@media (max-width: 860px) {
+/* THE LANDING PAGE, retuned to the game's own band boundaries (plan phase F).
+
+   These were 860 and 520, chosen before the game screen had any breakpoints at
+   all. They are the only two media queries the stylesheet had, and they meant the
+   landing page went single-column at 860 while the game behind it stayed a
+   three-column table down to 768 - the two screens disagreed about what a narrow
+   window was. Retuned to 1150 and 768, which are the M/S and floor boundaries the
+   rest of the file uses. */
+@media (max-width: 1149px) {
   .ft-landing { padding: var(--spacing-lg) var(--spacing-md) 0; }
   .ft-landing__main { grid-template-columns: 1fr; }
 }
 
-@media (max-width: 520px) {
+@media (max-width: 767px) {
   .ft-setup__difficulty-group { grid-template-columns: repeat(3, 1fr); }
+  /* Four stats across a phone is four columns of about 70px, which wraps every
+     label onto three lines. Two by two reads. */
+  .ft-stats { grid-template-columns: repeat(2, 1fr); }
+  .ft-stat img { width: 36px; height: 36px; }
+
+  /* The end screen's results table is seven columns each carrying 12px of
+     padding a side, which is 168px of pure padding before any content. Trimming
+     it is the cheap half of the fix; letting the table scroll itself is the half
+     that guarantees the numbers stay readable rather than being crushed.
+
+     UNVERIFIED, unlike everything else in this file: the harness has no route to
+     the end screen, so this is reasoned rather than measured. It cannot affect
+     any width above 767. */
+  .ft-end-screen__results-table th,
+  .ft-end-screen__results-table td {
+    padding: var(--spacing-xs);
+    font-size: 12px;
+  }
+  .ft-end-screen__results-table {
+    display: block;
+    overflow-x: auto;
+  }
 }
+
+/* .ft-score-table (a 28px 1fr 50px 50px 60px grid, further up this file) was on
+   the phase F list for a narrow variant. It does not need one: nothing in
+   src/ or index.html carries that class any more. Left in place rather than
+   deleted, since removing dead CSS is not this plan's business. */
 
 .ft-setup__section {
   margin-bottom: var(--spacing-xl);
@@ -503,9 +588,27 @@ label {
 
 /* ======= Game Screen ======= */
 
+/* THE THREE-COLUMN TABLE: opponents left and right, the shared centre between.
+
+   `minmax(min-content, 1fr)` on the side columns, and the choice is not
+   cosmetic. The obvious move is `minmax(0, 1fr)`, so a track that cannot fit
+   its contents shrinks instead of pushing the page into horizontal scroll. It
+   does not work at XL, and the reason is worth writing down: THE CONTENTS
+   CANNOT SHRINK. A seat at a 60px tile needs ~660px whatever the track says, so
+   a 0-minimum track does not make it fit, it makes it OVERLAP - the seat renders
+   over the centre column, and the tile market's sweep buttons end up underneath
+   a player's board tiles where they cannot be clicked at all.
+
+   Pinning the minimum to min-content means the table is never narrower than the
+   things on it. Where that exceeds the viewport the page scrolls sideways, which
+   is what it already did; the difference is that everything stays reachable.
+
+   This is also why it needs no per-band override. As the L, M and S bands shrink
+   --tile-size and --tile-size-opp, min-content falls with them, and the same
+   rule stops overflowing on its own once the contents genuinely fit. */
 .ft-game {
   display: grid;
-  grid-template-columns: 1fr 800px 1fr;
+  grid-template-columns: minmax(min-content, 1fr) var(--centre-width) minmax(min-content, 1fr);
   grid-template-rows: auto auto;
   gap: var(--spacing-lg);
   padding: var(--spacing-xl);
@@ -544,6 +647,97 @@ label {
 
 .ft-panel--player4 {
   background: #FCE4EC;
+}
+
+/* ======= Seats =======
+   A SEAT is one player's whole area: their score column beside their board.
+   These rules carry what used to be inline styles in renderGameScreen, and they
+   must stay after .ft-panel, whose column direction they override.
+
+   Positioning by class rather than by markup is the entire point (plan A3):
+   an inline `grid-column` cannot be overridden by a media query, so no
+   breakpoint could reflow the table while the positions lived in the HTML.
+   Every band below XL re-places these four selectors and nothing else. */
+.ft-seat {
+  display: flex;
+  flex-direction: row;
+  gap: var(--spacing-lg);
+  /* THE SEAT NEVER RENDERS NARROWER THAN WHAT IS IN IT.
+     This is needed because of, not despite, the minmax(0, 1fr) on .ft-game:
+     a grid item only gets its automatic content-based minimum when the track's
+     MIN sizing function is auto/min-content/max-content. Pinning the track
+     minimum to 0 - which is what stops a too-wide seat dragging the whole page
+     into horizontal scroll - also switches that protection off, and the panel
+     would then shrink to a sliver while the board grid inside it spilled out
+     the side.
+
+     `max-content` is safe here ONLY because .ft-seat__board-col has a definite
+     width (see below). A definite width overrides an item's content
+     contribution, so the phase bar's long coaching sentences cannot inflate
+     this - which is exactly what would happen if the board column were still
+     `flex: 1` and left to size itself from its text.
+
+     What this does NOT do is make the page fit: three seats of ~660px plus an
+     800px centre still needs more width than any laptop has, so the horizontal
+     criterion keeps failing until the L/M/S bands shrink the tokens and drop to
+     fewer columns. Phase A's job is only to stop the board escaping its panel. */
+  min-width: max-content;
+}
+
+.ft-seat--1 { grid-column: 1; grid-row: 1; }
+.ft-seat--2 { grid-column: 1; grid-row: 2; }
+.ft-seat--3 { grid-column: 3; grid-row: 1; }
+.ft-seat--4 { grid-column: 3; grid-row: 2; }
+
+/* A seat with nobody in it, at player counts below four. */
+.ft-seat--absent {
+  display: none;
+}
+
+/* THE OTHER HALF OF THE OVERFLOW BUG (plan section 1), and the one that was
+   visible at EVERY width including 1920 rather than only on a tablet.
+
+   This column used to be `flex: 1`, i.e. `flex: 1 1 0%`, so it could be sized
+   below its own contents. .ft-board-grid is a fixed 5-tile-wide child with
+   `margin: 0 auto`, so instead of forcing the seat wider it simply OVERFLOWED
+   it: at 1920 the fifth column of your own board sat outside the coloured panel
+   and ran under the centre column. The seat measured 570px while its contents
+   needed 661 - the score column renders at ~295px, not the 200px its token
+   suggests, because its own content (the score table and the cake stand) is
+   wider than that floor.
+
+   The fix is to say what this column IS rather than let it be squeezed: exactly
+   the width of the board grid, stated in the same tokens the grid is built
+   from, so it tracks --tile-size through every band automatically - and
+   --tile-size-opp inside an opponent seat, which redefines --tile-size for its
+   own subtree.
+
+   A DEFINITE width, not a min-width, and that is load-bearing twice over: it
+   stops the phase bar's coaching sentences from setting the column's width, and
+   it is what makes `min-width: max-content` on .ft-seat safe. */
+.ft-seat__board-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 0 0 auto;
+  width: var(--board-col-width);
+}
+
+.ft-seat__header {
+  width: 100%;
+  margin-bottom: var(--spacing-sm);
+}
+
+.ft-seat__swept-label {
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin: var(--spacing-sm) 0;
+}
+
+.ft-seat__controls {
+  width: 100%;
+  margin-top: var(--spacing-md);
 }
 
 .ft-panel__header {
@@ -677,12 +871,39 @@ label {
 }
 
 .ft-stand__row {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: var(--spacing-xs);
   padding: 2px var(--spacing-xs);
   border-radius: var(--radius-sm);
   border: 2px solid transparent;
+}
+
+/* "CAKE STAND", hung off the left of the TOP row.
+   OUT OF FLOW ON PURPOSE, and both halves of that matter. `right: 100%` pins it
+   immediately left of the row whatever the plate size is, so it needs no magic
+   offset per band; and being absolute it adds no height to the stand and does
+   not push the one-plate top row off the centre line the tier is built on.
+   It lives beside the TOP row because that is the narrowest one, so the centred
+   pyramid leaves the most room there - about 55px at a 34px plate and 40px at
+   the 24px plate of the tightest band, which is why the words are stacked and
+   right-aligned rather than run on one line. */
+.ft-stand__label {
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-right: 5px;
+  text-align: right;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .ft-stand__row--legal {
@@ -746,8 +967,8 @@ label {
 }
 
 .ft-stand__plate {
-  width: 34px;
-  height: 34px;
+  width: var(--stand-plate);
+  height: var(--stand-plate);
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
@@ -819,10 +1040,43 @@ label {
 
 /* ======= Card VP Badge ======= */
 
-/* Cards are containers so the badge can size itself in cqw and stay glued to
-   the printed laurel-wreath VP as cards shrink/grow with row length. */
+/* ONE REWARD CARD, cut out of the shared sprite sheet.
+
+   SIZED HERE, NOT IN JAVASCRIPT (plan A5). cardSpriteHTML used to compute
+   background-position and background-size in PIXELS from a display height and
+   write them into a style attribute, which meant the cards could not be resized
+   by CSS at all: a responsive --card-height would have been silently ignored,
+   because the pixel maths had already been baked into the markup.
+
+   All the renderer emits now is the card's ADDRESS on the sheet - a column and
+   a row - and the geometry is done in percentages, which are independent of the
+   rendered size. reward_card_layout.png is a TTS-style 10x7 sheet (7501 x 7277);
+   cards 1-50 fill the first five rows and the last two are blank.
+
+   The percentages: with the image scaled to 1000% x 700%, it is exactly 10
+   cards wide and 7 tall, so a background-position of x% slides it across
+   (10 - 1) = 9 card widths. Column c therefore sits at c/9 of the way, and row r
+   at r/6. That is where the 9 and the 6 come from - they are one less than the
+   card counts, not a fudge.
+
+   background-origin: border-box matters. The default padding-box would make the
+   sheet's scale depend on the border width, and .ft-card--claimable swaps the
+   2px border for 5px - the art would visibly jump the moment a card became
+   claimable.
+
+   Cards are also containers, so the VP badge can size itself in cqw and stay
+   glued to the printed laurel wreath as the card grows or shrinks. */
 .card-market-sprite {
   container-type: size;
+  position: relative;
+  height: var(--card-height);
+  aspect-ratio: 0.72155;
+  background-image: url('images/reward_card_layout.png?v=3');
+  background-repeat: no-repeat;
+  background-size: 1000% 700%;
+  background-position: calc(var(--sprite-col) / 9 * 100%)
+                       calc(var(--sprite-row) / 6 * 100%);
+  background-origin: border-box;
 }
 
 /* Overlays the VP number printed on the card art (bottom-center, inside a
@@ -1058,6 +1312,21 @@ label {
   opacity: 0.6;
 }
 
+/* A BLOCKED CELL - an empty plate planted on the board when a card was claimed.
+   updatePlayerBoards has always added this class and there has never been a rule
+   for it: the cell was identified SOLELY by its empty_plate.png icon. That made
+   the board unreadable if the image failed to load, and it breaks outright under
+   the colour-only opponent treatment, which hides tile icons.
+
+   A dark neutral, at EVERY size. It has to be unmistakable against both the five
+   tile colours (all light and saturated) and an empty cell (white), because at a
+   14px opponent tile the fill is the only thing left to read. */
+.ft-tile--blocked {
+  background: #6B5847;
+  border-color: #4F4034;
+  cursor: default;
+}
+
 .ft-tile--removable {
   border: 2px solid var(--color-danger);
   box-shadow: 0 0 0 2px var(--color-danger);
@@ -1075,7 +1344,7 @@ label {
 }
 
 /* Teapot symbol printed on the tile-market board. Rendered only on the five
-   symbol cells while they are EMPTY (see CUPCAKE_SYMBOL_CELLS / updateMarket).
+   symbol cells while they are EMPTY (see TEAPOT_SYMBOL_CELLS / updateMarket).
    A printed-on-board marker, not a collectible tile, showing what the tea player
    would collect into the cupcake pot. Empty market cells are otherwise drawn at
    0.3 opacity; a symbol cell is NOT dimmed that way (updateMarket skips it), or
@@ -1158,6 +1427,48 @@ label {
   border-color: var(--color-accent-hover);
 }
 
+/* ======= The tap path (plan B1) =======
+
+   A swept tile that has been tapped and is waiting for a destination. It has to
+   be unmistakable, because on touch there is no cursor and no drag ghost to say
+   what is in hand - this ring IS the feedback that the tap registered. */
+.working-tile--selected {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 10px rgba(193, 123, 92, 0.5);
+  transform: translateY(-2px);
+}
+
+/* Every cell the armed tile could legally land in. Deliberately quieter than
+   .ft-tile--move-target, which marks a cupcake move - a paid, once-a-turn
+   action that should shout - whereas this is the ordinary case and is on up to
+   24 cells at once. */
+.ft-tile--tap-target {
+  border: 2px dashed var(--color-accent);
+  background: rgba(193, 123, 92, 0.06);
+  cursor: pointer;
+}
+
+/* The touch-hygiene block that neutralises :hover lives at the VERY END of this
+   file - see "Touch hygiene (plan B2)". It has to, because a media query adds no
+   specificity: three of the rules it overrides (.ft-cupcake-spend-btn:hover,
+   .ft-card--claimable:hover, .ft-card--reservable:hover) are declared further
+   down, and would beat it from here. */
+
+/* Kills the ~300ms tap delay and the double-tap-to-zoom gesture on the controls
+   a player taps repeatedly. Without it every placement feels laggy, and a quick
+   two-tile placement can be swallowed as a zoom. */
+.ft-tile,
+.board-tile,
+.working-tile,
+.ft-btn,
+.market-tile,
+.ft-cupcake-btn,
+.ft-cupcake-spend-btn,
+.ft-card {
+  touch-action: manipulation;
+}
+
 /* ======= Market Controls ======= */
 
 .ft-market-controls {
@@ -1237,7 +1548,7 @@ label {
    --------------------------------------------------------------------------- */
 .ft-player-score {
   flex-shrink: 0;
-  min-width: 200px;
+  min-width: var(--score-col-min);
   /* No max-height and no overflow: see above. If this column ever genuinely
      needs to be bounded, bound the PANEL and let both columns agree - never this
      one alone, or the stand goes back under a scrollbar. */
@@ -1280,6 +1591,10 @@ label {
    background rather than being trapped as white in the middle. */
 .ft-centre {
   grid-column: 2;
+  /* Was an inline `grid-row: 1 / span 2` in the markup. Moved here for the same
+     reason the seat positions were: a media query cannot override a style
+     attribute, and the narrow bands have to re-place this panel. */
+  grid-row: 1 / span 2;
   align-self: start;
   gap: var(--spacing-sm);
   padding: var(--spacing-sm);
@@ -1611,6 +1926,51 @@ label {
   box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.35);
 }
 
+/* COACHING, sitting under the button it is about.
+   These two lines came out of the phase bar on 4 August (plan section 5.4). The
+   phase bar is the COMMAND - what you must do now, and the buttons to do it -
+   and it was carrying explanations of controls that live in this panel. At a
+   narrow width the extra-tile sentence alone wrapped to four lines and made the
+   bar 200px tall, which is what broke the single-column vertical budget.
+
+   Deliberately quieter than a .ft-phase-bar__status: it is a footnote to the
+   button above it, not an instruction competing with one. The left rule ties it
+   to that button rather than letting it read as another item in the list. */
+.ft-cupcake-note {
+  display: block;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--color-text-secondary);
+  padding: 2px 0 2px var(--spacing-xs);
+  margin: -2px 0 2px;
+  border-left: 2px solid var(--color-border);
+  /* THIS CAP IS LOAD-BEARING, and without it the page grows by ~380px.
+     .ft-seat is `min-width: max-content` so a board can never overflow its own
+     panel (plan A2). The board column is immune to that because it has a
+     definite width, but the SCORE column does not - it sizes to its own content
+     - so a long enough sentence in here sets the whole seat's minimum at its
+     UNWRAPPED length, and the page follows. Measured: 2181px -> 2560px in the
+     place phase, purely from the extra-tile note arriving.
+
+     Clamping the max-width clamps the element's max-content contribution, which
+     is the thing actually doing the damage. 200px at XL is well under the ~297px
+     the stand already gives the column, so nothing moves; the sentence simply
+     wraps instead of dictating the layout.
+
+     NOTE FOR PHASE E: section 4 sets --score-col-min to `auto` at the S band.
+     `max-width: auto` is invalid and computes to `none`, which switches this
+     protection off - so the S band must either give this a length or drop
+     .ft-seat's max-content minimum, which single-column has to do regardless. */
+  max-width: var(--score-col-min);
+}
+
+/* A live offer, rather than a statement of fact. Same gold as the armed button,
+   so the eye connects the sentence to the control it is offering. */
+.ft-cupcake-note--offer {
+  color: var(--color-text-primary);
+  border-left-color: var(--color-accent-gold, #C9A227);
+}
+
 /* A market tile that the armed extra-tile purchase can lift. Deliberately the
    same visual language as the free line-clear bonus tile, because it is the same
    operation at a price. */
@@ -1715,7 +2075,12 @@ label {
   overflow: hidden;
   cursor: default;
   transition: all 0.2s ease;
-  background: white;
+  /* background-COLOR, not the `background` shorthand. The shorthand resets
+     background-image, and .ft-card is matched by the same elements as
+     .card-market-sprite but declared later in this file, so it used to wipe the
+     sprite off every card. That went unnoticed only because the sprite was an
+     inline style until A5, which outranks any rule here. */
+  background-color: white;
 }
 
 /* The hover lift means "this responds". It belongs to the two interactive
@@ -1818,16 +2183,10 @@ label {
   gap: var(--spacing-sm);
 }
 
-.ft-phase-bar__cupcake-hint {
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: rgba(212, 175, 55, 0.08);
-  border-left: 3px solid var(--color-accent-gold);
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  color: var(--color-text-primary);
-  font-weight: 500;
-  animation: slide-in 0.3s ease;
-}
+/* .ft-phase-bar__cupcake-hint was here. Deleted 4 August with the element it
+   styled - see updatePhaseControls, where the hint turned out to have been
+   gated on a phase it was never rendered in. Its role is now .ft-cupcake-note,
+   beside the buttons. */
 
 @keyframes slide-in {
   from {
@@ -1861,7 +2220,15 @@ label {
   border-radius: var(--radius-lg);
   padding: var(--spacing-xl);
   box-shadow: var(--shadow-modal);
-  max-width: 500px;
+  /* min() rather than a bare 500px (plan phase F). A fixed max-width is not a
+     maximum on a narrow screen, it is a floor the viewport cannot meet: at 768
+     the dialog was 500px plus 2 x 24px of padding against a screen that also
+     wants a margin. The calc leaves 16px either side at every width and is
+     inert above 532px, so the desktop dialog is untouched.
+
+     Measured content sits at 260px with .ft-modal__option at 98px tall, both
+     comfortably clear of the 44px touch floor - the width was the only problem. */
+  max-width: min(500px, calc(100vw - 32px));
   max-height: 80vh;
   overflow-y: auto;
   position: relative;
@@ -2344,7 +2711,11 @@ select:focus {
 /* ======= Rules Modal ======= */
 
 .ft-rules {
-  max-height: 600px;
+  /* 600px is taller than the whole viewport on a tablet in landscape, which made
+     the rules scroll the PAGE instead of themselves and stranded the close
+     button off-screen. 80vh keeps the scroll inside the panel where it belongs
+     and is inert on any screen over 750px tall (plan phase F). */
+  max-height: min(600px, 80vh);
   overflow-y: auto;
 }
 
@@ -2410,6 +2781,18 @@ select:focus {
 
 /* .ft-rules__section--objectives stood here, gold to match the objectives panel
    on the game screen. Both are deleted with the pantry goals, 4 August. */
+
+/* The Tasting Menu takes the GREEN of the scoring section rather than the fresh
+   pot's gold, and the change of family from the Freshness Bonus it replaced is
+   deliberate. The cups WERE the tea rule seen from the scoring side, so sharing
+   gold with it was correct; a Tasting Menu has nothing to do with the pot of tea,
+   and colouring it as though it did would teach the one thing about the module
+   that players must not believe. It runs a shade deeper than the scoring section
+   so the two are still tellable apart. */
+.ft-rules__section--menus {
+  --rule-accent: var(--color-success);
+  --rule-tint: rgba(90, 138, 92, 0.20);
+}
 
 .ft-rules__section--cupcakes {
   --rule-accent: var(--tile-pink);
@@ -2615,6 +2998,254 @@ select:focus {
   font-weight: 600;
 }
 
+/* ======= The Tasting Menus (5 August) =======
+   One card per player, dealt at setup and never replaced. The first player whose
+   CAKE STAND shows the named ingredients takes it, free and automatic, and it is
+   then out of the game.
+
+   THE ONE THING THIS STYLING HAS TO DO is make a taken menu read as GONE FOR
+   GOOD. That is the entire difference between this module and the two it
+   replaced, both of which handed value back on a cycle: a spent Freshness cup was
+   styled to say "resting, back at the next pot", and getting the same feeling here
+   would teach exactly the wrong rule. Hence a taken menu is struck through and
+   stamped with a name rather than dimmed in place.
+
+   THE SECOND THING is the ONE-TILE-SHORT state, which has no equivalent in either
+   predecessor. 44.3% of players finish one tile short of a menu; that is the
+   decision the whole module exists to create, and a player who cannot see it is
+   playing a different game. It gets the loudest treatment on the panel.
+
+   IT SITS in the meters rail under the fresh-pot gauge, but NOT as a pair with it
+   - a pot of tea does nothing to a menu. The green family is deliberate distance
+   from the gauge's gold. */
+.ft-section.ft-menus {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  border-left-color: var(--color-success);
+  background: linear-gradient(135deg, #F7FAF6 0%, rgba(90, 138, 92, 0.10) 100%);
+}
+
+/* Every menu gone. This IS an ending - nothing brings them back - so it dims
+   further than the Freshness panel's equivalent state ever did. */
+.ft-menus--spent {
+  opacity: 0.66;
+}
+
+/* The price tag beside the head. It rides INSIDE the title span so the
+   space-between head keeps the N/M figure hard right; a price is prose, not an
+   area label, so the label treatment (uppercase, letterspacing, bold) is undone. */
+.ft-menus__vp {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+
+/* ---- The cards ----
+   THREE TO FIVE of them - the deal is players + 1 - wrapping rather than
+   overflowing so a narrow rail is safe. Nothing here assumes a count:
+   TASTING_MENU_SURPLUS is a knob and the deal is sized against the player count.
+   The five-card case at 4 players is the one that governs the panel height, so
+   measure that band rather than the 3-card one. */
+.ft-menus__cards {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+/* SIZED SO TWO FIT ACROSS THE METERS RAIL. At four players the panel holds four
+   cards, and at ~114px each they stacked one per row and made the panel three
+   times the height of the Freshness strip it replaced - which is most of what the
+   5 August screenshot re-baseline was reporting. A 1/1/1 card is three chips wide,
+   so the symbol size is what governs, and since the count became a corner badge
+   the chip IS the symbol: at 48px a card is 160px, which is one per row in the M
+   and L bands and two across in XL. Do not grow the symbol without re-running
+   tools/layout-check.mjs. */
+.ft-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-card);
+  transition: opacity 160ms ease, filter 160ms ease, box-shadow 160ms ease;
+}
+
+/* The ingredients and their quantities, which is the whole content of the card.
+   Read left to right in descending quantity, so the "2" always comes first. */
+.ft-menu__needs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* The chip is exactly as wide as its symbol - the count rides ON the symbol as a
+   corner badge rather than sitting beside it. That is what bought the bigger art
+   on 5 August: the symbol went 18px -> 26px and the CARD DID NOT GROW, because
+   the 7px digit and its gap came out of the chip at the same time. */
+.ft-menu__need {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* 48px, and the HARD CEILING is 56px. MEASURED 5 August: the cards box is 182px
+   wide in the narrowest band that shows this panel (1280 and 1150), and a 1/1/1
+   card is 3 symbols + 2x2 gap + 8 padding + 4 border, so 3S + 16 <= 182 gives
+   S <= 55.3. At 48px the card is 160px and one card fills a row in the M and L
+   bands - which is the deliberate trade for icons this size, and it is why the
+   card padding and chip gap are as tight as they are. In the XL band the cards
+   box is 334px and two 160px cards still sit side by side; grow the padding by
+   2px and that stops being true. Do not change any of the three numbers without
+   re-running tools/layout-check.mjs. */
+.ft-menu__symbol {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+/* Drawn ONLY for a 2 (board.js omits it for a 1), so it is a genuine "note the
+   double" rather than a digit on every symbol. Sits on the bottom-right corner,
+   overhanging the symbol box so it costs the chip no width. */
+.ft-menu__count {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--color-card);
+  background: var(--color-text-primary);
+  color: var(--color-card);
+  font-family: 'Fraunces', serif;
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Only a TAKEN card has a foot - the name of whoever took it. */
+.ft-menu__holder {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  max-width: 76px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ON OFFER but not close - the resting state. Present, legible, not shouting. */
+.ft-menu--open {
+  border-color: var(--color-border);
+}
+
+/* ONE TILE SHORT. The loudest state on the panel, and the reason the panel
+   exists. Since the deficit text was removed this border, glow and wash are the
+   WHOLE signal on the card itself - the panel note below spells it out in words.
+   Do not tone them down. */
+.ft-menu--close {
+  border-color: var(--color-success);
+  background: linear-gradient(135deg, #F2F8F1 0%, rgba(90, 138, 92, 0.26) 100%);
+  box-shadow: 0 0 10px rgba(90, 138, 92, 0.50);
+}
+
+/* QUALIFIED ALREADY - only reachable under TASTING_MENU_ONE_PER_TURN, where a
+   second qualifying menu waits a turn. Gold, because it is banked rather than
+   chased. */
+.ft-menu--ready {
+  border-color: var(--color-accent-gold);
+  background: linear-gradient(135deg, #FBF5EC 0%, rgba(212, 175, 55, 0.30) 100%);
+  box-shadow: 0 0 12px rgba(212, 175, 55, 0.55);
+}
+
+/* TAKEN - struck through, greyed, and carrying the name of whoever took it. The
+   name is the point: "the player on my left took the two-lemon one" is what makes
+   losing a race feel personal rather than arbitrary, and it is the one thing the
+   Freshness panel could never honestly show. */
+.ft-menu--taken {
+  opacity: 0.42;
+  filter: grayscale(1);
+  border-style: dashed;
+}
+
+.ft-menu--taken .ft-menu__needs {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+
+.ft-menu--taken .ft-menu__holder {
+  font-style: italic;
+  color: var(--color-text-primary);
+}
+
+.ft-menus__note {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+
+.ft-menus--spent .ft-menus__note {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+/* The ingredient symbols on a player's Tasting Menu score line, showing which
+   menus they took rather than only the total - "she took the two-lemon-two-
+   chocolate one" is how players actually talk about which cards have gone. */
+.ft-score-breakdown__symbol {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  vertical-align: -2px;
+}
+
+/* ---- The claim-step affordance ----
+   The one moment the module pays off: a matched-pattern cell whose tile, removed
+   and PLATED, completes a menu right now. It rides ON TOP of .ft-tile--removable
+   rather than replacing it - the cell is still a removal choice, it is just the
+   decisive one.
+
+   ONLY COMPLETION IS BADGED. A badge for partial progress would be on most of the
+   board and would say nothing; this one means "take this card, now, for the whole
+   menu". And it VANISHES for good the moment a rival takes that menu - the same
+   tile in the same cell is worth TASTING_MENU_VP on one turn and nothing ever
+   again (the badge prints the live number). Nothing else in
+   this interface changes value because of what somebody else did. */
+.ft-tile--menu {
+  box-shadow: 0 0 0 3px var(--color-success), 0 0 12px rgba(90, 138, 92, 0.65);
+}
+
+.ft-tile__menu {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--color-success);
+  color: #FFFFFF;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
 /* Market cards invite a click during a human's reserve step. */
 .ft-card--reservable {
   cursor: pointer;
@@ -2668,4 +3299,599 @@ select:focus {
   box-shadow: 0 1px 4px rgba(61, 43, 31, 0.4);
   pointer-events: none;
   z-index: 2;
+}
+
+/* ======= Touch hygiene (plan B2) =======
+
+   :hover STICKS ON TOUCH. A tap satisfies :hover and the browser keeps it
+   satisfied until something else is tapped, so every lift-and-scale rule in this
+   file leaves a tile sitting raised and glowing with nothing to explain it - it
+   reads as selected when it is not, which in a game about selecting tiles is
+   worse than having no hover response at all.
+
+   LAST IN THE FILE ON PURPOSE. A media query contributes no specificity, so
+   these only win by source order - three of the rules below
+   (.ft-cupcake-spend-btn:hover, .ft-card--claimable:hover,
+   .ft-card--reservable:hover) are declared late and would otherwise beat it.
+
+   Written as an override rather than by gating each original rule in
+   `@media (hover: hover)`: the desktop stylesheet then stays exactly as it was,
+   byte for byte, which is what keeps the XL freeze honest. */
+@media (hover: none) {
+  /* The lifts. These are the ones that actually mislead: a scaled-up tile is the
+     game's own vocabulary for "this is the one you picked". */
+  .ft-tile:hover:not(.ft-tile--empty):not(.ft-tile--ghost):not(.market-tile),
+  .market-tile.ft-tile--pickable:hover,
+  .ft-cupcake-btn--active:hover,
+  .ft-card--reservable:hover,
+  .ft-card--claimable:hover,
+  .ft-tile--movable:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  /* Restore the borders those rules also set, so a tapped tile is not left
+     wearing the accent border either. .ft-card--claimable keeps its gold one,
+     which is a STATE ("you can claim this") rather than a hover response. */
+  .ft-tile:hover:not(.ft-tile--empty):not(.ft-tile--ghost):not(.market-tile),
+  .market-tile.ft-tile--pickable:hover {
+    border-color: var(--color-border);
+  }
+  .ft-card--claimable:hover {
+    border-color: var(--color-accent-gold);
+    box-shadow: 0 0 30px rgba(212, 175, 55, 0.8), 0 0 50px rgba(212, 175, 55, 0.5);
+  }
+
+  /* The background-only rules. Milder, but a stand row left highlighted after a
+     tap suggests it is still the chosen destination. */
+  .ft-stand__row--legal:hover,
+  .ft-stand__crumbs--legal:hover { background: rgba(212, 175, 55, 0.12); }
+  .ft-tile--removable:hover { background: transparent; }
+  .ft-tile--movable:hover { background: transparent; }
+  .ft-tile--move-target:hover {
+    background: rgba(193, 123, 92, 0.1);
+    border-color: var(--color-accent);
+  }
+  .ft-cupcake-spend-btn:hover:not(:disabled) {
+    background: #FFFFFF;
+    border-color: var(--color-border);
+  }
+}
+
+/* ===========================================================================
+   RESPONSIVE BANDS
+
+   Everything below XL overrides TOKEN VALUES ONLY. No component rule is
+   redeclared in a band, which is what keeps these blocks short and keeps the
+   signed-off 1800+ layout provably untouched - see the token table in
+   RESPONSIVE_PLAN_2026-08-04_v4.md section 4.
+
+   Only the touch band exists so far (plan B2/B3). The L, M and S layout bands
+   are phases C, D and E; until they land the page still scrolls sideways below
+   ~2180px, which the harness reports at every width.
+   =========================================================================== */
+
+/* AN OPPONENT'S BOARD RUNS ON ITS OWN TILE SIZE, and this one rule is what makes
+   the narrow bands possible at all (plan 6.4).
+
+   Redefining --tile-size for the subtree means every rule built from it -
+   .ft-board-grid, .ft-tile, and .ft-seat__board-col's definite width - follows
+   an opponent down without any of them being touched. The asymmetry it encodes
+   is the important part: YOUR tiles are tap targets and cannot go below the 44px
+   platform floor, whereas an opponent's board is display-only and can shrink as
+   far as it stays readable. That is what turns three 568px columns into three
+   ~170px cards.
+
+   Inert at XL, where both tokens are 60px. */
+.ft-seat--opp {
+  --tile-size: var(--tile-size-opp);
+  /* Re-derived, NOT inherited - see the note on --board-col-width in :root. The
+     inherited copy was resolved against :root's --tile-size and would keep the
+     opponent's columns at the human's size. Same formula on purpose; it is the
+     redeclaration that carries the meaning, not the arithmetic. */
+  --board-col-width: calc(5 * var(--tile-size) + 4 * var(--tile-gap)
+                          + 2 * var(--spacing-sm) + 2px);
+}
+
+/* THE L BAND - 1400 to 2180 (plan phase C).
+   Three columns still, but nothing is at its XL size any more. The structural
+   change is that an opponent's score column moves ABOVE their board instead of
+   beside it: side-by-side is what makes a seat 568px wide, and stacking is what
+   collapses it to roughly the width of the board itself.
+
+   THE UPPER BOUND IS 2180, NOT THE 1800 THE PLAN NAMES. The frozen XL layout - a
+   60px tile and an 800px centre - has a measured content minimum of 2181px, so
+   an "XL band" starting at 1800 spends its first 380px of range overflowing the
+   viewport it is supposed to fit. That was true before any of this work (1920
+   was 27px over); Phase A's containment fix only made it honest, by stopping the
+   boards from hiding the shortfall by spilling out of their own panels.
+
+   So the boundary is set where the layout actually stops fitting rather than at
+   a round number, and the XL design is untouched everywhere it can be shown as
+   designed. Decision taken 4 August; the cost is that a 1920 monitor now gets a
+   48px tile, and the gain is that no width scrolls sideways. */
+@media (max-width: 2180px) {
+  :root {
+    --tile-size: 48px;
+    --tile-size-opp: 40px;
+    --centre-width: 598px;
+    /* 184, not the 170 the plan's table predicted. Measured: the cake stand's
+       widest row (the four-plate one, plus its lock and the stand's padding) has
+       a min-content width of 173px at a 30px plate, and nothing narrower than
+       that is honest - the stand cannot wrap. The other three parts of the
+       column need far less: total 39, breakdown 77, cupcake panel 92. The
+       remaining 11px is deliberate headroom, because this figure is what decides
+       whether the band clears 1400 at all. */
+    --score-col-min: 184px;
+    --card-height: 200px;
+    --stand-plate: 30px;
+  }
+
+  /* YOUR OWN score column gets a definite width, exactly as the opponents' do
+     and for the same reason. Left to itself it takes its MAX-content - 295px,
+     because .ft-seat is min-width: max-content and nothing downstream caps it -
+     even though its true floor is 181. That 105px of slack was the whole of the
+     L band's remaining overflow, and it bought nothing: the column is a stack of
+     things that are happy to wrap.
+
+     This is also why the plan's predicted 478px human panel came out at 605. The
+     arithmetic in section 3 assumed the score column sat at its --score-col-min
+     token; it never has. At XL it renders 295 against a 200px token, which is
+     recorded in .ft-seat__board-col's note but never fed back into the band
+     totals. */
+  .ft-seat--own .ft-seat__score-col {
+    width: var(--score-col-min);
+    min-width: 0;
+    flex: 0 0 auto;
+  }
+
+  .ft-seat--opp {
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-sm);
+  }
+
+  /* BOARD COLUMN FIRST, so the panel reads name -> board -> score.
+
+     The seat's DOM order is [score column, board column], which is right when
+     they sit side by side and wrong the moment they stack: the player's NAME
+     lives in the board column's header, so stacking in source order buried
+     "Player 3" underneath their total, their cake stand and their cupcakes. The
+     panel announced itself four items in.
+
+     Reordering rather than moving the header out of the board column in the
+     markup, because that header is a child of a column with a definite width and
+     making it a direct child of the seat would add a third flex item to the XL
+     row - which would wreck the layout this whole plan is built to leave alone.
+
+     The plan's phrase for the L band is "score stacked above the board". What
+     stacking buys is WIDTH; which of the two ends up on top is free, and putting
+     the name at the top of the card is worth more than putting the total there. */
+  .ft-seat--opp .ft-seat__board-col { order: 1; }
+  .ft-seat--opp .ft-seat__score-col { order: 2; }
+
+  /* Stacked, the score column is exactly as wide as the board it sits under.
+     A DEFINITE width, for the same reason .ft-seat__board-col has one: `width:
+     100%` does not work here, because the percentage resolves against a parent
+     whose own width is content-derived (.ft-seat is min-width: max-content), so
+     the column just reports its content back and the seat sizes to THAT. It
+     measured 295px against a 226px board - the score column, not the board, was
+     setting the width of every opponent seat.
+
+     --score-col-min's floor has to come off with it, or the 170px minimum
+     re-inflates the seat once the tiles shrink below that. */
+  .ft-seat--opp .ft-seat__score-col {
+    width: var(--board-col-width);
+    min-width: 0;
+  }
+
+  /* An opponent's cupcake panel is a READOUT - they cannot be clicked and the
+     spend buttons are not even rendered for another player. The instruction
+     ("Click to move a tile...") and the tiebreak footnote are therefore telling
+     you how to use controls that are not there, and they are among the widest
+     lines in the panel. The count itself stays. */
+  .ft-seat--opp .ft-cupcake-help-text,
+  .ft-seat--opp .ft-cupcake-points {
+    display: none;
+  }
+
+  /* The full breakdown goes; the total stays (plan phase C). Three labelled
+     rows is a level of detail for the board you are playing, not for a glance
+     across the table - and what an opponent is actually threatening is on their
+     stand and their board, both of which remain. */
+  .ft-seat--opp .ft-score-breakdown {
+    display: none;
+  }
+
+  /* The stand has to fit the narrower column. Its plates are the one thing in
+     there with a size of their own rather than a text width. */
+  .ft-seat--opp {
+    --stand-plate: 24px;
+  }
+}
+
+/* The strip is INERT above the M band: its seats are promoted back out and
+   placed by .ft-seat--2/3/4 exactly as they were before the wrapper existed. */
+.ft-opp-strip {
+  display: contents;
+}
+
+/* THE ONE-LINE STAND SUMMARY and the cupcake count on an opponent's total.
+   Both are rendered for every opponent at every width and hidden here, because
+   above the M band the full stand and the cupcake panel are still on show and
+   these would be duplicates. Switched on in the M band below. */
+.ft-stand-mini,
+.ft-score-total__cupcakes {
+  display: none;
+}
+
+/* THE TOUCH BAND - M and below (plan B3).
+   1400 is where the plan stops assuming a mouse. Two of the game's most-used
+   controls are under the 44px platform minimum at their XL sizes: the market's
+   sweep buttons measure 34x60 and 60x26, because the gutters they live in were
+   sized for an arrow and a label rather than for a fingertip. The sweep is THE
+   move of the turn, so these are the last controls that should be hard to hit.
+
+   Both buttons take their size from these tokens - including where the size is
+   written as an inline style, since that style names the token rather than a
+   pixel value - so widening the gutters widens the buttons with them. */
+@media (max-width: 1399px) {
+  :root {
+    --market-gutter-h: 44px;
+    --market-gutter-w: 44px;
+    --touch-target: 44px;
+  }
+}
+
+/* --touch-target is 0px at XL and L, so this is inert until the band above
+   fires. Declared outside the query on purpose: the RULE is constant, only the
+   value moves, which is the same separation the bands themselves keep.
+
+   THE SETUP SCREEN IS IN THIS LIST, and it was the last thing to be checked
+   because every screenshot in the harness was taken after #startButton had
+   already been clicked - so the one screen a player has to get through BEFORE
+   the game starts was the one screen never measured. Its difficulty buttons were
+   24px tall and the player-count select 36px, on a tablet, where they are the
+   only things standing between a player and a game. */
+.ft-btn,
+.ft-btn--small,
+.ft-cupcake-spend-btn,
+.ft-modal__option,
+.sweep-option-btn,
+.ft-setup__difficulty-btn,
+.ft-setup__toggle-btn,
+.ft-setup__select {
+  min-height: var(--touch-target);
+}
+
+/* THE M BAND - 1150 to 1400 (plan phase D). TWO COLUMNS.
+
+   The three-column table is what costs the width: two seat columns plus a fixed
+   centre cannot be squeezed below about 1400 without taking the tiles under the
+   44px touch floor. So the table stops being a table. The centre and your own
+   seat sit side by side, and the opponents drop out of the columns entirely into
+   a strip along the bottom - which is the point at which they also stop needing
+   to be readable in detail, and become colour-only.
+
+   This is where the 5x5 grids of three other players collapse from ~250px
+   columns to ~146px cards, and that saving is the whole reason the band fits. */
+@media (max-width: 1399px) {
+  :root {
+    /* Your own tiles stay at 48: they are tap targets from here down, and the
+       plan's floor for a tile you must hit is 44. The opponents' go to 24, where
+       a symbol would be mush and is dropped instead (plan 6.1 - validated by eye
+       at 24, 14 and 40px; all five colours stay plainly distinct). */
+    --tile-size-opp: 24px;
+  }
+
+  .ft-game {
+    grid-template-columns: minmax(0, var(--centre-width)) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: start;
+  }
+
+  .ft-centre  { grid-column: 1; grid-row: 1; }
+  .ft-seat--1 { grid-column: 2; grid-row: 1; }
+
+  /* The strip becomes real: one flex row under both columns. */
+  .ft-opp-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+    grid-column: 1 / -1;
+    grid-row: 2;
+    align-items: start;
+  }
+
+  /* Inside the strip the seats are flex items, so their XL grid positions have
+     to be revoked or they fight the row. */
+  .ft-seat--2,
+  .ft-seat--3,
+  .ft-seat--4 {
+    grid-column: auto;
+    grid-row: auto;
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  /* COLOUR ONLY. At 24px a tile has room for about a 14px symbol, which is mush;
+     hiding it is what the tile should look like at this size, not a compromise
+     (plan 6.3). The colour is what the reward cards are about, so the question
+     you actually ask of another player's board - how close are they to that
+     card - is fully answered by the pattern that remains. */
+  .ft-seat--opp .ft-tile__icon {
+    display: none;
+  }
+
+  /* What an opponent's panel is FOR at this size is their board and their score.
+     The full cake stand cannot shrink below ~170px and would double the width of
+     every card in the strip, and their cupcake panel is a readout of controls
+     nobody can press. Both go - but the stand is REPLACED rather than simply
+     dropped, by the one-line summary below, and the cupcake count moves onto the
+     total line. See renderStandSummary and plan 6.2. */
+  .ft-seat--opp .ft-stand,
+  .ft-seat--opp .ft-cupcake-supply {
+    display: none;
+  }
+
+  .ft-seat--opp .ft-stand-mini {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 2px var(--spacing-xs);
+    margin-top: var(--spacing-xs);
+  }
+
+  .ft-seat--opp .ft-score-total__cupcakes {
+    display: inline;
+    margin-left: var(--spacing-sm);
+    font-weight: 500;
+  }
+
+  .ft-stand-mini__row {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 10px;
+    color: var(--color-text-secondary);
+    line-height: 1.2;
+  }
+
+  /* A completed row is the thing worth spotting at a glance: it is an ingredient
+     that can never be plated again, by anyone, anywhere on that stand. */
+  .ft-stand-mini__row--full {
+    color: var(--color-accent);
+    font-weight: 600;
+  }
+
+  .ft-stand-mini__lock {
+    width: 12px;
+    height: 12px;
+    object-fit: contain;
+    font-size: 10px;
+    line-height: 1;
+  }
+
+  .ft-stand-mini__lock--empty {
+    border: 1px dashed var(--color-border);
+    border-radius: 50%;
+    opacity: 0.6;
+  }
+
+  .ft-seat--opp .ft-seat__score-col {
+    width: auto;
+  }
+
+  /* The market section is `width: max-content` at XL, where it sits in a column
+     sized around it. Once the column is wider than the grid - which it is from
+     here down - that makes the section hug the market and strand it against the
+     left edge of an otherwise full-width stack. Letting the section span and
+     centring the grid inside it (.ft-market-wrap already does) puts the market
+     back in the middle of the space it has. */
+  .ft-section--tiles {
+    width: auto;
+  }
+
+  /* ---- THE ACTION BAR, pinned to the bottom of the viewport (plan 5.5) ------
+
+     FIXED, NOT STICKY, and the plan's own CSS cannot work here. `position:
+     sticky` is clipped to its PARENT's box: #phaseControls lives inside
+     .ft-seat__board-col, which ends a few pixels below it, so a sticky bar would
+     have essentially no range to stick over. It would unpin the moment you
+     scrolled past your own board - which is precisely the scroll that hides it,
+     since the card row is below.
+
+     The alternative was to re-parent #phaseControls to .ft-game in the markup,
+     which would put a third item in the XL seat row and break the frozen layout.
+     Fixed positioning gets the plan's stated intent - the controls stay reachable
+     without scrolling back - without touching XL at all.
+
+     z-index below the 1000 the modals use, or the sweep-choice dialog gets a bar
+     laid across it. */
+  .ft-seat__controls {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 900;
+    width: auto;
+    margin-top: 0;
+    /* Deliberately no background or padding on the CONTAINER. It is empty on a
+       bot's turn and in any phase with no controls, and a padded container would
+       then draw an empty strip across the foot of the screen. .ft-phase-bar
+       carries its own cream background, so an empty container is 0px tall and
+       invisible. */
+    pointer-events: none;
+  }
+
+  .ft-seat__controls > .ft-phase-bar {
+    pointer-events: auto;
+    margin: 0 var(--spacing-sm)
+            calc(var(--spacing-sm) + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -2px 12px rgba(61, 43, 31, 0.18);
+  }
+
+  /* Clearance, so the last thing on the page is not sitting under the bar. The
+     measured bar is ~127px in the tallest phase (place, with the count and two
+     buttons); 190 covers it plus the safe-area inset on an iPad. */
+  .ft-game {
+    padding-bottom: 190px;
+  }
+}
+
+/* THE S BAND - under 1150 (plan phase E). ONE COLUMN.
+
+   Covers 1024 and the 768 tablet-portrait floor. Two columns still needs ~1130,
+   so below that the centre and your seat stop sharing a row.
+
+   The ORDER is the substance of this band, and it is chosen so that the tile
+   market and your own board are on screen TOGETHER - placement needs both, and
+   that co-visibility is what let the plan delete its auto-scroll entirely. */
+@media (max-width: 1149px) {
+  :root {
+    /* 44 is a floor, not a preference: your own tiles are tap targets. The spare
+       vertical budget goes to margin rather than to bigger tiles. */
+    --tile-size: 44px;
+    --tile-size-opp: 14px;
+    --card-height: 170px;
+    --stand-plate: 28px;
+  }
+
+  /* .ft-centre and .ft-centre-table dissolve so their children become items of
+     .ft-game, where `order` can reach them. Without this the market is trapped
+     inside .ft-centre and your board inside a seat - different parents, and
+     `order` cannot move a child out of its parent.
+
+     Losing .ft-centre's panel framing is a gain rather than a cost: a card
+     inside a card wastes ~36px of width, and each .ft-section already carries
+     its own tint and left rule. */
+  .ft-game {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    /* MUST be restated. The M band above sets `align-items: start` for its
+       two-column grid, and this query also matches there - left as it was, every
+       section shrank to its own content and the page rendered as a ragged
+       380px-wide strip down the left of a 768px screen. On the single column the
+       sections should span it. */
+    align-items: stretch;
+  }
+
+  /* .ft-centre-meters JOINS THEM (4 August), for the flavour panel. The rail
+     was a real box at this band, so `order` could only shuffle things WITHIN it -
+     and the existing `.ft-section--tea { order: 5 }` did exactly that the moment
+     a third child arrived, pushing the tea gauge below the flavour panel that
+     had just been placed under it. Dissolving the rail here puts all three of its
+     children where `order` can reach them individually, which is the same reason
+     .ft-centre and .ft-centre-table dissolve.
+     The two clocks below are given an explicit order because of it: released into
+     .ft-game they would otherwise default to 0 and land above the turn bar. */
+  .ft-centre,
+  .ft-centre-table,
+  .ft-centre-meters {
+    display: contents;
+  }
+
+  .ft-centre-head    { order: 1; }
+  .ft-section--tiles { order: 2; }
+  /* THE TASTING MENUS SIT WITH THE TILE MARKET AT THIS BAND, not with the two
+     clocks at the bottom, and the move is deliberate rather than convenient.
+     Claims-claimed and the fresh-pot gauge are glanceable STATE - you read them
+     when you wonder how long is left. The menus are a per-decision number: they
+     are read on every claim and they are what you steer your sweeps by, so they
+     belong beside the two things they decide, which at this band are the market
+     directly above and your own cake stand directly below.
+     It ties with .ft-section--tiles rather than taking an order of its own, and a
+     tie resolves in DOM order - the market is earlier in the document, so it
+     stays first. */
+  .ft-menus          { order: 2; }
+  .ft-seat--1        { order: 3; }
+  .ft-section--cards { order: 4; }
+  .ft-section--claims { order: 5; }
+  .ft-section--tea   { order: 5; }
+  .ft-opp-strip      { order: 6; }
+
+  /* COMPACT AT THIS BAND. It has just been put between the market and your board
+     - the one adjacency the whole band order exists to protect - so the panel
+     becomes a row: the head on its own line and the menu cards strung across,
+     still reading as one unit. The rule line goes; it is in the rules modal, and
+     this is not where a player learns the game.
+     MEASURE THIS RATHER THAN TRUSTING IT, and this is now TWO modules overdue. The
+     heights quoted in the responsive plan were measured for the Speciality panel
+     (an ingredient card and a track); the Freshness cups were a different shape
+     and were never re-measured; the menu cards are a THIRD shape - two to four
+     wider cards rather than five small tokens - and are wider and taller than
+     either. See the responsive plan's measurement harness. */
+  .ft-section.ft-menus {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-sm) var(--spacing-md);
+  }
+
+  .ft-menus .ft-section__head {
+    flex: 1 0 100%;
+  }
+
+  .ft-menus .ft-section__note {
+    display: none;
+  }
+
+  .ft-menus__note {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* Your own seat stops being two columns side by side. */
+  .ft-seat--1 {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* AND THE BOARD GOES ABOVE THE SCORE COLUMN, which is the whole reason the
+     band fits.
+
+     Stacked in DOM order the score column lands between the market and your
+     board, and it is not small - the cake stand and the cupcake panel come to
+     around 400px. That pushed the board's last row 1337px from the top of the
+     market and broke the one thing this order exists to guarantee: that you can
+     see the market and your own board at the same time, because placement needs
+     both.
+
+     Worth recording that plan section 5.2's vertical budget does not have a line
+     for this column at all. It counts the turn bar, the market, the seat
+     chrome, the swept-tiles row, the board and the phase bar - the score column
+     is simply missing, which is why the measured stack came in far above the
+     853px the budget predicted. */
+  .ft-seat--own .ft-seat__board-col { order: 1; }
+  .ft-seat--own .ft-seat__score-col {
+    order: 2;
+    width: 100%;
+    max-width: var(--board-col-width);
+  }
+
+  /* THE FOUR TRIMS (plan 5.2). Between them they are the difference between a
+     1012px stack and one that fits an iPad.
+
+     The seat header goes because on a single column the board under "your turn"
+     is self-evidently yours, and the swept-tiles caption goes because a row of
+     tiles directly above your board during the one step where you are placing
+     them does not need naming. */
+  .ft-seat--1 .ft-seat__header,
+  .ft-seat__swept-label {
+    display: none;
+  }
+
+  /* The market's generous padding is right at XL for the reasons its own note
+     gives; at S it is pure viewport. */
+  .ft-market-wrap {
+    padding: var(--spacing-sm);
+  }
+
+  /* The strip is already a row; at 14px three opponents plus gaps come to about
+     390px, so it fits 768 with no horizontal scroll and no collapse. Every
+     opponent stays visible all the time, which is what replaces ~1470px of
+     stacked panels with ~150px. */
+  .ft-opp-strip {
+    justify-content: center;
+  }
 }

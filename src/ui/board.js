@@ -5,7 +5,30 @@ import { BOARD_SIZE, REWARD_CARDS } from '../engine/tiles.js';
 // them is a hard error rather than a dead name. countBoardIngredient goes with
 // them: it survives in the engine for the bots, but the only thing that ever
 // asked it a question here was the objectives panel.
-import { getPatternMatches, getLegalDestinations, getMoveCost, canBuyExtraTile, canReserveCard, canRemovePlate, canClaimMore, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, CUPCAKE_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, EXTRA_TILE_CUPCAKE_COST, RESERVE_CUPCAKE_COST, RESERVE_LIMIT, EMPTY_PLATES_PER_PLAYER, getVisibleCupcakeSymbols, getStartingCupcakes } from '../engine/game.js';
+import { getPatternMatches, getLegalDestinations, getMoveCost, canBuyExtraTile, canReserveCard, canRemovePlate, canClaimMore, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, EXTRA_TILE_CUPCAKE_COST, RESERVE_CUPCAKE_COST, RESERVE_LIMIT, EMPTY_PLATES_PER_PLAYER, getVisibleTeapotSymbols, getStartingCupcakes, isTastingMenuInPlay, getAvailableMenus, getMenuDeficit, getStandIngredients, satisfiesMenu, TASTING_MENU_VP, TASTING_MENUS } from '../engine/game.js';
+
+// Ingredient names as they appear in copy. The engine's INGREDIENTS are lowercase
+// keys that double as image filenames (images/symbol_<ingredient>.png), and a
+// sentence should not be the place that discovers that.
+const INGREDIENT_LABELS = {
+  lemon: 'Lemon',
+  chocolate: 'Chocolate',
+  caramel: 'Caramel',
+  strawberry: 'Strawberry',
+  almond: 'Almond',
+};
+
+function ingredientLabel(ingredient) {
+  return INGREDIENT_LABELS[ingredient] || ingredient || '';
+}
+
+// "an almond tile", "a lemon tile". Only one of the five ingredients starts with
+// a vowel today, but an ingredient is dropped at random into a sentence, so the
+// article has to be derived rather than written.
+function ingredientPhrase(ingredient) {
+  const word = ingredientLabel(ingredient).toLowerCase();
+  return `${/^[aeiou]/.test(word) ? 'an' : 'a'} ${word}`;
+}
 
 const DIFFICULTY_LABELS = {
   'basic': 'Basic',
@@ -86,11 +109,36 @@ export function showRulesModal() {
           <div class="ft-rules__text">Tea is predictable: watch the gauge under the market, and if a card in the row matters to you, reserving it (step 3 of your turn) is how you keep it.</div>
         </div>
 
-        <!-- The PANTRY GOALS section stood here until 4 August: five face-up pairs
-             of ingredient cards, 3 points to the first player holding the named
-             tiles. The whole module is deleted from the game, so the rules do not
-             mention it at all rather than explaining something no longer on the
-             table. -->
+        <!-- The PANTRY GOALS section stood here until the morning of 4 August:
+             five face-up pairs of ingredient cards, 3 points to the first player
+             holding the named tiles. The whole module is deleted from the game, so
+             the rules do not mention it at all rather than explaining something no
+             longer on the table. TODAY'S SPECIALITY replaced it that afternoon,
+             THE FRESHNESS BONUS replaced that the same evening, and THE TASTING
+             MENU, below, replaced the Freshness Bonus on 5 August - so none of the
+             three dead versions is described here either. -->
+
+        <!-- THE TASTING MENU (5 August), replacing the Freshness Bonus. It is NOT
+             placed with the fresh pot of tea, and that is the rule rather than a
+             layout choice: the pot does not touch the menus at all, and the whole
+             point of the module is that its deadline is an opponent rather than a
+             clock. Filing it under tea would teach exactly the wrong thing.
+             STATELESS, like the cupcakes section below it: this modal opens from
+             the SETUP screen as well as from a live game, so it cannot name which
+             menus are on the table. The card value and the deck size are read off
+             the engine rather than typed in. -->
+        <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--menus">
+          <div class="ft-rules__section-title">📜 The Tasting Menu</div>
+          <div class="ft-rules__quote">"Order it before somebody else does"</div>
+          <div class="ft-rules__text">There are ${TASTING_MENUS.length} <strong>Tasting Menus</strong>. At setup, deal <strong>one more than the number of players</strong> face up beside the tile market - so 3 in a 2-player game, 4 in a 3-player, 5 in a 4-player. They are public from the first turn, and <strong>they are never replaced</strong>.</div>
+          <div class="ft-rules__text">There is always <strong>one more menu than there are players</strong>, and that is deliberate: none of them is yours by default. It is not a card each - it is a table of cards, and you take what you can reach.</div>
+          <div class="ft-rules__text">Each names either one ingredient at 2 and a second at 1, or three different ingredients at 1 each. <strong>Every menu asks for exactly three tiles</strong> - so they are all the same difficulty, and all worth the same.</div>
+          <div class="ft-rules__text"><strong>The moment your cake stand shows those ingredients, take the card.</strong> It is free and automatic: it costs no action, no cupcake and no part of your turn, and it is not a decision. If you qualify, it is yours.</div>
+          <div class="ft-rules__text"><strong>Only your cake stand counts.</strong> Tiles in your crumb tray are not on the menu, however many of them there are.</div>
+          <div class="ft-rules__text"><strong>Ingredients are not spent.</strong> The same tiles can satisfy more than one menu, and a menu you have already taken keeps sitting on your stand costing you nothing.</div>
+          <div class="ft-rules__text"><strong>One player, once, forever.</strong> First to qualify takes it, and it is out of the game - there is no second copy and it does not come back at the pot of tea. If you can see a menu you are one tile away from, so can everybody else.</div>
+          <div class="ft-rules__text">Each menu you hold is worth <strong>${TASTING_MENU_VP} points</strong> at the end of the game.</div>
+        </div>
 
         <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--cupcakes">
           <div class="ft-rules__section-title">Cupcakes</div>
@@ -110,12 +158,16 @@ export function showRulesModal() {
 
         <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--scoring">
           <div class="ft-rules__section-title">Scoring</div>
-          <!-- The fourth line was "Ingredient objectives: 3 points per pair
-               taken". Deleted with the pantry goals, 4 August. -->
-          <div class="ft-rules__text">Your final score adds up three things:</div>
+          <!-- The fourth line WAS "Ingredient objectives: 3 points per pair
+               taken", deleted with the pantry goals on the morning of 4 August.
+               Today's Speciality took the fourth slot back that afternoon, the
+               Freshness Bonus took it off Today's Speciality the same evening, and
+               the Tasting Menu took it from the Freshness Bonus on 5 August. -->
+          <div class="ft-rules__text">Your final score adds up four things:</div>
           <div class="ft-rules__text"><strong>Cake stand:</strong> each row scores by how many plates it fills - the bottom row climbs ${STAND_ROW_VALUES[0].join(' / ')}, and shorter rows have their own (lower) totals printed under the plates.</div>
           <div class="ft-rules__text"><strong>Crumb tray:</strong> 1 point per tile.</div>
           <div class="ft-rules__text"><strong>Card VP:</strong> the victory-point value shown on each claimed card.</div>
+          <div class="ft-rules__text"><strong>Tasting Menus:</strong> ${TASTING_MENU_VP} points each.</div>
           <div class="ft-rules__text"><strong>Tiebreak:</strong> most cupcakes remaining, then most cards claimed, then the victory is shared.</div>
         </div>
 
@@ -305,27 +357,84 @@ export function renderSetupScreen(container, onStart) {
   });
 }
 
+// ONE seat, rendered from its index. The four seats were four copy-pasted
+// blocks of near-identical markup until 4 August, and every dimension in them -
+// the grid position, the row direction, the column widths - was an INLINE STYLE.
+//
+// That is why this function exists, and it is a precondition for the whole
+// responsive plan rather than a tidy-up: inline styles beat media queries, so
+// while the grid positions lived in the markup NO breakpoint could reflow the
+// seats. Everything positional is a class now, and the stylesheet decides where
+// a seat goes at a given width.
+//
+// The seats differ in only four ways, all of them handled here:
+//   - seat 1 is the viewing player's, so it is always shown, carries the swept
+//     tiles row and the phase controls, and its header is "Your Board";
+//   - seats 2-4 are opponents: display-only, gated on the player count, and
+//     tagged .ft-seat--opp, which is the hook sections 5 and 6 of the plan both
+//     hang off (shrunken tiles, hidden symbols, the single-column strip);
+//   - an unoccupied seat is .ft-seat--absent rather than an inline display:none;
+//   - the panel tint stays keyed to the seat number, not the player.
+function seatHTML(playerIdx, gameState) {
+  const n = playerIdx + 1;
+  const isOwnSeat = playerIdx === 0;
+  const present = playerIdx < gameState.players.length;
+  const player = gameState.players[playerIdx];
+
+  // updateGameDisplay rewrites seat 1's header text when player 1 is a bot (the
+  // all-bot demo), so the id has to survive.
+  const title = isOwnSeat
+    ? `<h2 class="ft-panel__title" id="player1Header">🎮 Your Board</h2>`
+    : `<h2 class="ft-panel__title">${player?.isHuman ? '🧑' : '🤖'} Player ${n}</h2>`;
+
+  // The "Swept Tiles" caption names a row of tiles that appears directly above
+  // your own board during the one step where you are placing them, which is
+  // self-evident. It costs a whole line of height, so at S it is hidden by
+  // class rather than deleted outright.
+  const sweptLabel = isOwnSeat
+    ? `<div class="ft-seat__swept-label">Swept Tiles</div>`
+    : '';
+
+  const controls = isOwnSeat
+    ? `<div id="phaseControls" class="ft-seat__controls"></div>`
+    : '';
+
+  const classes = [
+    'ft-panel',
+    `ft-panel--player${n}`,
+    'ft-seat',
+    `ft-seat--${n}`,
+    isOwnSeat ? 'ft-seat--own' : 'ft-seat--opp',
+    present ? '' : 'ft-seat--absent',
+  ].filter(Boolean).join(' ');
+
+  return `
+      <div class="${classes}" id="playerPanel${n}">
+        <div id="playerScore${n}" class="ft-player-score ft-seat__score-col"></div>
+        <div class="ft-seat__board-col">
+          <div class="ft-panel__header ft-seat__header">
+            ${title}
+          </div>
+          ${sweptLabel}
+          <div id="workingArea${n}" class="ft-working-area ft-hidden"></div>
+          <div id="playerBoard${n}" class="ft-board-grid"></div>
+          ${controls}
+        </div>
+      </div>`;
+}
+
 // `spendHandlers` bundles the three 3-August paid options - the extra tile and
 // the paid reserve, each with a toggle - rather than growing this parameter list
 // by four more positional callbacks.
 export function renderGameScreen(container, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick, spendHandlers = {}) {
-  const playerCount = gameState.players.length;
 
   container.innerHTML = `
     <div class="ft-game">
-      <!-- Player 1 Panel (Active/Human) - Grid position: col 1, row 1 -->
-      <div class="ft-panel ft-panel--player1" id="playerPanel1" style="grid-column: 1; grid-row: 1; display: flex; flex-direction: row; gap: var(--spacing-lg);">
-        <div id="playerScore1" class="ft-player-score"></div>
-        <div style="display: flex; flex-direction: column; align-items: center; flex: 1;">
-          <div class="ft-panel__header" style="width: 100%; padding: 0 0 var(--spacing-sm) 0; border-bottom: 1px solid var(--color-border); margin-bottom: var(--spacing-sm);">
-            <h2 class="ft-panel__title" id="player1Header">🎮 Your Board</h2>
-          </div>
-          <div style="text-align: center; font-size: 12px; color: var(--color-text-secondary); margin: var(--spacing-sm) 0;">Swept Tiles</div>
-          <div id="workingArea1" class="ft-working-area ft-hidden"></div>
-          <div id="playerBoard1" class="ft-board-grid"></div>
-          <div id="phaseControls" style="width: 100%; margin-top: var(--spacing-md);"></div>
-        </div>
-      </div>
+      <!-- The seats are emitted by seatHTML() and POSITIONED BY CLASS. The DOM
+           order is seat 1, centre, then seats 3, 2, 4, which is the order the
+           old markup used; where each one lands is .ft-seat--N's business, and
+           at the narrow bands the CSS order property re-sequences them. -->
+      ${seatHTML(0, gameState)}
 
       <!-- CENTRE TOP - Grid position: col 2, row 1.
            Reads top to bottom in the order a player needs it: WHOSE turn and
@@ -334,7 +443,7 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
            teapot gauge is not something anybody needed labelling, and the
            heading cost a whole row of height in a column that was overflowing
            the page. -->
-      <div class="ft-panel ft-centre" style="grid-column: 2; grid-row: 1 / span 2;">
+      <div class="ft-panel ft-centre">
         <!-- BAND 1: the title bar. Dark, so the centre column opens on something
              with weight instead of a line of grey text, and so "whose turn is it"
              is answerable from across the table. -->
@@ -406,6 +515,22 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
                  to a refresh. updateTeaOption rewrites its contents every render
                  and supplies its own section heading. -->
             <div id="teaOption" class="ft-tea-option"></div>
+
+            <!-- THE TASTING MENUS (5 August), REPLACING the Freshness panel in
+                 the same slot rather than sitting beside it.
+                 The two modules it replaced were docked here BECAUSE of the tea
+                 gauge above - the pot was what reset them, so "how soon is the
+                 next pot" and "what is still going" were one question. That reason
+                 is gone: a pot of tea does nothing to a Tasting Menu. What keeps
+                 the panel here instead is the tile market directly above it, which
+                 is where the ingredients a menu wants are found, and the player's
+                 own cake stand below, which is the only thing a menu reads.
+                 THIS PANEL IS A DIFFERENT SHAPE from the one it replaces - two to
+                 four cards rather than five small tokens - so THE RESPONSIVE BANDS
+                 NEED RE-MEASURING now that it has landed. See the responsive
+                 plan's measurement harness.
+                 updateTastingMenus supplies all of its contents. -->
+            <div id="tastingMenuPanel" class="ft-menus"></div>
           </div>
         </div>
 
@@ -416,8 +541,9 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
                no vocabulary and could be read side by side. The pantry goals are
                deleted from the game (4 August), so there is nothing to sit beside
                and the split wrapper is gone with them. The cards get the whole
-               782px, which is what re-derived cardDisplayHeight() below is sized
-               against.
+               width of the centre panel, and since A5 they no longer have to be
+               sized against it by hand - the row wraps to whatever fits and a
+               card is --card-height tall.
 
                The card row is variable-length (28 July rework, capped 30 July),
                so it gets its own framed strip: a header stating how many cards are
@@ -435,40 +561,28 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
           </section>
       </div>
 
-      <!-- Player 3 Panel - Grid position: col 3, row 1 -->
-      <div class="ft-panel ft-panel--player3" id="playerPanel3" style="grid-column: 3; grid-row: 1; display: ${playerCount >= 3 ? 'flex' : 'none'}; flex-direction: row; gap: var(--spacing-lg);">
-        <div id="playerScore3" class="ft-player-score"></div>
-        <div style="display: flex; flex-direction: column; align-items: center; flex: 1;">
-          <div class="ft-panel__header" style="width: 100%; padding: 0 0 var(--spacing-sm) 0; border-bottom: 1px solid var(--color-border); margin-bottom: var(--spacing-sm);">
-            <h2 class="ft-panel__title">${gameState.players[2]?.isHuman ? '🧑' : '🤖'} Player 3</h2>
-          </div>
-          <div id="workingArea3" class="ft-working-area ft-hidden"></div>
-          <div id="playerBoard3" class="ft-board-grid"></div>
-        </div>
-      </div>
+      <!-- THE OPPONENT STRIP. A wrapper that does nothing at all until the M
+           band: it is display:contents, so its three seats are promoted straight
+           back out to be grid items of .ft-game and take the positions
+           .ft-seat--2/3/4 give them. XL and L are byte-identical with or without
+           it.
 
-      <!-- Player 2 Panel - Grid position: col 1, row 2 -->
-      <div class="ft-panel ft-panel--player2" id="playerPanel2" style="grid-column: 1; grid-row: 2; display: ${playerCount >= 2 ? 'flex' : 'none'}; flex-direction: row; gap: var(--spacing-lg);">
-        <div id="playerScore2" class="ft-player-score"></div>
-        <div style="display: flex; flex-direction: column; align-items: center; flex: 1;">
-          <div class="ft-panel__header" style="width: 100%; padding: 0 0 var(--spacing-sm) 0; border-bottom: 1px solid var(--color-border); margin-bottom: var(--spacing-sm);">
-            <h2 class="ft-panel__title">${gameState.players[1]?.isHuman ? '🧑' : '🤖'} Player 2</h2>
-          </div>
-          <div id="workingArea2" class="ft-working-area ft-hidden"></div>
-          <div id="playerBoard2" class="ft-board-grid"></div>
-        </div>
-      </div>
+           It exists because from M downwards the opponents stop being columns of
+           the table and become a single row of small cards beneath everything
+           else, and the order property cannot gather three siblings into a row
+           when each is independently placed in the parent grid. A box that can
+           BECOME a flex row is the cheapest way to have both, and it needs no
+           re-render at the breakpoint - see plan sections 5.3 and 6.5.
 
-      <!-- Player 4 Panel - Grid position: col 3, row 2 -->
-      <div class="ft-panel ft-panel--player4" id="playerPanel4" style="grid-column: 3; grid-row: 2; display: ${playerCount >= 4 ? 'flex' : 'none'}; flex-direction: row; gap: var(--spacing-lg);">
-        <div id="playerScore4" class="ft-player-score"></div>
-        <div style="display: flex; flex-direction: column; align-items: center; flex: 1;">
-          <div class="ft-panel__header" style="width: 100%; padding: 0 0 var(--spacing-sm) 0; border-bottom: 1px solid var(--color-border); margin-bottom: var(--spacing-sm);">
-            <h2 class="ft-panel__title">${gameState.players[3]?.isHuman ? '🧑' : '🤖'} Player 4</h2>
-          </div>
-          <div id="workingArea4" class="ft-working-area ft-hidden"></div>
-          <div id="playerBoard4" class="ft-board-grid"></div>
-        </div>
+           NOTE: no backticks in this comment. It sits inside a template literal,
+           and a stray one closes the string - which is exactly how it broke the
+           first time.
+
+           DOM order stays 3, 2, 4, which is what the XL markup used. -->
+      <div class="ft-opp-strip">
+        ${seatHTML(2, gameState)}
+        ${seatHTML(1, gameState)}
+        ${seatHTML(3, gameState)}
       </div>
     </div>
   `;
@@ -495,6 +609,11 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
     removedBoardIndex: null,
     destinationChoices: null,
     dragSetupDone: false,
+    tapSetupDone: false,
+    // The tap path's two pieces of selection state (plan B1). Null means nothing
+    // is armed; both are cleared whenever the gesture they belong to completes.
+    selectedTileIndex: null,
+    cupcakeSource: null,
     cupcakeMode: false,
     // Sweep-step "buy an extra tile" mode: the next market click lifts a tile
     // rather than declaring a sweep. Spend-step "reserve a card" mode: the next
@@ -510,6 +629,7 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
   }
 
   setupDragAndDrop(gameState);
+  setupTapToPlace(gameState);
 }
 
 // WHY THE GAME ENDED, in one sentence, for the end screen. New on 4 August: the
@@ -570,6 +690,7 @@ export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup
           <div style="font-size: 14px; color: var(--color-accent-gold); margin-top: var(--spacing-sm);">${sharedWin ? 'share the victory on' : 'wins with'} ${winnerResult.totalScore} points!</div>
           ${sharedWin ? '' : `<div style="font-size: 12px; color: var(--color-text-secondary); margin-top: var(--spacing-xs);">Ties are broken by cupcakes remaining, then by cards claimed.</div>`}
           ${endReason ? `<div style="font-size: 12px; color: var(--color-text-secondary); margin-top: var(--spacing-sm);">${endReason}</div>` : ''}
+          ${isTastingMenuInPlay(gameState) ? `<div style="font-size: 12px; color: var(--color-text-secondary); margin-top: var(--spacing-xs);">Tasting Menus taken: ${gameState.players.map(p => `${p.name} ${p.tastingMenus.length}`).join(', ')} - ${getAvailableMenus(gameState).length} of ${gameState.tastingMenus.length} went unclaimed.</div>` : ''}
         </div>
 
         <div class="ft-end-screen__results">
@@ -581,9 +702,13 @@ export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup
                 <th>Cake Stand</th>
                 <th>Crumbs</th>
                 <th>Card VP</th>
-                <!-- The <th>Objectives</th> column is deleted with the pantry
-                     goals (4 August). Three scoring columns now, plus the
-                     non-scoring cupcake tiebreaker. -->
+                <!-- The <th>Objectives</th> column was deleted with the pantry
+                     goals on the morning of 4 August; the flavour module has held
+                     the fourth scoring column ever since. It is rendered
+                     unconditionally - a game played with the module switched off
+                     (setTastingMenusEnabled) simply shows a column of zeroes, which
+                     is a truer end screen than one whose shape changes. -->
+                <th title="Tasting Menus - the first player whose cake stand shows the named ingredients takes the card, and nobody else can">Menus</th>
                 <th title="Cupcakes score nothing since 3 August - they are the first tiebreaker">Cupcakes*</th>
                 <th>Score</th>
               </tr>
@@ -601,6 +726,7 @@ export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup
         <td>${bd.standTotal}</td>
         <td>${bd.crumbs}</td>
         <td>${bd.cardVP}</td>
+        <td>${bd.menus}</td>
         <td>${bd.cupcakes}</td>
         <td class="ft-end-screen__score ${result.totalScore === 0 ? 'zero' : ''}">${result.totalScore}</td>
       </tr>
@@ -720,12 +846,18 @@ export function updateGameDisplay(gameState) {
     ui.cupcakeMode = false;
     ui.extraTileMode = false;
     ui.reserveMode = false;
+    ui.selectedTileIndex = null;
+    ui.cupcakeSource = null;
     ui.lastPlayerIndex = gameState.currentPlayerIndex;
   }
   // A spend mode can only be live in the phase that offers it, so drop it as soon
   // as the phase moves on rather than leaving a stale armed click behind.
   if (!canBuyExtraTile(gameState)) ui.extraTileMode = false;
   if (!canReserveCard(gameState)) ui.reserveMode = false;
+  // The same rule for the tap path's selections. A tile index only means anything
+  // during `place`, and an armed cupcake source only during cupcake mode.
+  if (gameState.gamePhase !== 'place') ui.selectedTileIndex = null;
+  if (!ui.cupcakeMode) ui.cupcakeSource = null;
 
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   document.getElementById('currentPlayer').textContent = `${currentPlayer.name}'s Turn (${gameState.gamePhase})`;
@@ -751,6 +883,7 @@ export function updateGameDisplay(gameState) {
 
   updateMarket(gameState);
   updateTeaOption(gameState);
+  updateTastingMenus(gameState);
   updateCardMarket(gameState);
   // renderObjectives(gameState, currentPlayer) was called here. Deleted 4 August
   // with the pantry goals - there is no objectives panel to redraw.
@@ -768,7 +901,7 @@ function updateMarket(gameState) {
   // symbol shows through only while the cell is EMPTY (uncovered) — it is what the
   // tea player collects into the cupcake pot. It is a printed-on-board marker, so
   // it renders dimmed/small under where a tile would sit.
-  const symbolCells = new Set(CUPCAKE_SYMBOL_CELLS);
+  const symbolCells = new Set(TEAPOT_SYMBOL_CELLS);
 
   // The trigger itself, made visible. Once REFRESH_THRESHOLD symbols are showing,
   // a fresh pot is ORDERED AT THE END OF THIS TURN (1 August rule) - so at that
@@ -780,10 +913,10 @@ function updateMarket(gameState) {
   // market needs refilling" rather than "a pot will be poured". With tiles in the
   // bag it is still a refresh; with an empty bag it is the end of the game, and
   // the tooltip must say so rather than promise a pot that cannot be brewed.
-  const visibleSymbols = getVisibleCupcakeSymbols(gameState);
+  const visibleSymbols = getVisibleTeapotSymbols(gameState);
   const gateArmed = visibleSymbols >= REFRESH_THRESHOLD;
   const bagDead = gameState.bag.length === 0;
-  const symbolCount = `Teapot symbol showing (${visibleSymbols} of ${CUPCAKE_SYMBOL_CELLS.length})`;
+  const symbolCount = `Teapot symbol showing (${visibleSymbols} of ${TEAPOT_SYMBOL_CELLS.length})`;
   const symbolTitle = gateArmed
     ? (bagDead
       ? `${symbolCount} - a fresh pot is due and the bag is empty, so this ENDS the game at the end of this turn`
@@ -809,13 +942,13 @@ function updateMarket(gameState) {
     // nothing. The class carries that fact into CSS so the hover lift can be
     // limited to the tiles that will actually respond - see .ft-tile--pickable.
     if (isBonusAvailable || isBuyable) tileClass += ' ft-tile--pickable';
-    const showCupcakeSymbol = isEmpty && symbolCells.has(idx);
-    if (showCupcakeSymbol) tileClass += gateArmed ? ' ft-tile--symbol-armed' : ' ft-tile--symbol';
+    const showTeapotSymbol = isEmpty && symbolCells.has(idx);
+    if (showTeapotSymbol) tileClass += gateArmed ? ' ft-tile--symbol-armed' : ' ft-tile--symbol';
 
     return `
-      <div class="${tileClass} market-tile" data-index="${idx}" style="${isEmpty && !showCupcakeSymbol ? 'opacity: 0.3;' : ''} ${(isBonusAvailable || isBuyable) ? 'cursor: pointer;' : ''} background-color: ${tile ? getColourCSS(tile.colour) : 'white'};">
+      <div class="${tileClass} market-tile" data-index="${idx}" style="${isEmpty && !showTeapotSymbol ? 'opacity: 0.3;' : ''} ${(isBonusAvailable || isBuyable) ? 'cursor: pointer;' : ''} background-color: ${tile ? getColourCSS(tile.colour) : 'white'};">
         ${tile ? `<img src="images/symbol_${tile.ingredient}.png" class="ft-tile__icon" alt="${tile.ingredient}">` : ''}
-        ${showCupcakeSymbol ? `<img src="images/teapot.png" class="ft-market-teapot-symbol${gateArmed ? ' ft-market-teapot-symbol--armed' : ''}" alt="teapot symbol" title="${symbolTitle}">` : ''}
+        ${showTeapotSymbol ? `<img src="images/teapot.png" class="ft-market-teapot-symbol${gateArmed ? ' ft-market-teapot-symbol--armed' : ''}" alt="teapot symbol" title="${symbolTitle}">` : ''}
       </div>
     `;
   }).join('');
@@ -852,7 +985,7 @@ function updateMarket(gameState) {
 // being shown how close the current turn is to triggering the flush, because the
 // real decision is which line they sweep.
 //
-// The count comes from getVisibleCupcakeSymbols, the same function the engine's
+// The count comes from getVisibleTeapotSymbols, the same function the engine's
 // isTeaDue reads, so the gauge and the trigger can never disagree.
 //
 // WHAT THE GAUGE MEANS CHANGED ON 4 AUGUST. isTeaDue lost its bag check: it now
@@ -866,7 +999,7 @@ function updateTeaOption(gameState) {
   const el = document.getElementById('teaOption');
   if (!el) return;
 
-  const potSize = getVisibleCupcakeSymbols(gameState);
+  const potSize = getVisibleTeapotSymbols(gameState);
   const bagDead = gameState.bag.length === 0;
   // "The market needs refilling", exactly as the engine's isTeaDue reads it -
   // which is NOT the same as "a pot will be poured", see below. Deliberately
@@ -882,6 +1015,12 @@ function updateTeaOption(gameState) {
   const marketCells = gameState.market.length;
   const tilesOnMarket = gameState.market.filter(t => t !== null && t !== undefined).length;
   const shortMarket = bagDead && tilesOnMarket < marketCells;
+  // One short of the trigger. This warning used to live in the SWEEP PHASE BAR,
+  // and it moved here on 4 August (plan section 5.4) for the reason all four
+  // coaching lines moved: a sentence about the teapot count belongs beside the
+  // teapot count, not in the status stack at the bottom of your own board. The
+  // phase bar keeps only the command.
+  const oneAway = potSize === REFRESH_THRESHOLD - 1;
 
   // The gauge reads against the TRIGGER (REFRESH_THRESHOLD), not against the
   // number of printed symbols, because the trigger is the only thing a player is
@@ -910,9 +1049,16 @@ function updateTeaOption(gameState) {
     note = 'The bag is empty and a pot is due - this ENDS the game. Everyone finishes the round, then you score.';
   } else if (bagDead) {
     state = 'locked';
-    note = shortMarket
-      ? `The bag is empty, so the market was dealt short - ${tilesOnMarket} of ${marketCells} spaces. The next pot that comes due ends the game.`
-      : 'The bag is empty. The next pot that comes due ends the game rather than refilling the market.';
+    // The one-away line takes precedence over the standing empty-bag notice: both
+    // are about the same ending, and this one says how near it is.
+    note = oneAway
+      ? 'One teapot from the end of the game - the bag is empty, so the next pot cannot be poured'
+      : shortMarket
+        ? `The bag is empty, so the market was dealt short - ${tilesOnMarket} of ${marketCells} spaces. The next pot that comes due ends the game.`
+        : 'The bag is empty. The next pot that comes due ends the game rather than refilling the market.';
+  } else if (oneAway) {
+    state = 'locked';
+    note = 'One teapot from a fresh pot of tea';
   } else {
     state = 'locked';
     note = null;
@@ -934,6 +1080,138 @@ function updateTeaOption(gameState) {
       teapots visible
     </span>
     ${note ? `<span class="ft-tea-option__note">${note}</span>` : ''}
+  `;
+}
+
+// THE TASTING MENU (5 August).
+//
+// DRAWN IN HTML AND CSS, NOT AS PRINTED ART. The browser build wants live DOM so a
+// menu can visibly go when somebody takes it and carry the name of whoever did.
+//
+// WHAT THIS PANEL HAS TO COMMUNICATE, in priority order, because it is a race and
+// a race that cannot be seen is not a race:
+//   1. WHAT each menu asks for - its ingredients and quantities, with no lookup;
+//   2. whether it is STILL AVAILABLE;
+//   3. WHO TOOK IT, if anybody. This is the part that makes it a race rather than
+//      a puzzle, and it is the one thing the Freshness UI could not show, because
+//      its tokens reset and the holder could not be reconstructed honestly.
+// And one more, which is the decision the module exists to create:
+//   4. any menu the ACTIVE player is ONE TILE SHORT of, called out. That is 44.3%
+//      of players at game end, and surfacing it costs nothing because the engine
+//      already computes the deficit (getMenuDeficit).
+//
+// A TAKEN MENU IS NOT DIMMED-AND-WAITING like a spent Freshness cup was. It is
+// struck through and stamped with a name, because it is gone for good - the
+// styling has to say "that one is decided", not "that one is resting".
+// Would removing THIS tile and plating it complete a Tasting Menu for this player,
+// and if so what is it worth? Returns 0 or TASTING_MENU_VP.
+//
+// TWO GATES, and the second is the one a reader skips. The obvious one is "does
+// the stand meet a live menu once this ingredient is added". The other is that the
+// tile must be able to REACH the stand at all: once a row has locked to an
+// ingredient and filled, further tiles of it can only go to the crumb tray (see
+// getLegalDestinations), and the crumb tray is invisible to menus. A badge on a
+// tile that can only be crumbed would be a lie, and it would be shown to exactly
+// the player who had committed to that flavour hardest.
+function menuCompletionValue(gameState, player, tile) {
+  if (!isTastingMenuInPlay(gameState) || !tile || !tile.ingredient) return 0;
+  if (!getLegalDestinations(player, tile).some(d => d.type === 'row')) return 0;
+  const counts = getStandIngredients(player);
+  counts[tile.ingredient] = (counts[tile.ingredient] || 0) + 1;
+  for (const menu of getAvailableMenus(gameState)) {
+    if (satisfiesMenu(counts, menu)) return TASTING_MENU_VP;
+  }
+  return 0;
+}
+
+function updateTastingMenus(gameState) {
+  const el = document.getElementById('tastingMenuPanel');
+  if (!el) return;
+
+  // The module can be switched off wholesale (setTastingMenusEnabled), in which
+  // case no menus are dealt and the panel is not a thing that exists.
+  if (!isTastingMenuInPlay(gameState)) {
+    el.className = 'ft-menus ft-hidden';
+    el.innerHTML = '';
+    return;
+  }
+
+  // WHOSE DECISION THE HIGHLIGHT IS FOR. The deficits shown are the CURRENT
+  // player's, because they are the only person who can act on them right now.
+  // Unlike the Freshness cups - which were worth the same to everybody at the same
+  // instant - a menu's distance is personal, so the panel has to name whose
+  // reading it is or it is simply wrong for three players out of four.
+  const viewer = gameState.players[gameState.currentPlayerIndex];
+  const available = getAvailableMenus(gameState).length;
+  const total = gameState.tastingMenus.length;
+  let closest = Infinity;
+
+  const cards = gameState.tastingMenus.map(menu => {
+    const taken = menu.takenBy !== null;
+    const holder = taken ? gameState.players.find(p => p.id === menu.takenBy) : null;
+    const short = taken ? Infinity : getMenuDeficit(viewer, menu);
+    if (short < closest) closest = short;
+
+    // Ingredients in descending quantity, so the "2" always reads first - which is
+    // how a player says the card out loud ("two lemon and a caramel").
+    // The count is a CORNER BADGE rather than a digit sitting beside the symbol,
+    // and it is drawn only for a 2. That is what pays for the bigger art: the chip
+    // is exactly as wide as the symbol, which is what pays for art at 48px in a
+    // 182px-wide box. See .ft-menu__symbol in style.css for the arithmetic.
+    const needs = Object.entries(menu.need).sort((a, b) => b[1] - a[1]);
+    const chips = needs.map(([ingredient, need]) => `
+      <span class="ft-menu__need" title="${need} x ${ingredientLabel(ingredient)}">
+        <img src="images/symbol_${ingredient}.png" class="ft-menu__symbol" alt="${ingredient}">
+        ${need > 1 ? `<span class="ft-menu__count">${need}</span>` : ''}
+      </span>`).join('');
+
+    const state = taken ? 'taken' : (short === 0 ? 'ready' : (short === 1 ? 'close' : 'open'));
+    const title = taken
+      ? `Taken${holder ? ` by ${holder.name}` : ''} - gone for the rest of the game`
+      : short === 0
+        ? `${viewer.name} qualifies for this now`
+        : `${viewer.name} is ${short} tile${short === 1 ? '' : 's'} short of this - ${TASTING_MENU_VP} VP to whoever gets there first`;
+
+    // ONLY a taken card carries a foot, and it carries a NAME. The deficit line
+    // that used to sit here ("3 short") was removed 5 August: every menu wants
+    // three tiles, so at the start of a game every card read "3 short" and the
+    // panel looked like it was repeating itself. Distance is already said twice
+    // over - by the border (green at one tile short, gold at qualified) and by
+    // the hover title - and neither of those shouts a number at a player who has
+    // not placed a tile yet.
+    const foot = taken
+      ? `<span class="ft-menu__holder">${holder ? holder.name : 'taken'}</span>`
+      : '';
+
+    return `
+      <div class="ft-menu ft-menu--${state}" title="${title}">
+        <div class="ft-menu__needs">${chips}</div>
+        ${foot}
+      </div>`;
+  }).join('');
+
+  // The note only speaks when it has something to say that the cards themselves
+  // do not. "N of M still on offer" was exactly that kind of line - the N/M figure
+  // in the head already says it, and the taken cards are struck through in front
+  // of you - so the resting state is now SILENT and the note appears only for the
+  // three readings that are genuinely news.
+  const note = available === 0
+    ? 'Every menu has gone. Nothing brings them back - a pot of tea does not touch them.'
+    : closest === 0
+      ? 'You qualify for a menu right now - it is yours the moment you plate onto your stand.'
+      : closest === 1
+        ? 'You are ONE TILE short of a menu. So might somebody else be.'
+        : '';
+
+  el.className = `ft-section ft-menus ft-menus--${available > 0 ? 'live' : 'spent'}`;
+  el.innerHTML = `
+    <div class="ft-section__head">
+      <span class="ft-section__title">Tasting Menus <span class="ft-menus__vp">${TASTING_MENU_VP} VP each</span></span>
+      <span class="ft-section__meta ft-section__meta--figure">${available}/${total}</span>
+    </div>
+    <div class="ft-menus__cards">${cards}</div>
+    <p class="ft-section__note">Have these symbols on your cake stand to claim the reward.</p>
+    ${note ? `<span class="ft-menus__note">${note}</span>` : ''}
   `;
 }
 
@@ -1200,51 +1478,28 @@ function showCardRowNotice(text) {
   }, 5000);
 }
 
-// ONE card size, always. The area grows; the cards do not shrink.
+// CARD_DISPLAY_HEIGHT AND cardDisplayHeight() STOOD HERE, and are deleted with
+// the pixel sprite maths (plan A5). The card height is --card-height in the
+// stylesheet now, one value per responsive band.
 //
-// This used to step down as the row filled (200px for a short row, 145px once it
-// passed four) so the strip could stay inside a fixed height. That is the wrong
-// trade: the card art carries the PATTERN a player has to match against their
-// board, and a pattern you have to squint at is worse than a taller panel. The
-// card section simply takes the height it needs, which is what it should do.
+// What went with them is worth stating, because it was 40 lines of comment and a
+// standing maintenance obligation: the 235px figure was hand-derived from the
+// centre column's width, by subtracting the panel padding, the section padding
+// and the card grid's padding to find how much room four cards and their gaps
+// had - and that subtraction had to be redone by hand every time any of those
+// moved. It had already been redone twice, once when the card row stopped
+// shrinking with row length, and again on 4 August when the pantry goals were
+// deleted and the row went full width.
 //
-// RE-DERIVED 4 AUGUST, because the width this is tuned against changed. The old
-// figure was 200px, "the largest size that still fits THREE cards per row in the
-// ~472px the .ft-centre-split leaves". The split is deleted with the pantry
-// goals, so the card section is now the sole occupant of the centre panel's
-// bottom band and the arithmetic runs:
+// It does not need maintaining any more. The row is a flex-wrap container with
+// no width floor, so it fits whatever number of cards the width allows and wraps
+// the rest; a card is --card-height tall and takes its width from the sheet's
+// aspect ratio. Nothing has to agree with anything by arithmetic.
 //
-//   800px   .ft-game centre grid column (fixed)
-//   -18     .ft-centre padding (--spacing-sm each side) + 1px panel border each
-//   = 782   the band's width
-//   -28     .ft-section padding (--spacing-md each side) + 1px right border and
-//           the 3px coloured left rule
-//   = 754   inside the card section
-//   -20     .ft-card-grid padding (10px each side, which exists to stop the
-//           .ft-card--claimable glow ring being clipped)
-//   = 734   usable for cards and the gaps between them
-//
-// Cards are 750.1 x 1039.6 on the sprite sheet, so width = height x 0.7216, and
-// the flex gap is --spacing-md (12px). At FOUR per row the budget is
-// 4w + 36 <= 734, i.e. w <= 174.5, i.e. height <= 241px.
-//
-// 235px is that ceiling with a margin. It buys, against the old 200px:
-//   - a 17% larger pattern to read, which is the whole point of the panel;
-//   - a SHORTER panel, not a taller one. A full 8-card row (MAX_MARKET_CARDS) is
-//     exactly two rows of four - 502px including gap and padding - where 200px in
-//     the old split gave three rows of three at 644px.
-// Five per row would need a height of 190px, which is smaller than what we had.
-// Four is the right count for this width.
-//
-// The ~20px of slack left at 4 x 169.6 + 36 = 714.2 is deliberate: browsers round
-// fractional flex-item widths, and there is nothing to catch it if a row silently
-// drops to three. If the centre column, the section padding or the card gap ever
-// move, redo the subtraction above - it is the whole derivation.
-const CARD_DISPLAY_HEIGHT = 235;
-
-function cardDisplayHeight() {
-  return CARD_DISPLAY_HEIGHT;
-}
+// The rule that produced the figure still holds and is the reason --card-height
+// is generous rather than convenient: the art carries the PATTERN a player has
+// to match against their board, so the panel grows in height rather than the
+// cards shrinking. A long row costs page height, never legibility.
 
 function updateCardMarket(gameState) {
   const cardMarket = document.getElementById('cardMarket');
@@ -1269,17 +1524,10 @@ function updateCardMarket(gameState) {
   // since the 4 August resize the band is full width and fits four per row, so
   // the worst case is TWO rows (three before, in the narrower split).
   //
-  // reward_card_layout.png is a TTS-style 10×7 sheet; cards 1–50 fill the
-  // first 5 rows, the last 2 rows are blank.
-  const SPRITE_WIDTH = 7501;
-  const SPRITE_HEIGHT = 7277;
-  const CARDS_PER_ROW = 10;
-  const CARDS_PER_COL = 7;
-  const CARD_WIDTH = SPRITE_WIDTH / CARDS_PER_ROW;
-  const CARD_HEIGHT = SPRITE_HEIGHT / CARDS_PER_COL;
-  const DISPLAY_HEIGHT = cardDisplayHeight(gameState.cardMarket.length);
-  const DISPLAY_WIDTH = CARD_WIDTH * (DISPLAY_HEIGHT / CARD_HEIGHT);
-  const SCALE = DISPLAY_HEIGHT / CARD_HEIGHT;
+  // The sprite geometry that stood here is deleted: it was a second copy of the
+  // maths in cardSpriteHTML, and neither copy exists any more. The sheet layout
+  // and the card size are both the stylesheet's business now
+  // (.card-market-sprite, --card-height).
 
   // Say how long the row is. Players cannot count a wrapped, scrolling strip at a
   // glance, and the length is strategic information: it is the running cost of
@@ -1313,27 +1561,11 @@ function updateCardMarket(gameState) {
   }
 
   const cardsHTML = gameState.cardMarket.map(card => {
-    const cardId = card.id;
-    const isClaimable = claimableCardIds.has(cardId);
-    const col = (cardId - 1) % CARDS_PER_ROW;
-    const row = Math.floor((cardId - 1) / CARDS_PER_ROW);
-
-    const spriteOffsetX = col * CARD_WIDTH;
-    const spriteOffsetY = row * CARD_HEIGHT;
-
-    const bgPosX = -(spriteOffsetX * SCALE);
-    const bgPosY = -(spriteOffsetY * SCALE);
-    const bgSizeW = SPRITE_WIDTH * SCALE;
-    const bgSizeH = SPRITE_HEIGHT * SCALE;
-
-    const cardClass = isClaimable ? 'ft-card ft-card--claimable' : 'ft-card';
-    const clickable = isClaimable && gameState.gamePhase === 'claim' ? 'cursor: pointer;' : '';
-
-    return `
-      <div data-card-id="${cardId}" class="card-market-sprite ${cardClass}" style="position: relative; width: ${DISPLAY_WIDTH}px; height: ${DISPLAY_HEIGHT}px; background-image: url('images/reward_card_layout.png?v=3'); background-position: ${bgPosX}px ${bgPosY}px; background-size: ${bgSizeW}px ${bgSizeH}px; background-repeat: no-repeat; ${clickable}">
-        <div class="ft-card__vp" title="${card.vp} victory point${card.vp === 1 ? '' : 's'}">${card.vp}</div>
-      </div>
-    `;
+    const isClaimable = claimableCardIds.has(card.id);
+    return cardSpriteHTML(card, null, {
+      extraClass: isClaimable ? 'ft-card--claimable' : '',
+      clickable: isClaimable && gameState.gamePhase === 'claim',
+    });
   }).join('');
 
   cardMarket.innerHTML = cardsHTML;
@@ -1440,7 +1672,29 @@ function updatePlayerBoards(gameState) {
         }
       }
 
+      // With a swept tile armed by tap (B1), every cell it could legally go in
+      // says so. Without this the tap path is a guess: nothing on screen relates
+      // the tile you just selected to the places it can land.
+      const isTapTarget = isCurrentPlayer && player.isHuman && isPlacingPhase
+        && ui.selectedTileIndex !== null && ui.selectedTileIndex !== undefined;
+
       const displayTile = tile || pendingTile;
+
+      // THE TASTING MENU, on the one cell where it pays off. A menu is completed by
+      // the tile a claim REMOVES and then PLATES, so the moment this is worth
+      // saying is exactly the moment the player is choosing which matched-pattern
+      // cell to sacrifice - and it is easy to miss on a busy board.
+      //
+      // ONLY COMPLETION IS BADGED, not partial progress. A badge on every tile that
+      // moves some menu a little would be on most of the board and would say
+      // nothing; a badge that means "removing this one and plating it takes an
+      // whole menu card, right now" is worth looking at. menuCompletedBy is the shared
+      // predicate - it also checks a stand row is legally open for the tile, since
+      // a tile that can only be crumbed cannot complete anything.
+      const menuPayout = isRemovable && !isBlockedCell && displayTile
+        ? menuCompletionValue(gameState, player, displayTile)
+        : 0;
+
       let tileClass = 'ft-tile board-tile';
       if (isBlockedCell) {
         tileClass += ' ft-tile--blocked';
@@ -1448,17 +1702,22 @@ function updatePlayerBoards(gameState) {
       } else if (!displayTile) {
         tileClass += ' ft-tile--empty';
         if (isMoveTarget) tileClass += ' ft-tile--move-target';
+        if (isTapTarget) tileClass += ' ft-tile--tap-target';
       } else {
         tileClass += ' ft-tile--placed';
         if (pendingTile && !tile) tileClass += ' ft-tile--ghost';
         if (isRemovable) tileClass += ' ft-tile--removable';
         if (isMovableInCupcakeMode) tileClass += ' ft-tile--movable';
+        if (menuPayout > 0) tileClass += ' ft-tile--menu';
       }
 
       const bgColor = (displayTile && !isBlockedCell) ? `background-color: ${getColourCSS(displayTile.colour)};` : '';
       const imageHtml = isBlockedCell
         ? `<img src="images/empty_plate.png" class="ft-tile__icon" alt="blocked">`
         : (displayTile ? `<img src="images/symbol_${displayTile.ingredient}.png" class="ft-tile__icon" alt="${displayTile.ingredient}">` : '');
+      const menuBadge = menuPayout > 0
+        ? `<span class="ft-tile__menu" title="Tasting Menu - remove this tile and plate it on your cake stand and you complete a menu, worth ${menuPayout} VP">+${menuPayout}</span>`
+        : '';
       const draggableAttr = isMovableInCupcakeMode ? 'draggable="true"' : '';
       const boardTileIndexAttr = isMovableInCupcakeMode ? `data-board-tile-index="${idx}"` : '';
       const plateRemoveAttr = isPlateRemovable
@@ -1467,7 +1726,7 @@ function updatePlayerBoards(gameState) {
 
       return `
         <div class="${tileClass}" style="${bgColor}" data-index="${idx}" data-player="${playerIdx}" ${draggableAttr} ${boardTileIndexAttr} ${plateRemoveAttr}>
-          ${imageHtml}
+          ${imageHtml}${menuBadge}
         </div>
       `;
     }).join('');
@@ -1476,8 +1735,9 @@ function updatePlayerBoards(gameState) {
       workingAreaEl.classList.remove('ft-hidden');
       workingAreaEl.innerHTML = gameState.pendingSweepTiles.map((tile, idx) => {
         const isPlaced = ui.placementMap && ui.placementMap[idx] !== undefined;
+        const isSelected = ui.selectedTileIndex === idx;
         return !isPlaced ? `
-          <div class="ft-tile working-tile" draggable="true" data-tile-index="${idx}" style="background-color: ${getColourCSS(tile.colour)}; cursor: grab; user-select: none; flex-shrink: 0;" title="${tile.ingredient}">
+          <div class="ft-tile working-tile${isSelected ? ' working-tile--selected' : ''}" draggable="true" data-tile-index="${idx}" style="background-color: ${getColourCSS(tile.colour)}; cursor: grab; user-select: none; flex-shrink: 0;" title="${tile.ingredient}">
             <img src="images/symbol_${tile.ingredient}.png" class="ft-tile__icon" style="pointer-events: none;" alt="${tile.ingredient}">
           </div>
         ` : '';
@@ -1583,6 +1843,201 @@ function renderOnOrderSlot(gameState, player, playerIdx, boardEl) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// PLACEMENT: hit-testing and the one commit
+//
+// The drop target used to be worked out by ARITHMETIC, in three separate copies
+// of the same block:
+//
+//     const TILE_SIZE = 60; const CELL_SIZE = TILE_SIZE + TILE_GAP;
+//     const col = Math.floor(x / CELL_SIZE);
+//
+// That is wrong twice over. It hardcodes the tile size, so the moment
+// --tile-size becomes responsive every drop silently lands in the wrong cell;
+// and it measured from playerBoard.getBoundingClientRect() while .ft-board-grid
+// carries 8px of padding, so cell 0 really spans x = 8..68 while the maths
+// treated it as 0..62 - the last ~6px of every cell registered as the next cell
+// along. That was a live bug at 60px, not a future one.
+//
+// Every cell already carries its own data-index. Reading it off the element the
+// pointer actually hit is exact at any tile size and has no offset to get wrong.
+// ---------------------------------------------------------------------------
+
+// The own-board cell an event landed on, or null if it missed the board.
+function boardIndexFromEvent(e) {
+  const cell = e.target?.closest?.('.board-tile[data-player="0"]');
+  if (!cell) return null;
+  const idx = parseInt(cell.dataset.index, 10);
+  return Number.isInteger(idx) ? idx : null;
+}
+
+// A cell is a legal destination if it is genuinely empty: not occupied, and not
+// an empty plate planted by a claim.
+function isEmptyCell(gameState, boardIndex) {
+  const player = gameState.players[gameState.currentPlayerIndex];
+  const cell = player.board[boardIndex];
+  const isBlocked = cell && typeof cell === 'object' && cell.type === 'blocked';
+  return cell === null && !isBlocked;
+}
+
+// ...and not already spoken for by another tile placed earlier this turn. The
+// board itself is not written until the placement is submitted, so a cell
+// holding a ghost still reads as null and needs asking about separately.
+function isCellPending(boardIndex) {
+  const map = window._gameUI?.placementMap || {};
+  return Object.values(map).some(i => Number(i) === boardIndex);
+}
+
+// THE ONE PLACE a swept tile is committed to a cell, whatever put it there.
+// The drag path calls it today and Phase B's tap path will call the same
+// function, so the two input methods cannot drift apart in what they allow.
+// Returns whether the placement was accepted, which the tap path needs in order
+// to decide whether to clear its selection.
+function commitPlacement(gameState, tileIndex, boardIndex) {
+  const ui = window._gameUI;
+  if (!ui) return false;
+  if (!Number.isInteger(tileIndex) || tileIndex < 0
+      || tileIndex >= gameState.pendingSweepTiles.length) return false;
+  if (!Number.isInteger(boardIndex)) return false;
+  if (!isEmptyCell(gameState, boardIndex) || isCellPending(boardIndex)) return false;
+
+  if (!ui.placementMap) ui.placementMap = {};
+  ui.placementMap[tileIndex] = boardIndex;
+  // Deferred so the drop event finishes before the board is torn down and
+  // rebuilt underneath it.
+  requestAnimationFrame(() => updateGameDisplay(gameState));
+  return true;
+}
+
+// The same idea for the cupcake move: one commit, shared by drag and (from
+// Phase B) tap. The engine validates too, but it answers an illegal move with
+// an alert(), so it is worth not asking.
+function commitCupcakeMove(gameState, fromIndex, toIndex) {
+  const ui = window._gameUI;
+  if (!ui?.onMoveTile) return false;
+  if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return false;
+  if (!isEmptyCell(gameState, toIndex)) return false;
+  ui.onMoveTile(fromIndex, toIndex);
+  return true;
+}
+
+// Remove a tile that has been placed this turn but not yet committed. There is
+// no engine call here: the board is not written until handlePlacementDone runs,
+// so un-placing is just forgetting the entry.
+//
+// This is worth having on the desktop too. Until now a misplaced tile could only
+// be taken back with the whole-turn Undo, which also threw away the sweep.
+function unplaceTile(gameState, boardIndex) {
+  const ui = window._gameUI;
+  if (!ui?.placementMap) return false;
+  const entry = Object.entries(ui.placementMap).find(([, b]) => Number(b) === boardIndex);
+  if (!entry) return false;
+  delete ui.placementMap[entry[0]];
+  requestAnimationFrame(() => updateGameDisplay(gameState));
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// THE TAP PATH (plan B1).
+//
+// Placement was drag-only, and HTML5 drag-and-drop does not exist on a touch
+// screen. A tablet could sweep, could choose a colour, and then simply could not
+// place the tiles - the game stopped at the placement step with no way forward.
+// This is the reason the whole responsive plan needs a Phase B at all: every
+// width below the desktop is unplayable without it.
+//
+// Select-then-place, which is the convention every touch board game uses:
+//   tap a swept tile      -> select it
+//   tap the same one      -> clear the selection
+//   tap an empty cell     -> place the selected tile there
+//   tap a ghost           -> take that tile back
+// and in cupcake mode, tap a movable tile then tap where it should go.
+//
+// DRAG IS UNTOUCHED and both paths finish in commitPlacement/commitCupcakeMove,
+// so the two can never diverge on what they permit. A mouse user can drag one
+// tile and tap the next.
+// ---------------------------------------------------------------------------
+function setupTapToPlace(gameState) {
+  const ui = window._gameUI;
+  if (ui.tapSetupDone) return;
+
+  const workingArea = document.getElementById('workingArea1');
+  const playerBoard = document.getElementById('playerBoard1');
+  if (!workingArea || !playerBoard) return;
+
+  ui.tapSetupDone = true;
+
+  const rerender = () => requestAnimationFrame(() => updateGameDisplay(ui.gameState || gameState));
+
+  // Delegated, because updatePlayerBoards replaces the innerHTML of both of these
+  // on every render - a listener bound to a tile would be pointing at a detached
+  // node within one move.
+  workingArea.addEventListener('click', (e) => {
+    const tileEl = e.target.closest('.working-tile');
+    if (!tileEl) return;
+    const tileIndex = parseInt(tileEl.dataset.tileIndex, 10);
+    if (!Number.isInteger(tileIndex)) return;
+    ui.selectedTileIndex = ui.selectedTileIndex === tileIndex ? null : tileIndex;
+    rerender();
+  });
+
+  playerBoard.addEventListener('click', (e) => {
+    const state = ui.gameState || gameState;
+    // An empty plate being removed is a different gesture with its own handler,
+    // bound per-cell in updatePlayerBoards. Leave it alone or the removal fires
+    // and then this tries to treat the same tap as a move destination.
+    if (e.target.closest('[data-remove-plate-index]')) return;
+
+    const boardIndex = boardIndexFromEvent(e);
+    if (boardIndex === null) return;
+
+    if (ui.cupcakeMode) {
+      // Source first, then destination. The source has to be a tile the engine
+      // would actually let move, which is exactly what data-board-tile-index
+      // marks - it is only emitted for a movable tile at an affordable price.
+      const sourceEl = e.target.closest('[data-board-tile-index]');
+      if (ui.cupcakeSource === null || ui.cupcakeSource === undefined) {
+        if (!sourceEl) return;
+        ui.cupcakeSource = parseInt(sourceEl.dataset.boardTileIndex, 10);
+        rerender();
+        return;
+      }
+      // Tapping the armed source again puts it down rather than moving it.
+      if (sourceEl && parseInt(sourceEl.dataset.boardTileIndex, 10) === ui.cupcakeSource) {
+        ui.cupcakeSource = null;
+        rerender();
+        return;
+      }
+      if (commitCupcakeMove(state, ui.cupcakeSource, boardIndex)) ui.cupcakeSource = null;
+      else rerender();
+      return;
+    }
+
+    if (state.gamePhase !== 'place') return;
+
+    const armed = ui.selectedTileIndex !== null && ui.selectedTileIndex !== undefined;
+
+    // A ghost is a tile placed this turn, and tapping it takes that tile back -
+    // but ONLY when nothing is armed.
+    //
+    // Un-placing unconditionally is the obvious implementation and it is wrong:
+    // with a tile in hand, one mis-aimed tap at an occupied cell both threw away
+    // the tile you were holding AND lifted the one already sitting there, which
+    // is two destructive surprises from a tap the player meant as a placement.
+    // While a tile is armed the only cells marked as targets are the empty ones
+    // (.ft-tile--tap-target), so a tap anywhere else should do exactly what the
+    // board says it will do: nothing.
+    if (!armed) {
+      unplaceTile(state, boardIndex);
+      return;
+    }
+
+    if (commitPlacement(state, ui.selectedTileIndex, boardIndex)) {
+      ui.selectedTileIndex = null;
+    }
+  });
+}
+
 function setupDragAndDrop(gameState) {
   const ui = window._gameUI;
   if (ui.dragSetupDone) return;
@@ -1593,6 +2048,14 @@ function setupDragAndDrop(gameState) {
   if (!workingArea || !playerBoard) return;
 
   ui.dragSetupDone = true;
+
+  const clearDropHighlight = () => {
+    // Queried live, never cached. updatePlayerBoards replaces the board's
+    // innerHTML on every render, so a NodeList captured at setup time points at
+    // detached elements within a move or two and silently stops clearing
+    // anything - which is how a stale highlight used to survive a re-render.
+    playerBoard.querySelectorAll('.drag-over').forEach(t => t.classList.remove('drag-over'));
+  };
 
   // Setup drag on working tiles
   workingArea.addEventListener('dragstart', (e) => {
@@ -1636,124 +2099,56 @@ function setupDragAndDrop(gameState) {
     }
   }, false);
 
-  // Setup drop on board container
+  // ONE dragover listener doing both jobs. There used to be two - one calling
+  // preventDefault to allow the drop, a second re-deriving the cell to paint the
+  // highlight - which meant the hit-test ran twice per pointer move and could
+  // disagree with the drop's own copy.
   playerBoard.addEventListener('dragover', (e) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+
+    clearDropHighlight();
+    const boardIndex = boardIndexFromEvent(e);
+    if (boardIndex === null) return;
+    if (!isEmptyCell(gameState, boardIndex) || isCellPending(boardIndex)) return;
+    e.target.closest('.board-tile').classList.add('drag-over');
   }, false);
 
   playerBoard.addEventListener('drop', (e) => {
     e.preventDefault();
     e.stopPropagation();
+    clearDropHighlight();
 
-    // Check for board-to-board tile move (cupcake mode)
+    const boardIndex = boardIndexFromEvent(e);
+    if (boardIndex === null) return;
+
+    // A board-to-board move (cupcake mode) rather than a placement.
     const boardTileFrom = e.dataTransfer.getData('boardTileFrom');
     if (boardTileFrom !== '') {
-      const fromIndex = parseInt(boardTileFrom);
-      const rect = playerBoard.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      const TILE_SIZE = 60;
-      const TILE_GAP = 2;
-      const CELL_SIZE = TILE_SIZE + TILE_GAP;
-      const BOARD_SIZE = 5;
-
-      const col = Math.floor(x / CELL_SIZE);
-      const row = Math.floor(y / CELL_SIZE);
-
-      if (col >= 0 && col < BOARD_SIZE && row >= 0 && row < BOARD_SIZE) {
-        const toIndex = row * BOARD_SIZE + col;
-        if (ui.onMoveTile) {
-          ui.onMoveTile(fromIndex, toIndex);
-        }
-      }
+      commitCupcakeMove(gameState, parseInt(boardTileFrom, 10), boardIndex);
       return;
     }
 
-    const tileIndex = parseInt(e.dataTransfer.getData('tileIndex'));
-
-    if (isNaN(tileIndex)) {
-      return;
-    }
-
-    const rect = playerBoard.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const TILE_SIZE = 60;
-    const TILE_GAP = 2;
-    const CELL_SIZE = TILE_SIZE + TILE_GAP;
-    const BOARD_SIZE = 5;
-
-    const col = Math.floor(x / CELL_SIZE);
-    const row = Math.floor(y / CELL_SIZE);
-
-    // Validate grid position
-    if (col < 0 || col >= BOARD_SIZE || row < 0 || row >= BOARD_SIZE) {
-      return;
-    }
-
-    const boardIndex = row * BOARD_SIZE + col;
-    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-    const targetCell = currentPlayer.board[boardIndex];
-
-    // Only allow drop on empty cells (not placeholders, not occupied, not blocked)
-    const isBlockedCell = targetCell && typeof targetCell === 'object' && targetCell.type === 'blocked';
-    if (targetCell === null && !isBlockedCell && tileIndex >= 0 && tileIndex < gameState.pendingSweepTiles.length) {
-      if (!ui.placementMap) ui.placementMap = {};
-      ui.placementMap[tileIndex] = boardIndex;
-      // Delay display update to allow drop event to complete first
-      requestAnimationFrame(() => {
-        updateGameDisplay(gameState);
-      });
-    }
-  }, false);
-
-  const boardTiles = document.querySelectorAll('.board-tile[data-player="0"]');
-  playerBoard.addEventListener('dragover', (e) => {
-    const rect = playerBoard.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const TILE_SIZE = 60;
-    const TILE_GAP = 2;
-    const CELL_SIZE = TILE_SIZE + TILE_GAP;
-    const BOARD_SIZE = 5;
-
-    const col = Math.floor(x / CELL_SIZE);
-    const row = Math.floor(y / CELL_SIZE);
-
-    boardTiles.forEach(tile => {
-      tile.classList.remove('drag-over');
-    });
-
-    if (col >= 0 && col < BOARD_SIZE && row >= 0 && row < BOARD_SIZE) {
-      const boardIndex = row * BOARD_SIZE + col;
-      const targetCell = gameState.players[gameState.currentPlayerIndex].board[boardIndex];
-      // Only highlight empty cells (not placeholders, not blocked)
-      const isBlockedCell = targetCell && typeof targetCell === 'object' && targetCell.type === 'blocked';
-      if (targetCell === null && !isBlockedCell) {
-        const tile = document.querySelector(`.board-tile[data-player="0"][data-index="${boardIndex}"]`);
-        if (tile) {
-          tile.classList.add('drag-over');
-        }
-      }
-    }
+    commitPlacement(gameState, parseInt(e.dataTransfer.getData('tileIndex'), 10), boardIndex);
   }, false);
 
   playerBoard.addEventListener('dragleave', (e) => {
-    if (e.target === playerBoard) {
-      boardTiles.forEach(tile => {
-        tile.classList.remove('drag-over');
-      });
-    }
+    if (e.target === playerBoard) clearDropHighlight();
   }, false);
 }
 
 // Scoring breakdown for a player: cake-stand rows (cumulative value by tile
-// count), crumb tray (1/tile) and claimed card VP. THREE lines since 4 August -
-// the ingredient objectives were the fourth and are deleted from the game.
+// count), crumb tray (1/tile), claimed card VP and the Tasting Menus. FOUR lines
+// since 4 August - the ingredient objectives were deleted that morning and the
+// flavour module has held the fourth slot ever since.
+//
+// A MENU IS A FLAT COUNT TIMES A FLAT VALUE, and that is only possible because
+// both card shapes demand the same number of tiles - three since the deck was
+// lightened on 5 August, four before it. It is a real simplification over the
+// Teapot Track two modules back, which had to be accumulated as it was earned
+// because what each removal paid depended on where the teapot stood at the time.
+// Every menu is worth the same whenever it was taken, so this can multiply and be
+// certain of agreeing with the engine.
 //
 // CUPCAKES ARE NOT IN THE TOTAL since 3 August - they score nothing and are the
 // first tiebreaker instead. The count is still returned so the UI can show it,
@@ -1772,9 +2167,10 @@ function getScoreBreakdown(player) {
     if (card) cardVP += card.vp;
   }
   const cupcakes = player.cupcakes;
+  const menus = (player.tastingMenus ? player.tastingMenus.length : 0) * TASTING_MENU_VP;
   return {
-    standTotal, crumbs, cardVP, cupcakes,
-    total: standTotal + crumbs + cardVP,
+    standTotal, crumbs, cardVP, cupcakes, menus,
+    total: standTotal + crumbs + cardVP + menus,
   };
 }
 
@@ -1824,9 +2220,18 @@ function renderStand(player, opts = {}) {
       ? `<img src="images/symbol_${row.ingredient}.png" class="ft-stand__lock" alt="${row.ingredient}" title="Row locked to ${row.ingredient}">`
       : `<div class="ft-stand__lock ft-stand__lock--empty" title="Row not yet locked"></div>`;
 
+    // NAMING THE COMPONENT. The rules, the Tasting Menus and the cards all say
+    // "cake stand" and nothing on screen said it back. The label hangs off the
+    // TOP row - one plate wide, so the widening tier leaves the most empty space
+    // beside it - and is positioned out of flow, so it costs no vertical space
+    // and does not shift the pyramid off centre. See .ft-stand__label.
+    const label = rowIndex === player.stand.length - 1
+      ? '<span class="ft-stand__label">Cake<br>stand</span>'
+      : '';
+
     rowsHtml += `
       <div class="ft-stand__row ${isLegal ? 'ft-stand__row--legal' : ''}" ${isLegal ? `data-dest-row="${rowIndex}"` : ''}>
-        ${marker}
+        ${label}${marker}
         <div class="ft-stand__plates">${slots}</div>
       </div>`;
   }
@@ -1840,6 +2245,50 @@ function renderStand(player, opts = {}) {
     </div>`;
 
   return `<div class="ft-stand">${rowsHtml}${crumbHtml}</div>`;
+}
+
+// THE OPPONENT STAND, IN ONE LINE. Four lock symbols, each with a filled/capacity
+// count, plus the crumb count (plan section 6.2, "Level 2").
+//
+// This exists to pay for something the colour-only opponent board takes away.
+// Colour alone answers the main question you ask of another player - how close
+// are they to claiming a card - because the reward cards ARE colour patterns. It
+// cannot tell you what they could still PLATE, and that is genuinely strategic:
+// each stand row locks to an ingredient, and an ingredient can only be plated
+// once across the whole stand (game.js), so ingredient scarcity is real.
+//
+// The saving grace is that the lock is on the STAND, not the board - so the part
+// worth acting on survives in the component it actually lives in, for about 24px
+// of height, while the full stand costs ~170px of width and cannot shrink.
+//
+// Rendered for opponents at every width and hidden by CSS above the M band,
+// where the full stand is still on show. No width logic in JavaScript, so no
+// re-render on resize.
+function renderStandSummary(player) {
+  let rows = '';
+  // Same top-to-bottom order as the stand itself, so a glance at the strip and a
+  // glance at a full panel agree.
+  for (let rowIndex = player.stand.length - 1; rowIndex >= 0; rowIndex--) {
+    const row = player.stand[rowIndex];
+    const full = row.tiles.length >= row.capacity;
+    const marker = row.ingredient
+      ? `<img src="images/symbol_${row.ingredient}.png" class="ft-stand-mini__lock" alt="${row.ingredient}">`
+      : `<span class="ft-stand-mini__lock ft-stand-mini__lock--empty"></span>`;
+    const title = row.ingredient
+      ? `Locked to ${row.ingredient} - ${row.tiles.length} of ${row.capacity} plated`
+      : `Not yet locked - ${row.tiles.length} of ${row.capacity} plated`;
+    rows += `
+      <span class="ft-stand-mini__row ${full ? 'ft-stand-mini__row--full' : ''}" title="${title}">
+        ${marker}<span class="ft-stand-mini__count">${row.tiles.length}/${row.capacity}</span>
+      </span>`;
+  }
+  return `
+    <div class="ft-stand-mini" aria-label="Cake stand summary">
+      ${rows}
+      <span class="ft-stand-mini__row" title="Crumb tray - 1 point each">
+        <span class="ft-stand-mini__lock">🍪</span><span class="ft-stand-mini__count">${player.crumbTray.length}</span>
+      </span>
+    </div>`;
 }
 
 // Step 3 → commit: a destination was clicked, so submit the whole claim.
@@ -1884,15 +2333,48 @@ function updateStats(gameState) {
       ? new Set(ui.destinationChoices.filter(d => d.type === 'row').map(d => d.rowIndex))
       : null;
 
+    // An opponent's panel loses its breakdown, its full stand and its cupcake
+    // panel below 1400 - they cost width the strip does not have. These two are
+    // what replace them, and both are hidden by CSS above the M band so the
+    // wider layouts are untouched (plan 6.2).
+    //
+    // The cupcake count earns its place on the total line for one reason:
+    // cupcakes score nothing, but they are the FIRST TIEBREAKER, so in a close
+    // endgame the count is score-relevant. It is one number and the line is
+    // already there.
+    const isOpponentSeat = playerIdx !== 0;
+    const oppCupcakes = isOpponentSeat
+      ? `<span class="ft-score-total__cupcakes" title="Cupcakes held - they score nothing but break ties">🧁 ${bd.cupcakes}</span>`
+      : '';
+
+    // The Tasting Menu line appears ALWAYS, including on 0. A player who has not
+    // taken a menu yet is exactly the player who needs reminding the race is
+    // running - and unlike the module it replaced, a 0 here is not a temporary
+    // state that the next pot of tea resets.
+    //
+    // IT SHOWS THE INGREDIENTS of each menu taken rather than only the total,
+    // because "she took the two-lemon-two-chocolate one" is how players actually
+    // talk about which cards have gone, and the number alone hides it.
+    const menuLine = (p.tastingMenus && p.tastingMenus.length > 0)
+      ? `<div class="ft-score-breakdown__item"><span>${p.tastingMenus.map(id => {
+          const menu = TASTING_MENUS.find(m => m.id === id);
+          if (!menu) return '';
+          return Object.entries(menu.need).map(([ing, need]) =>
+            `<img src="images/symbol_${ing}.png" class="ft-score-breakdown__symbol" alt="${ing}" title="${need} x ${ingredientLabel(ing)}">`).join('');
+        }).join(' ')} Tasting Menus</span><strong>${bd.menus}</strong></div>`
+      : `<div class="ft-score-breakdown__item"><span>📜 Tasting Menus</span><strong>0</strong></div>`;
+
     let html = `
-      <div class="ft-score-total">Total: ${bd.total}</div>
+      <div class="ft-score-total">Total: ${bd.total}${oppCupcakes}</div>
       <div class="ft-score-breakdown">
         <div class="ft-score-breakdown__item"><span>🎂 Cake stand</span><strong>${bd.standTotal}</strong></div>
         <div class="ft-score-breakdown__item"><span>🍪 Crumbs</span><strong>${bd.crumbs}</strong></div>
         <div class="ft-score-breakdown__item"><span>🍰 Card VP</span><strong>${bd.cardVP}</strong></div>
+        ${menuLine}
       </div>
       ${destinationMode ? '<div class="ft-stand__prompt">Choose where this tile goes ↓</div>' : ''}
       ${renderStand(p, { interactive: destinationMode, legalRows })}
+      ${isOpponentSeat ? renderStandSummary(p) : ''}
     `;
 
     const cupcakeCount = p.cupcakes;
@@ -1910,6 +2392,27 @@ function updateStats(gameState) {
     // rather than discovering them phase by phase.
     const canBuyTile = isCurrentPlayer && canBuyExtraTile(gameState);
     const canReserve = isCurrentPlayer && canReserveCard(gameState);
+
+    // THE COACHING FOR THESE TWO BUTTONS, moved out of the phase bar on 4 August
+    // (plan section 5.4). Both sentences were in the status stack under the
+    // player's board, describing controls that are up here; the extra-tile one
+    // was four wrapped lines at a narrow width and on its own accounted for most
+    // of the 200px the phase bar measured during placement.
+    //
+    // They are rendered per-button rather than as a block so each sits directly
+    // under the control it explains, and so each can disappear on its own the
+    // moment that option stops being available.
+    // REWORDED with the move, 4 August. Two things were wrong once the sentence
+    // sat under the button: "use the button in your cupcake panel" pointed at
+    // itself, and "click the tile" is the wrong verb on the touch devices this
+    // whole plan exists to support. The plural is derived from the constant so
+    // the two cannot drift if the price ever changes - it read "2 cupcake".
+    const extraTileNote = canBuyTile
+      ? `<span class="ft-cupcake-note ft-cupcake-note--offer">🧁 You may spend ${EXTRA_TILE_CUPCAKE_COST} cupcake${EXTRA_TILE_CUPCAKE_COST === 1 ? '' : 's'} for ONE more tile from anywhere on the market - then choose the tile you want.</span>`
+      : (gameState.extraTileUsedThisTurn ? `<span class="ft-cupcake-note">Extra tile bought this turn</span>` : '');
+    const reserveNote = canReserve
+      ? `<span class="ft-cupcake-note">A reserved card is safe from the tea flush - but you cannot claim it until your next turn.</span>`
+      : (p.reservedCards.length >= RESERVE_LIMIT ? `<span class="ft-cupcake-note">Your reserve is full (${RESERVE_LIMIT} card).</span>` : '');
 
     html += `
       <div class="ft-cupcake-supply ${cupcakeClass}" id="cupcakeSupply${playerIdx + 1}">
@@ -1934,11 +2437,13 @@ function updateStats(gameState) {
                     title="At the sweep step only, once per turn: take any one tile from the market and place it with your swept tiles">
               +1 tile from the market (${EXTRA_TILE_CUPCAKE_COST}🧁)
             </button>
+            ${extraTileNote}
             <button class="ft-cupcake-spend-btn ${ui.reserveMode ? 'ft-cupcake-spend-btn--active' : ''}"
                     id="reserveCardBtn" ${canReserve ? '' : 'disabled'}
                     title="Take one card from the market into your reserve. You may not claim it this turn, and your reserve holds ${RESERVE_LIMIT} card.">
               Reserve a card (${RESERVE_CUPCAKE_COST}🧁)
             </button>
+            ${reserveNote}
           </div>` : ''}
         <span class="ft-cupcake-points">Cupcakes score no points - they break ties</span>
       </div>
@@ -2014,8 +2519,15 @@ function updatePhaseControls(gameState) {
   }
 
   controls.classList.remove('ft-hidden');
-  const hasCupcakes = player.cupcakes > 0 && gameState.gamePhase === 'spend' && !gameState.moveUsedThisTurn;
-  const cupcakeHint = hasCupcakes ? `<div class="ft-phase-bar__cupcake-hint">💡 You have ${player.cupcakes} cupcake${player.cupcakes === 1 ? '' : 's'} - spend one to move a tile, ${REMOVE_PLATE_CUPCAKE_COST} to remove an empty plate, or one to reserve a card.</div>` : '';
+  // A `cupcakeHint` line stood here until 4 August. Two things were wrong with it
+  // and the second is why it is deleted rather than relocated:
+  //   - it described the cupcake panel's controls from the phase bar, which is
+  //     what plan section 5.4 moves beside the control instead;
+  //   - it was gated on `gamePhase === 'spend'`, yet the only places it was
+  //     interpolated were the SWEEP and CLAIM branches. It has therefore rendered
+  //     as an empty string in every one of them for as long as it has existed.
+  // Its surviving content - the cupcake count and what a cupcake buys - is on the
+  // panel, beside the buttons that spend them.
   const ui = window._gameUI;
   const canUndo = ui?.canUndo === true;
   const undoBtn = canUndo ? `<button id="undoBtn" class="ft-btn ft-btn--secondary ft-btn--small">↩ Undo</button>` : '';
@@ -2026,7 +2538,6 @@ function updatePhaseControls(gameState) {
       <div class="ft-phase-bar">
         <div class="ft-phase-bar__instruction">Bonus tile available!</div>
         <div class="ft-phase-bar__status success">Click any market tile to claim it</div>
-        ${cupcakeHint}
         <div class="ft-phase-bar__controls">
           ${undoBtn}
         </div>
@@ -2038,26 +2549,12 @@ function updatePhaseControls(gameState) {
     // anybody, it fires automatically at the end of any turn that leaves
     // REFRESH_THRESHOLD teapots showing.
     //
-    // What the bar DOES do is warn, at the moment it matters most, that the sweep
-    // about to be chosen is the one that decides it. The gauge under the market
-    // (updateTeaOption) carries the count; this is the nudge to look at it while
-    // picking a line.
-    //
-    // 4 AUGUST: with an empty bag the same board state is one teapot from the END
-    // OF THE GAME, not from a fresh pot. It used to be suppressed entirely in
-    // that case (`bag.length > 0`), which hid the warning exactly when it was
-    // worth the most - the sweep that uncovers that fourth teapot is now the
-    // sweep that closes the game.
-    const oneAway = getVisibleCupcakeSymbols(gameState) === REFRESH_THRESHOLD - 1;
-    const teaPointer = oneAway
-      ? (gameState.bag.length === 0
-        ? `<div class="ft-phase-bar__status warning">🫖 One teapot from the end of the game - the bag is empty, so the next pot cannot be poured</div>`
-        : `<div class="ft-phase-bar__status success">🫖 One teapot from a fresh pot of tea</div>`)
-      : '';
+    // THE ONE-TEAPOT-AWAY WARNING USED TO BE HERE. It moved to the tea gauge on
+    // 4 August (plan section 5.4), which already carries the count it is talking
+    // about - see updateTeaOption. The bar keeps the command and nothing else.
     html = `
       <div class="ft-phase-bar">
         <div class="ft-phase-bar__instruction">Sweep a row or column above</div>
-        ${teaPointer}
         <div class="ft-phase-bar__controls">
           ${undoBtn}
         </div>
@@ -2067,17 +2564,17 @@ function updatePhaseControls(gameState) {
     const placementCount = ui.placementMap ? Object.keys(ui.placementMap).length : 0;
     const allPlaced = placementCount === gameState.pendingSweepTiles.length;
 
-    // THE EXTRA TILE IS OFFERED HERE and only here (3 August): it is a sweep-step
-    // option, so it has to be taken before the swept tiles are committed.
-    const extraTileHint = canBuyExtraTile(gameState)
-      ? `<div class="ft-phase-bar__status success">🧁 You may spend ${EXTRA_TILE_CUPCAKE_COST} cupcake for ONE more tile from anywhere on the market - use the button in your cupcake panel, then click the tile.</div>`
-      : (gameState.extraTileUsedThisTurn ? `<div class="ft-phase-bar__status">Extra tile bought this turn</div>` : '');
-
+    // THE EXTRA-TILE OFFER USED TO BE HERE, and it is the single reason this bar
+    // measured 200px during placement: at a 246px-wide column that one sentence
+    // wrapped to four rows. It moved beside the "+1 tile from the market" button
+    // on 4 August (plan section 5.4) - see updatePlayerScores.
+    //
+    // "Placed: n/m" stays, because it is part of the command rather than coaching:
+    // it is the readout for the Done button sitting next to it.
     html = `
       <div class="ft-phase-bar">
         <div class="ft-phase-bar__instruction">Drag tiles onto your board</div>
         <div class="ft-phase-bar__status">Placed: <strong>${placementCount}/${gameState.pendingSweepTiles.length}</strong></div>
-        ${extraTileHint}
         <div class="ft-phase-bar__controls">
           ${undoBtn}
           <button id="placementDone" class="ft-btn ft-btn--primary ft-btn--small" ${!allPlaced ? 'disabled' : ''}>Done</button>
@@ -2087,18 +2584,22 @@ function updatePhaseControls(gameState) {
   } else if (gameState.gamePhase === 'spend') {
     // The 'move' phase became 'spend' on 3 August: it hosts three paid options
     // now (move a tile, move an empty plate, reserve a card), not just the move.
+    // THREE lines used to stand here - the priced menu of options, the reserve
+    // note, and a cupcake-count hint - and all three described controls that are
+    // in the cupcake panel. They moved there on 4 August (plan section 5.4).
+    //
+    // The priced menu is not relocated but DELETED: it listed "move a tile (1🧁),
+    // remove an empty plate (3🧁), reserve a card (1🧁)", and every one of those
+    // prices is already printed on the button that charges it. It was a third
+    // copy of the same text, after the phase bar's own cupcake hint and the
+    // panel's help line.
     const moveOptions = gameState.moveUsedThisTurn
       ? `<div class="ft-phase-bar__instruction">You've used your move for this turn</div>`
-      : `<div class="ft-phase-bar__instruction">Spend cupcakes (optional)</div><div class="ft-phase-bar__status">Move a tile (${MOVE_TILE_CUPCAKE_COST}🧁), remove an empty plate (${REMOVE_PLATE_CUPCAKE_COST}🧁), and/or reserve a card (${RESERVE_CUPCAKE_COST}🧁)</div>`;
-    const reserveNote = canReserveCard(gameState)
-      ? `<div class="ft-phase-bar__status">A reserved card is safe from the tea flush - but you cannot claim it until your next turn.</div>`
-      : (player.reservedCards.length >= RESERVE_LIMIT ? `<div class="ft-phase-bar__status">Your reserve is full (${RESERVE_LIMIT} card).</div>` : '');
+      : `<div class="ft-phase-bar__instruction">Spend cupcakes (optional)</div>`;
 
     html = `
       <div class="ft-phase-bar">
         ${moveOptions}
-        ${reserveNote}
-        ${cupcakeHint}
         <div class="ft-phase-bar__controls">
           ${undoBtn}
           <button id="movePhaseNext" class="ft-btn ft-btn--primary ft-btn--small">Next</button>
@@ -2113,7 +2614,6 @@ function updatePhaseControls(gameState) {
         <div class="ft-phase-bar">
           <div class="ft-phase-bar__instruction">Choose a destination for the removed tile</div>
           <div class="ft-phase-bar__status success">Click a highlighted stand row or your crumb tray</div>
-          ${cupcakeHint}
           <div class="ft-phase-bar__controls">
             <button id="cancelClaim" class="ft-btn ft-btn--secondary ft-btn--small">Cancel</button>
           </div>
@@ -2124,7 +2624,6 @@ function updatePhaseControls(gameState) {
         <div class="ft-phase-bar">
           <div class="ft-phase-bar__instruction">Select a tile to remove</div>
           <div class="ft-phase-bar__status danger">Click a highlighted tile</div>
-          ${cupcakeHint}
           <div class="ft-phase-bar__controls">
             <button id="cancelClaim" class="ft-btn ft-btn--secondary ft-btn--small">Cancel</button>
           </div>
@@ -2150,7 +2649,6 @@ function updatePhaseControls(gameState) {
         html = `
           <div class="ft-phase-bar">
             <div class="ft-phase-bar__instruction">No patterns match</div>
-            ${cupcakeHint}
             <div class="ft-phase-bar__controls">
               ${undoBtn}
               <button id="skipClaim" class="ft-btn ft-btn--secondary ft-btn--small">Skip Claim</button>
@@ -2161,7 +2659,6 @@ function updatePhaseControls(gameState) {
         html = `
           <div class="ft-phase-bar">
             <div class="ft-phase-bar__instruction">Click a card to claim it</div>
-            ${cupcakeHint}
             <div class="ft-phase-bar__controls">
               ${undoBtn}
               <button id="skipClaim" class="ft-btn ft-btn--secondary ft-btn--small">Skip Claim</button>
@@ -2239,6 +2736,9 @@ function handlePlacementDone(e) {
   if (placements.length === ui.gameState.pendingSweepTiles.length) {
     ui.onPlacementSubmit(placements);
     ui.placementMap = {};
+    // The tap selection is scoped to this placement step. Leaving it set would
+    // arm a tile index that no longer refers to anything.
+    ui.selectedTileIndex = null;
   }
 }
 
@@ -2303,28 +2803,34 @@ function rotatePattern(pattern, turns) {
   return p;
 }
 
-// Render one reward card from the shared sprite sheet at an arbitrary display
-// height (the tile-market uses 260px inline; the "on order" reserve slot reuses
-// this at a smaller size). Mirrors the sprite maths in updateCardMarket and the
-// same cache-bust query-string (?v=3) used for reward_card_layout.png.
-function cardSpriteHTML(card, displayHeight, { extraClass = '', clickable = false, badge = false } = {}) {
-  const SPRITE_WIDTH = 7501;
-  const SPRITE_HEIGHT = 7277;
+// THE ONE renderer for a reward card, wherever it appears - the card row, the
+// "on order" reserve slot, anywhere later.
+//
+// It used to compute background-position and background-size in pixels from a
+// display height, and updateCardMarket carried a second copy of the same maths
+// for the market row. Both are gone (plan A5): all that is emitted now is the
+// card's ADDRESS on the sprite sheet as two custom properties, and
+// .card-market-sprite does the geometry in percentages. That is what lets a
+// media query resize the cards - the old pixel values could not be overridden
+// by CSS at any specificity, because they were already in a style attribute.
+//
+// `height` is normally left alone, so the card takes --card-height and follows
+// the responsive bands. Pass a value only where a card is deliberately a fixed
+// size regardless of band, as the reserve slot is.
+function cardSpriteHTML(card, height = null, { extraClass = '', clickable = false, badge = false } = {}) {
   const CARDS_PER_ROW = 10;
-  const CARDS_PER_COL = 7;
-  const CARD_WIDTH = SPRITE_WIDTH / CARDS_PER_ROW;
-  const CARD_HEIGHT = SPRITE_HEIGHT / CARDS_PER_COL;
-  const SCALE = displayHeight / CARD_HEIGHT;
-  const DISPLAY_WIDTH = CARD_WIDTH * SCALE;
   const col = (card.id - 1) % CARDS_PER_ROW;
   const row = Math.floor((card.id - 1) / CARDS_PER_ROW);
-  const bgPosX = -(col * CARD_WIDTH * SCALE);
-  const bgPosY = -(row * CARD_HEIGHT * SCALE);
-  const bgSizeW = SPRITE_WIDTH * SCALE;
-  const bgSizeH = SPRITE_HEIGHT * SCALE;
+
+  const style = [
+    `--sprite-col: ${col}`,
+    `--sprite-row: ${row}`,
+    height === null ? '' : `--card-height: ${typeof height === 'number' ? `${height}px` : height}`,
+    clickable ? 'cursor: pointer' : '',
+  ].filter(Boolean).join('; ');
 
   return `
-    <div data-card-id="${card.id}" class="card-market-sprite ft-card ${extraClass}" style="position: relative; width: ${DISPLAY_WIDTH}px; height: ${displayHeight}px; background-image: url('images/reward_card_layout.png?v=3'); background-position: ${bgPosX}px ${bgPosY}px; background-size: ${bgSizeW}px ${bgSizeH}px; background-repeat: no-repeat; ${clickable ? 'cursor: pointer;' : ''}">
+    <div data-card-id="${card.id}" class="card-market-sprite ft-card ${extraClass}" style="${style}">
       <div class="ft-card__vp" title="${card.vp} victory point${card.vp === 1 ? '' : 's'}">${card.vp}</div>
       ${badge ? '<div class="ft-card__teacup" title="On order - not yet served">🫖</div>' : ''}
     </div>

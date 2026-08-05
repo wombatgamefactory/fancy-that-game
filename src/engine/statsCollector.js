@@ -25,6 +25,20 @@
 //    9  Bag skew - colours flushed back to the bag versus colours dealt out again.
 //   10  Per-player claims, final score spread and game length - all readable from
 //       the finished game state, so simulate.js reports them from there.
+//   13  THE TASTING MENU (5 August, not from the 28 July list). Which menus were
+//       dealt, and which player took each one and on what turn. The number the
+//       module lives or dies by is DEAD CARDBOARD - the share of dealt menus
+//       nobody ever takes. The unsteered floor is 81%; a menu-aware bot that
+//       cannot push it well below half means the deck is too steep. That is
+//       exactly what happened to the four-tile deck (57.9%), which was replaced
+//       on 5 August by the three-tile one (21.9%).
+//       (It replaced a Freshness Bonus section that measured a collision rate
+//       against a per-period token race, which itself replaced a Today's
+//       Speciality / Teapot Track section. All three rules and all three metrics
+//       are gone rather than left running beside the new one. The FRESHNESS
+//       section also owned the by-tea-period buckets - claimsByPeriod,
+//       tokensByPeriod, collisionsByPeriod - which are deleted with it: this
+//       module has no periods, because it has no reset.)
 //
 // THE INGREDIENT-OBJECTIVE METRIC IS DELETED (4 August), along with the rule it
 // measured - see the pantry-goals note at the top of game.js. It was an unnumbered
@@ -58,7 +72,11 @@ export function createStatsCollector() {
       this.owner = gameState;
     },
 
-    sweeps: [], // Array of { count: number } to track each individual sweep
+    // Array of { count, declarationType } - one entry per sweep. declarationType
+    // is 'colour' or 'symbol' and feeds the colour-vs-ingredient split, which is
+    // the standing behavioural baseline metric 13 reports each flavour module
+    // against (43.8 / 43.4 / 44.4% colour with no module at all).
+    sweeps: [],
     cardsClaimedCount: 0,
     reserveClaimsCount: 0, // claims completed from a personal reserve (subset of the above)
     // Times the tile market was REFILLED after setup: one per fresh pot of tea,
@@ -105,6 +123,7 @@ export function createStatsCollector() {
     turnSamples: [],
     firstClaimRowSize: null, // row length when the game's FIRST claim landed
     firstClaimTurn: null,
+    claimTurns: [],          // the turn number of EVERY claim, in order
 
     // --- 4/5. Card lock and multi-match -------------------------------------
     // One sample per turn that reaches the claim step, taken as the step opens
@@ -162,14 +181,51 @@ export function createStatsCollector() {
                          // this game (top row = 3). Watches whether the 5-VP top
                          // plate is becoming the automatic opening move.
 
+    // --- 13. The Tasting Menu (5 August) ------------------------------------
+    // The menu ids dealt this game, in deal order. An empty array when the module
+    // is switched off. This is the DENOMINATOR for dead cardboard - the share of
+    // dealt menus nobody takes - which is the number the module lives or dies by,
+    // so it is recorded even in a game where nothing is ever taken.
+    tastingMenuDeal: [],
+    // One entry per menu TAKEN: { playerId, menuId, turn }. There is no losing
+    // half to record, unlike the collision the Freshness Bonus was judged on: a
+    // menu is not contested at a moment, it is contested over the whole game, and
+    // the evidence of that is the DEFICIT DISTRIBUTION at game end, which is read
+    // off the finished state rather than logged as it happens.
+    tastingMenusTaken: [],
+    // Menus taken, per player. The MEAN says what dose the module is delivering;
+    // the MAX per game says whether one player can hoover the whole deal.
+    tastingMenusByPlayer: {},
+
     recordMarketFill() {
       this.marketFillCount = this.marketFillCount + 1;
     },
 
-    recordSweep(tileCount) {
+    recordSweep(tileCount, declarationType) {
       const count = parseInt(tileCount);
       if (isNaN(count) || count < 1) return;
-      this.sweeps.push({ count: count });
+      this.sweeps.push({ count: count, declarationType: declarationType || null });
+    },
+
+    // Which menus were dealt - once per game, from createGame. An empty array (the
+    // module switched off for an A/B) is recorded as such rather than skipped, so
+    // a run can tell "off" from "never called".
+    recordTastingMenuDeal(menuIds) {
+      this.tastingMenuDeal = Array.isArray(menuIds) ? [...menuIds] : [];
+    },
+
+    // One menu taken, which can happen at most once per menu for the whole game.
+    // The TURN is what answers the module's stated job: a module whose menus are
+    // all taken in the last two turns is an end-of-game bonus, not a pressure
+    // device, and has failed.
+    recordTastingMenuTaken(playerId, menuId, turn) {
+      if (playerId === undefined || playerId === null) return;
+      this.tastingMenusTaken.push({
+        playerId: playerId,
+        menuId: menuId || null,
+        turn: parseInt(turn) || 0,
+      });
+      this.tastingMenusByPlayer[playerId] = (this.tastingMenusByPlayer[playerId] || 0) + 1;
     },
 
     // fromReserve flags a claim completed out of a personal reserve (vs the shared
@@ -177,6 +233,10 @@ export function createStatsCollector() {
     // length at the instant of the claim (the claimed card still counted, since
     // the engine records before it splices), which is how the "row size when the
     // first claim occurs" figure is captured.
+    //
+    // The fifth argument was the TEA PERIOD, and is deleted with the Freshness
+    // Bonus that wanted it (5 August). The Tasting Menu has no periods because it
+    // has no reset, so there is nothing to bucket claims by.
     recordCardClaimed(cardId, turn, fromReserve, rowSize) {
       this.cardsClaimedCount = this.cardsClaimedCount + 1;
       if (fromReserve) this.reserveClaimsCount = this.reserveClaimsCount + 1;
@@ -184,6 +244,12 @@ export function createStatsCollector() {
         this.firstClaimRowSize = rowSize | 0;
         this.firstClaimTurn = parseInt(turn) || 0;
       }
+      // Every claim's turn, so "claims by game third" can be read against each
+      // game's own length. Kept as the standing behavioural baseline: 24 / 39 / 37%
+      // with no flavour module at all, and 24.0 / 39.4 / 36.6% under Today's
+      // Speciality, whose failure to move it one point is half of why it was
+      // replaced.
+      this.claimTurns.push(parseInt(turn) || 0);
     },
 
     recordCardMarketEntry(cardId, turn) {
@@ -339,6 +405,11 @@ export function createStatsCollector() {
       let totalTilesTaken = 0;
       let maxSweepSize = 0;
       const sweepCount = this.sweeps.length;
+      // Colour vs ingredient declarations. Any ingredient-scoring module should
+      // pull this toward ingredient; how far is a design reading, not a target.
+      // Today's Speciality moved it about one point and that was one of the two
+      // readings that condemned it, so this is a live test of the replacement.
+      const sweepsByDeclaration = { colour: 0, symbol: 0 };
 
       for (let i = 0; i < sweepCount; i++) {
         const sweepTiles = this.sweeps[i].count || 0;
@@ -346,6 +417,8 @@ export function createStatsCollector() {
         if (sweepTiles > maxSweepSize) {
           maxSweepSize = sweepTiles;
         }
+        const declaration = this.sweeps[i].declarationType;
+        if (sweepsByDeclaration[declaration] !== undefined) sweepsByDeclaration[declaration]++;
       }
 
       const avgSweepSize = sweepCount > 0
@@ -484,6 +557,23 @@ export function createStatsCollector() {
       // pairs were claimed, when as a fraction of game length, and by which seat.
       // Deleted 4 August with the rule; see the header note.)
 
+      // --- 13. The Tasting Menu ----------------------------------------------
+      // The MAX is reported alongside the total deliberately: the mean says what
+      // dose the module is delivering, the max says whether one player hoovered it.
+      let tastingMenusTotal = 0;
+      let tastingMenusMax = 0;
+      for (const pid in this.tastingMenusByPlayer) {
+        const n = this.tastingMenusByPlayer[pid];
+        tastingMenusTotal += n;
+        if (n > tastingMenusMax) tastingMenusMax = n;
+      }
+      // DEAD CARDBOARD, computed here rather than left to the harness because the
+      // pair of numbers must never be divided the wrong way round: dealt is the
+      // denominator, and a menu is dead when the game ends with nobody having
+      // taken it.
+      const menusDealt = this.tastingMenuDeal.length;
+      const menusDead = Math.max(0, menusDealt - this.tastingMenusTaken.length);
+
       return {
         marketFills: this.marketFillCount,
         // Reported raw and DELIBERATELY unclamped. It used to be clamped to the
@@ -502,6 +592,7 @@ export function createStatsCollector() {
         maxSweepSize: maxSweepSize,
         avgSweepSize: avgSweepSize,
         sweepCount: sweepCount,
+        sweepsByDeclaration: sweepsByDeclaration,
         cardMarketAvgLifetime: avgCardMarketLife,
 
         // 1. Refresh cadence
@@ -526,6 +617,7 @@ export function createStatsCollector() {
         meanRowSize: meanRowSize,
         firstClaimRowSize: this.firstClaimRowSize,
         firstClaimTurn: this.firstClaimTurn,
+        claimTurns: this.claimTurns.slice(),
 
         // 4/5. Card lock and multi-match
         claimChanceSamples: this.claimChances.length,
@@ -564,6 +656,22 @@ export function createStatsCollector() {
         immediateReturns: this.immediateReturns,
 
         firstPlatingRow: { ...this.firstPlatingRow },
+
+        // 13. The Tasting Menu
+        tastingMenuDeal: [...this.tastingMenuDeal],
+        tastingMenusTaken: this.tastingMenusTaken.map(t => ({ ...t })),
+        // DEAD CARDBOARD's two halves, reported raw so the harness can print the
+        // sample size beside the share. Unsteered floor is 81% dead; a menu-aware
+        // bot that cannot push it well below half condemns the four-tile deck.
+        menusDealt: menusDealt,
+        menusDead: menusDead,
+        tastingMenusTotal: tastingMenusTotal,
+        tastingMenusByPlayer: { ...this.tastingMenusByPlayer },
+        tastingMenusMax: tastingMenusMax,
+        // The turn each menu was taken on. If these cluster in the last two turns
+        // the module is an end-of-game bonus rather than a pressure device and has
+        // failed at its stated job - see metric 13's time-to-first-menu line.
+        tastingMenuTurns: this.tastingMenusTaken.map(t => t.turn),
       };
     },
   };

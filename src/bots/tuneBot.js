@@ -9,7 +9,7 @@
 // symbol-avoidance knobs are gone with the decision they tuned;
 // TEA_TRIGGER_PRIORITY_VALUE and TEA_TRIGGER_HANDOVER_COST replace them.
 const K = (n, d) => (process.env[n] !== undefined ? parseFloat(process.env[n]) : d);
-import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleCupcakeSymbols, canClaimMore, STAND_ROW_VALUES, CUPCAKE_PLATES, CUPCAKE_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE } from '../engine/game.js';
+import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleTeapotSymbols, canClaimMore, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE } from '../engine/game.js';
 
 // Approximate value of a completed claim beyond the card's printed VP: the
 // sacrificed tile is banked on the stand or crumb tray. A conservative floor —
@@ -399,13 +399,13 @@ function rawSweepScore(market, sweep, marketSize, ctx) {
 // order tea, and there is no such decision any more.)
 
 // How many currently-COVERED teapot symbols this sweep would uncover. Symbol
-// cells are config (CUPCAKE_SYMBOL_CELLS), and the 30 July inner-ring placement
+// cells are config (TEAPOT_SYMBOL_CELLS), and the 30 July inner-ring placement
 // puts two of them in row 2, two in row 4, two in column 2 and two in column 4 -
 // so one sweep really can open the gate on its own, which is exactly why this
 // has to be priced. Four cell reads; safe to call inside sweep ranking.
 function symbolsExposedBySweep(market, sweep, marketSize) {
   let exposed = 0;
-  for (const cell of CUPCAKE_SYMBOL_CELLS) {
+  for (const cell of TEAPOT_SYMBOL_CELLS) {
     const tile = market[cell];
     if (!tile) continue; // already visible
     const inLine = sweep.isRow
@@ -460,7 +460,7 @@ function scoreSweeps(gameState) {
   const marketSize = gameState.marketSize;
   const ctx = sweepContext(currentPlayer, gameState.cardMarket);
 
-  const visibleNow = getVisibleCupcakeSymbols(gameState);
+  const visibleNow = getVisibleTeapotSymbols(gameState);
 
   const scored = validSweeps.map(sweep => {
     const score = rawSweepScore(gameState.market, sweep, marketSize, ctx)
@@ -599,7 +599,7 @@ export function rankBonusTiles(gameState) {
   // market, so taking the one sitting on a teapot-symbol cell uncovers that
   // symbol exactly as a sweep would - and, since 1 August, can be what fires our
   // own end-of-turn pot.
-  const visibleNow = getVisibleCupcakeSymbols(gameState);
+  const visibleNow = getVisibleTeapotSymbols(gameState);
 
   const scored = availableTiles.map(({ tile, index }) => {
     let score = colourValue[tile.colour] || 0;
@@ -610,7 +610,7 @@ export function rankBonusTiles(gameState) {
     ).length;
     score += ingredientCount * 0.5;
 
-    if (CUPCAKE_SYMBOL_CELLS.includes(index)) {
+    if (TEAPOT_SYMBOL_CELLS.includes(index)) {
       score += symbolTriggerValue(visibleNow, 1);
     }
 
@@ -833,7 +833,7 @@ export function decideClaim(gameState) {
   // carries: a needed refill against an empty bag ends the game rather than
   // brewing, so no flush happens and the row is not perishable after all.
   const rowAtRisk = gameState.bag.length > 0
-    && getVisibleCupcakeSymbols(gameState) >= REFRESH_THRESHOLD;
+    && getVisibleTeapotSymbols(gameState) >= REFRESH_THRESHOLD;
 
   // Colours still wanted by any market card.
   const coloursNeeded = new Set();

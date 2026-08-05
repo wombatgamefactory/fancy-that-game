@@ -33,7 +33,7 @@ import {
   RESERVE_CUPCAKE_COST, EMPTY_PLATES_PER_PLAYER,
   // 4 August: the tile-market and equal-turns blocks arm the tea trigger by hand,
   // which means uncovering the printed teapot cells rather than assuming indices.
-  CUPCAKE_SYMBOL_CELLS,
+  TEAPOT_SYMBOL_CELLS,
 } from './src/engine/game.js';
 import { createTileBag, generateTileTypes, TILE_COPIES, TILE_BAG_SIZE, COLOURS, INGREDIENTS } from './src/engine/tiles.js';
 import * as bot from './src/bots/basicBot.js';
@@ -414,7 +414,7 @@ check('claims exceed the plate clock ONLY during the finish-out round', () => {
 // Uncover every teapot cell, which is what arms isTeaDue - no two symbols share a
 // row or column, so this is the only cheap way to reach the threshold by hand.
 function armTeaTrigger(s) {
-  for (const idx of CUPCAKE_SYMBOL_CELLS) s.market[idx] = null;
+  for (const idx of TEAPOT_SYMBOL_CELLS) s.market[idx] = null;
 }
 
 check('a short bag deals what it has and the game does NOT end', () => {
@@ -459,7 +459,7 @@ check("a refill NEEDED against an already-empty bag ends the game as 'bagEmpty'"
   eq(s.gameOver, false, 'but play is NOT stopped on the spot - the round finishes');
   // NO POT IS POURED on that firing: no tiles are dealt, so the market is exactly
   // as the trigger found it.
-  eq(s.market.filter(t => t !== null).length, 25 - CUPCAKE_SYMBOL_CELLS.length,
+  eq(s.market.filter(t => t !== null).length, 25 - TEAPOT_SYMBOL_CELLS.length,
     'no tiles were dealt - the refresh did not happen');
 
   // The second seat finishes the round, and the game is scored there.

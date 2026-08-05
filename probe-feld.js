@@ -101,11 +101,14 @@ function runGame(playerConfigs) {
     // cardVp by subtraction. It used to take the cupcakes off as well, from when
     // they scored 1 VP each; they have scored nothing since 3 August, so
     // subtracting them was quietly UNDER-reporting card VP by the whole held
-    // stack. With the pantry goals deleted (4 August) the score is exactly
-    // stand + crumbs + cards, so this remainder is now the card VP and nothing
-    // else.
+    // stack. The pantry goals were deleted on the morning of 4 August, and
+    // TODAY'S SPECIALITY was added that afternoon - so the score is
+    // stand + crumbs + cards + speciality, and the Speciality has to come off
+    // here or this remainder silently absorbs it (up to 6 VP a claim, which would
+    // read as the cards suddenly getting more valuable).
     return { score: p.score, claims: p.claimedCards.length, standScore, cupcakes: p.cupcakes,
-             cardVp: p.score - standScore - p.crumbTray.length };
+             speciality: p.specialityVp || 0,
+             cardVp: p.score - standScore - p.crumbTray.length - (p.specialityVp || 0) };
   });
   const scores = perPlayer.map(p => p.score);
 

@@ -1,4 +1,4 @@
-import { createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, getValidSweeps, getValidPlacements, calculateFinalScores, getWinningPlayers, STAND_ROW_VALUES, getStartingCupcakes } from './src/engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, getValidSweeps, getValidPlacements, calculateFinalScores, getWinningPlayers, STAND_ROW_VALUES, getStartingCupcakes, getTastingMenusEnabled, setTastingMenusEnabled, getStandIngredients, menuDeficit, TASTING_MENU_VP, getTastingMenuCount, TASTING_MENUS } from './src/engine/game.js';
 // COLOURS is imported for the bag-skew baseline arithmetic, not for colour logic:
 // the per-colour share and the tiles-per-colour figure are both DERIVED here, so
 // a change to TILE_COPIES or to the colour list moves the report with it. The
@@ -163,10 +163,35 @@ function runGame(playerConfigs, botStrategy) {
       standTiles,
       crumbs: p.crumbTray.length,
       cupcakes: p.cupcakes,
-      // Card VP by subtraction, which is now exact: since the pantry goals were
-      // deleted (4 August) the score is stand + crumbs + cards and nothing else,
-      // so there is no objective term left to take off first.
-      cardVp: p.score - standScore - p.crumbTray.length,
+      // THE TASTING MENU. Read off the player rather than the collector so it is
+      // available even in a run with no metrics, and so metric 10's score make-up
+      // can be reconciled exactly.
+      tastingMenus: p.tastingMenus ? p.tastingMenus.length : 0,
+      tastingMenuVp: (p.tastingMenus ? p.tastingMenus.length : 0) * TASTING_MENU_VP,
+      // THE DEFICIT AT GAME END against the NEAREST dealt menu still on the table
+      // - one of metric 13's four headline readings, and the one that says whether
+      // four tiles is reachable. It has to be computed here rather than in the
+      // collector because it is a fact about the FINISHED stand, not an event.
+      // Infinity when no menu is left untaken, which is filtered out below rather
+      // than folded into an average.
+      finalDeficit: (() => {
+        const counts = getStandIngredients(p);
+        let nearest = Infinity;
+        for (const menu of (gameState.tastingMenus || [])) {
+          if (menu.takenBy !== null) continue;
+          const d = menuDeficit(counts, menu);
+          if (d < nearest) nearest = d;
+        }
+        return nearest;
+      })(),
+      // Card VP by subtraction. Still exact, but the flavour term has to come off
+      // as well: since 4 August the score is stand + crumbs + cards + flavour and
+      // nothing else. (The pantry goals were the term that used to sit here and
+      // were deleted that morning; Today's Speciality replaced them that afternoon,
+      // the Freshness Bonus replaced IT the same evening, and the Tasting Menu
+      // replaced that on 5 August.)
+      cardVp: p.score - standScore - p.crumbTray.length
+        - ((p.tastingMenus ? p.tastingMenus.length : 0) * TASTING_MENU_VP),
     };
   });
   const winners = getWinningPlayers(gameState);
@@ -207,7 +232,40 @@ function runGame(playerConfigs, botStrategy) {
     if (s.playerId >= 0 && s.playerId < turnsBySeat.length) turnsBySeat[s.playerId]++;
   }
 
+  // CONTESTED MENUS (metric 13.3): dealt menus that MORE THAN ONE player's
+  // finished stand satisfies. This is the race made countable, and it is the
+  // figure to be most sceptical of - unsteered it measures 0.02 per game, which is
+  // to say the unsteered bot produces no race at all.
+  //
+  // It is read off the FINISHED stands rather than logged, and that is a real
+  // approximation worth naming: a player who qualified, took the menu, and would
+  // still qualify at the end counts; a player who qualified only transiently
+  // cannot (stands never shrink, so in fact there is no such player - a stand only
+  // ever gains tiles). What it CANNOT see is order, which is what the take log is
+  // for.
+  //
+  // Also collected: how many players ended the game qualifying for at least one
+  // DEALT menu, taken or not, which is the 19.1%-unsteered figure the targets are
+  // projected from.
+  let contestedMenus = 0;
+  let playersQualifyingForAny = 0;
+  const standCounts = gameState.players.map(p => getStandIngredients(p));
+  const qualifiesAny = Array(gameState.players.length).fill(false);
+  for (const menu of (gameState.tastingMenus || [])) {
+    let qualifiers = 0;
+    for (let i = 0; i < standCounts.length; i++) {
+      if (menuDeficit(standCounts[i], menu) > 0) continue;
+      qualifiers++;
+      qualifiesAny[i] = true;
+    }
+    if (qualifiers >= 2) contestedMenus++;
+  }
+  for (const q of qualifiesAny) if (q) playersQualifyingForAny++;
+
   return {
+    contestedMenus,
+    playersQualifyingForAny,
+    menusDealtThisGame: (gameState.tastingMenus || []).length,
     gameState,
     steps,
     turnsPlayed: gameState.stats.turnsPlayed,
@@ -265,7 +323,18 @@ const gamesPerConfig = parseInt(process.argv[2]) || 10;
 const playerCount = parseInt(process.argv[3]) || 3;
 const botStrategy = process.argv[4] || 'fast';
 
-console.log(`Running ${gamesPerConfig} games with ${playerCount} players (${botStrategy} bot)...\n`);
+// THE A/B CONTROL ARM. A fourth argument of `nomenus` switches the Tasting Menu
+// off for the whole run, which is the only way to tell what the MODULE did from
+// what the game was already doing - and the two questions it answers are the two
+// the 5 August handoff asks to be checked: whether seat fairness (metric 12) and
+// last-as-a-share-of-winner (metric 10) survived it.
+//
+// This is the one legitimate caller of the setter. Nothing else may touch it: the
+// game always starts from the constant.
+const menusOff = process.argv[5] === 'nomenus';
+if (menusOff) setTastingMenusEnabled(false);
+
+console.log(`Running ${gamesPerConfig} games with ${playerCount} players (${botStrategy} bot)${menusOff ? ', TASTING MENUS OFF (A/B control arm)' : ''}...\n`);
 
 const games = [];
 const allPlayerMetrics = [];
@@ -577,10 +646,13 @@ const lastAsShare = games.map(g => {
   return top > 0 ? minOf(sc) / top : 1;
 });
 console.log(`  last as % of winner: mean=${(100 * meanOf(lastAsShare)).toFixed(1)}% (report BOTH - the ratio alone moves with score inflation)`);
-console.log(`Score make-up:     stand=${(totalStandScore / nPlayers).toFixed(1)}, cards=${(totalCardVp / nPlayers).toFixed(1)}, crumbs=${(totalCrumbs / nPlayers).toFixed(1)} VP/player`);
-console.log(`  (THOSE THREE ARE NOW THE WHOLE SCORE. Cupcakes stopped scoring on 3 August (~3 VP/player)`);
-console.log(`   and the ingredient objectives were deleted on 4 August (~3-6 VP/player), so expect means`);
-console.log(`   well below the 3 August figures for those two reasons before reading anything else in.)`);
+const totalMenuVp = sumOf(allPlayerMetrics.map(m => m.tastingMenuVp));
+console.log(`Score make-up:     stand=${(totalStandScore / nPlayers).toFixed(1)}, cards=${(totalCardVp / nPlayers).toFixed(1)}, crumbs=${(totalCrumbs / nPlayers).toFixed(1)}, menus=${(totalMenuVp / nPlayers).toFixed(1)} VP/player`);
+console.log(`  (THOSE FOUR ARE THE WHOLE SCORE. Cupcakes stopped scoring on 3 August (~3 VP/player) and`);
+console.log(`   the ingredient objectives were deleted on 4 August (~3-6 VP/player). The fourth term is the`);
+console.log(`   flavour module, which has been Today's Speciality, then the Freshness Bonus (9.0 VP/player,`);
+console.log(`   18.5% of score - measured TOO HIGH) and is now the Tasting Menu. TARGET ~4.4 VP/player,`);
+console.log(`   about 9% of score - half the freshness dose. See metric 13.)`);
 console.log(`  card:stand VP    = ${totalCardVp}:${totalStandScore} (card share ${pct(totalCardVp, totalCardVp + totalStandScore)})`);
 console.log(`  plate:crumb tiles= ${totalStandTiles}:${totalCrumbs} (crumb share ${pct(totalCrumbs, totalStandTiles + totalCrumbs)})`);
 console.log(`Game length (D3):  turns mean=${meanOf(turnsPerGame).toFixed(1)}, min=${minOf(turnsPerGame)}, max=${maxOf(turnsPerGame)}`);
@@ -677,5 +749,156 @@ console.log(`Score gradient first-to-last: ${scoreGradient.toFixed(2)} VP (was 1
 console.log(`Worst seat deviation: ${worstDeviation >= 0 ? '+' : ''}${worstDeviation.toFixed(1)} points - ${Math.abs(worstDeviation) <= 2 ? 'WITHIN TARGET' : 'OUTSIDE TARGET'}`);
 console.log(`  NOTE: at ${gamesPerConfig} games the 95% noise band is roughly +/-${(98 / Math.sqrt(gamesPerConfig)).toFixed(1)} points. The original`);
 console.log(`  finding used 3,000 games/config; treat anything under ~1,000 as indicative only.`);
+
+// ---------------------------------------------------------------------------
+// 13. THE TASTING MENU (5 August). Not from the 28 July list - it is the
+//     verification pass for the module that replaced the Freshness Bonus.
+//
+//     DEAD CARDBOARD IS THE NUMBER THIS WHOLE SECTION EXISTS FOR: the share of
+//     dealt menus that nobody ever takes. The unsteered floor - a bot that has
+//     never heard of the module - is 81%.
+//       well under 50%  the deck is reachable; tune TASTING_MENU_VP, not the deck;
+//       above 50%       the deck is too steep. Revise THE DECK, not the value;
+//       near 0%         every menu goes, which makes it a setup bonus rather than
+//                       a race - check the contested line before celebrating.
+//
+//     THE FOUR-TILE DECK FAILED THIS TEST AND WAS REPLACED ON 5 AUGUST, the same
+//     day it shipped. Measured at 2,000 games, 3p, basicBot, with the menu-aware
+//     bot wired up in both arms - so this is a clean like-for-like and the only
+//     thing that differs is the deck:
+//
+//                            4 tiles (2/2 + 2/1/1)   3 tiles (2/1 + 1/1/1)
+//       dead cardboard              57.9%                   21.9%
+//       menus per player             0.56                    1.04
+//       contested per game           0.131                   0.545
+//       qualifying for 1+           52.2%                   79.5%
+//       time to first menu     67.8% through            48.5% through
+//
+//     The four-tile row is condemned by the rule stated three lines above it: over
+//     50% dead with a bot that is genuinely steering is a deck problem. It also
+//     failed the LAST line of this section - at 67.8% of the way through a game,
+//     the first menu was landing as an end-of-game bonus rather than a pressure
+//     device, which is the module's stated job.
+//
+//     WHAT THE LIGHTER DECK COST was the dose, not reachability: 1.04 menus per
+//     player at the original 8 VP was 8.33 VP/player, against the 4.4 this section
+//     was built to aim at and the 9.0 that condemned the Freshness Bonus for being
+//     too much. SETTLED 5 AUGUST by dropping the card to 5 VP, which measures 4.52
+//     VP/player. See TASTING_MENU_VP in game.js.
+//
+//     BUT CHECK THE BOT FIRST IF IT READS HIGH. basicBot prices the menus at the
+//     sweep, placement and claim steps (MENU_*_SHARE). A high figure with those
+//     unwired measures the bot's blindness, not the rule - which is exactly what
+//     the 81% floor is.
+//
+//     THE PROJECTION THIS BUILD EXISTS TO CONFIRM OR KILL. A player makes about
+//     six claims and 44.3% of them finish exactly ONE TILE SHORT, so one redirected
+//     claim converts them: that projects roughly 0.55 menus per player, 4.4 VP,
+//     about 9% of score. THAT 0.55 IS A PROJECTION, NOT A MEASUREMENT. Revise
+//     TASTING_MENU_VP if the steered rate lands below 0.4 (raise toward 10-12) or
+//     above 0.8 (drop to 6).
+//
+//     TIME TO FIRST MENU is the module's stated job made measurable. If menus are
+//     all taken in the last two turns it is an end-of-game bonus rather than a
+//     pressure device and has failed, whatever the dose says.
+//
+//     AND WATCH BY SEAT. The Freshness Bonus got menus-by-seat flat and it must not
+//     regress; metric 12 is where a slope shows up as wins.
+// ---------------------------------------------------------------------------
+const menusDealt = sumOf(reports.map(r => r.menusDealt));
+const menusDead = sumOf(reports.map(r => r.menusDead));
+const menusTaken = menusDealt - menusDead;
+const menusPer = allPlayerMetrics.map(m => m.tastingMenus);
+const menuMaxes = reports.map(r => r.tastingMenusMax);
+// Which menus were dealt. All ten must come up evenly over a long run; anything
+// else is a bug in the deal, not a design finding.
+const menuDeal = {};
+for (const r of reports) {
+  for (const id of r.tastingMenuDeal) menuDeal[id] = (menuDeal[id] || 0) + 1;
+}
+// THE DISTRIBUTION, not just the mean (metric 13.2). A mean of 0.55 built from
+// every player taking about half a menu is a different game from one built from a
+// fifth of players taking three.
+const menuDist = {};
+for (const n of menusPer) menuDist[n] = (menuDist[n] || 0) + 1;
+// DEFICIT AT GAME END against the nearest menu still on the table (13.4). The
+// 44.3% one-tile-short figure is the whole basis of the 0.55 projection, so this
+// is where the projection is confirmed or killed.
+const deficits = allPlayerMetrics.map(m => m.finalDeficit).filter(d => Number.isFinite(d));
+const deficitDist = {};
+for (const d of deficits) deficitDist[Math.min(4, d)] = (deficitDist[Math.min(4, d)] || 0) + 1;
+const oneShort = deficitDist[1] || 0;
+const twoOrMoreShort = deficits.filter(d => d >= 2).length;
+// TIME TO FIRST MENU (13.7), as a fraction of each game's own length, because
+// games differ in length and an absolute turn number would blur that away.
+const firstMenuFraction = [];
+const takeFractions = [];
+for (const g of games) {
+  const len = Math.max(1, g.turnsPlayed);
+  const turns = (g.report.tastingMenuTurns || []).slice().sort((a, b) => a - b);
+  for (const t of turns) takeFractions.push(t / len);
+  if (turns.length > 0) firstMenuFraction.push(turns[0] / len);
+}
+const takenInLastThird = takeFractions.filter(f => f >= 2 / 3).length;
+// WHERE the claims fall, and the sweep split. Both repeated from the previous two
+// sections as the standing behavioural baselines.
+const thirds = [0, 0, 0];
+for (const g of games) {
+  const len = Math.max(1, g.turnsPlayed);
+  for (const turn of g.report.claimTurns || []) {
+    thirds[Math.min(2, Math.floor(3 * turn / len))]++;
+  }
+}
+const thirdsTotal = sumOf(thirds) || 1;
+const declarations = { colour: 0, symbol: 0 };
+for (const r of reports) addInto(declarations, r.sweepsByDeclaration);
+const declarationTotal = declarations.colour + declarations.symbol;
+
+console.log(`\n=== 13. THE TASTING MENU (${getTastingMenuCount(playerCount)} dealt = players+1, from a deck of ${TASTING_MENUS.length}, ${TASTING_MENU_VP} VP each) ===\n`);
+if (!getTastingMenusEnabled()) {
+  console.log(`MODULE DISABLED for this run (setTastingMenusEnabled(false)). Everything below reads zero`);
+  console.log(`by construction - this is the A/B control arm, so compare metrics 1-12 against a live run.`);
+}
+console.log(`DEAD CARDBOARD:    ${menusDead}/${menusDealt} dealt menus were never taken = ${pct(menusDead, menusDealt)}`);
+console.log(`  <-- THE number this module lives or dies by. Unsteered floor is 81%. Well under 50% means`);
+console.log(`      the deck is reachable; above 50% with a menu-aware bot condemns the DECK, not the VP.`);
+console.log(`      The four-tile deck read 57.9% here and was replaced on 5 August; three tiles reads ~22%.`);
+console.log(`Menus per player:  mean=${meanOf(menusPer).toFixed(2)}, min=${minOf(menusPer)}, max=${maxOf(menusPer)} (= ${(meanOf(menusPer) * TASTING_MENU_VP).toFixed(2)} VP/player)`);
+console.log(`  <-- TARGET was 0.55, projected against the FOUR-TILE deck. The three-tile deck lands near`);
+console.log(`      0.9-1.0, which is why the card dropped from 8 VP to 5 on 5 August. Watch the VP/player`);
+console.log(`      figure above against the ~4.4 target, not this rate alone. Unsteered: 0.19.`);
+console.log(`  distribution:    ${Object.keys(menuDist).sort((a, b) => a - b).map(k => `${k} menus: ${pct(menuDist[k], nPlayers)}`).join(', ')}`);
+console.log(`  most by ONE player in a game: mean=${meanOf(menuMaxes).toFixed(2)}, max=${maxOf(menuMaxes)}`);
+console.log(`  <-- watch the MAX: one player hoovering the deal is the failure mode TASTING_MENU_ONE_PER_TURN`);
+console.log(`      exists to fix. It ships OFF; turn it on and re-run before arguing about it.`);
+const contested = sumOf(games.map(g => g.contestedMenus));
+const qualifiers = sumOf(games.map(g => g.playersQualifyingForAny));
+console.log(`CONTESTED MENUS:   ${(contested / nGames).toFixed(3)} per game - dealt menus 2+ players' final stands meet`);
+console.log(`  <-- THE RACE, and the figure to be most sceptical of: unsteered it is 0.02 per game, i.e.`);
+console.log(`      no race at all. Read off finished stands, so it sees overlap but not order.`);
+console.log(`Players qualifying for at least one dealt menu: ${pct(qualifiers, nPlayers)} (19.1% unsteered)`);
+console.log(`DEFICIT AT GAME END against the nearest menu still on the table:`);
+console.log(`  qualified (0):   ${pct(deficitDist[0] || 0, deficits.length)}`);
+console.log(`  ONE TILE SHORT:  ${pct(oneShort, deficits.length)}   <-- 44.3% unsteered. This is the decision the module exists to create.`);
+console.log(`  2+ short:        ${pct(twoOrMoreShort, deficits.length)} (36.5% unsteered)`);
+console.log(`  (${nPlayers - deficits.length} player-results had no untaken menu left to measure against and are excluded)`);
+const menusBySeat = Array(playerCount).fill(0);
+for (const pm of allPlayerMetrics) menusBySeat[pm.seat] += pm.tastingMenus;
+console.log(`  by seat:         ${menusBySeat.map((v, i) => `seat ${i + 1}=${(v / nGames).toFixed(3)}`).join(', ')}`);
+console.log(`  <-- MUST be flat. The Freshness Bonus got this flat and it must not regress; the Teapot`);
+console.log(`      Track's equivalent line fell monotonically down the seating order, which condemned it.`);
+console.log(`TIME TO FIRST MENU: mean=${firstMenuFraction.length ? (100 * meanOf(firstMenuFraction)).toFixed(1) : 'n/a'}% of the way through the game (over ${firstMenuFraction.length} games that took one)`);
+console.log(`  menus taken in the LAST THIRD: ${pct(takenInLastThird, takeFractions.length)}`);
+console.log(`  <-- if menus are all taken at the death, this is an end-of-game bonus rather than a pressure`);
+console.log(`      device and has failed at its stated job, whatever the dose reads.`);
+console.log(`Menus dealt:       ${JSON.stringify(menuDeal)} (should be even over a long run)`);
+console.log(`Claims by game third: ${thirds.map(t => pct(t, thirdsTotal)).join(' / ')}`);
+console.log(`  (24 / 39 / 37% with no flavour module; 24.0 / 39.4 / 36.6% under Today's Speciality, whose`);
+console.log(`   failure to move this AT ALL is half of why it was replaced. This module's urgency is a race`);
+console.log(`   against an opponent rather than against the clock, so read this as description.)`);
+console.log(`Sweep declarations:   colour ${pct(declarations.colour, declarationTotal)} / ingredient ${pct(declarations.symbol, declarationTotal)}`);
+console.log(`  (43.8 / 43.4 / 44.4% colour with no module; 42.8 / 42.9 / 43.4% under Today's Speciality -`);
+console.log(`   a one-point move, which was the other reading that condemned it. A menu names INGREDIENTS,`);
+console.log(`   so this should swing toward ingredient sweeps if the bot is really steering.)`);
 
 console.log(`\nCompleted ${gamesPerConfig} games in ${elapsed}ms (${(elapsed / gamesPerConfig).toFixed(1)}ms/game)`);

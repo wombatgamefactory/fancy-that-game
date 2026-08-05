@@ -44,13 +44,22 @@ node src/engine/game.js
   2. **PLACE**: Position tiles on your 5×5 personal board
   3. **SPEND**: Optionally spend cupcakes (move a tile, reserve a card, remove an
      empty plate)
-  4. **CLAIM**: Earn a card by completing its colour pattern on your board
+  4. **CLAIM**: Earn a card by completing its colour pattern on your board. If the
+     tile you remove carries **your own Speciality ingredient**, also score
+     whatever the teapot is standing on
   5. **END OF TURN**: Deal 1 card to the card market, or - when 4 of the 5 teapot
      symbols are showing - order a fresh pot of tea instead, which flushes the card
      row and refreshes the whole tile market. A refresh deals as many tiles as the
      bag holds; a partly filled market is played on, not an ending
 
-- **Scoring**: Each claimed card scores points = its ingredient's track level (1–5)
+- **Today's Speciality**: each player is dealt their OWN ingredient face up at
+  setup, all different. Removing a tile of *your* ingredient when you claim scores
+  the value the teapot is on. The teapot is **shared**: every fresh pot moves it
+  one space along a track that is 6/1 at 2 players, 6/3/1 at 3 and 6/4/2/1 at 4,
+  so everyone's Speciality is worth the same at the same moment and everyone's
+  goes cold together when it runs off the end
+- **Scoring**: cake stand rows + 1 per crumb + each claimed card's printed VP +
+  Today's Speciality. Cupcakes score nothing - they are the first tiebreaker
 - **Cards**: 50 unique patisserie cards with specific colour patterns
 - **Tiles**: 5 colours × 5 ingredients = 25 types, 4 copies each = 100 tiles
 - **Cupcakes**: spend 1 to move a tile, 1 to reserve a card, 2 to take an extra

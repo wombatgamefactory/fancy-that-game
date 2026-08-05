@@ -1,4 +1,5 @@
 import { BOARD_SIZE, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, EMPTY_PLATES_PER_PLAYER, CARDS_TO_END_2P, REWARD_CARDS, COLOURS, INGREDIENTS, createTileBag } from './tiles.js';
+import { TASTING_MENUS, satisfies, deficit } from './tastingMenus.js';
 
 // Side length of the TILE MARKET board: 5×5 = 25 cells at EVERY player count.
 // (28 July: the market was 6×6 for 3-4 players and 5×5 for 2; the per-player-count
@@ -11,10 +12,28 @@ export const MARKET_SIZE = 5;
 // Cake-stand row scoring: each row has its OWN cumulative value table, indexed to
 // match the stand array (0 = bottom/4 plates, 3 = top/1 plate). A row holding N
 // tiles scores STAND_ROW_VALUES[rowIndex][N-1] (0 when empty). Per-tile values
-// escalate within the bottom row (1/3/8/10) but row entry falls with row length
+// escalate within the bottom row (1/3/8/14) but row entry falls with row length
 // (bottom 1, top 5): short rows are safe, the bottom row is a deep gamble. Max
-// stand score is 50 (22 + 14 + 9 + 5).
-export const STAND_ROW_VALUES = [[1, 4, 12, 22], [2, 7, 14], [3, 9], [5]];
+// stand score is 50 (26 + 12 + 7 + 5).
+//
+// REVALUED 5 AUGUST (was 22 + 14 + 9 + 5, bottom 1/4/12/22). Under the old
+// table the full bottom row (4 tiles of ONE ingredient, the hardest structure
+// in the game and the one Freshness argues against) paid 22 VP + 1 cupcake
+// while the top three rows together (6 tiles across THREE ingredients) paid
+// 28 VP + 3 cupcakes - the deep commitment was strictly the worse deal, and
+// basicBot completed the bottom row in only 14-20% of stands. This table flips
+// the comparison (bottom 26 vs top-three 24) and back-loads the row so the
+// reward is completion-shaped: three deep pays 12, the same as a FULL middle
+// row, and the fourth tile pays +14, the biggest single placement in the game.
+// Measured over 400 games/cell at 2/3/4p (ab-stand-2026-08-05.mjs, all six
+// candidate cells recorded there): bottom-row completion ~33% of stands, total
+// stand VP unchanged at ~24/player. Known cost, common to EVERY candidate that
+// made the bottom row worth feeding: the 3-plate middle row's completion rate
+// falls to 10-16% (tile-budget substitution - tiles sent deep cannot also go
+// wide), which is why its table got fatter increments (2/4/6) rather than the
+// old 2/5/7-shaped middle. The optional completion cupcake on bottom plate 4
+// (cell C) measured clean but was NOT adopted - CUPCAKE_PLATES is unchanged.
+export const STAND_ROW_VALUES = [[1, 4, 12, 26], [2, 6, 12], [3, 7], [5]];
 
 // Teapot symbols printed on the tile-market board. FIVE cells carry a printed
 // teapot symbol; a symbol is "visible" when its cell is currently empty (no
@@ -43,7 +62,13 @@ export const STAND_ROW_VALUES = [[1, 4, 12, 22], [2, 7, 14], [3, 9], [5]];
 //
 // They live here as config, not as hardcoded logic, precisely so the art team can
 // move them without touching any code that reads them.
-export const CUPCAKE_SYMBOL_CELLS = [3, 5, 12, 19, 21];
+//
+// RENAMED 4 AUGUST, from CUPCAKE_SYMBOL_CELLS (and getVisibleCupcakeSymbols to
+// getVisibleTeapotSymbols). The name predated the symbols becoming teapots, and
+// the Teapot Track arriving the same day would have left two unrelated things
+// called teapot in the rules and cupcake in the code. Pure rename, no behaviour
+// change. CUPCAKE_PLATES is deliberately untouched - those really are cupcakes.
+export const TEAPOT_SYMBOL_CELLS = [3, 5, 12, 19, 21];
 
 // Visible teapot symbols that force a fresh pot of tea at the END of a turn.
 // This is the designated tuning knob for refresh frequency - never additional
@@ -51,7 +76,7 @@ export const CUPCAKE_SYMBOL_CELLS = [3, 5, 12, 19, 21];
 // UI all share.
 //
 // Adopted 30 July: 4 of the 5 symbols must be visible. Since no two symbols share
-// a row or column (see CUPCAKE_SYMBOL_CELLS), uncovering each one costs a
+// a row or column (see TEAPOT_SYMBOL_CELLS), uncovering each one costs a
 // separate sweep, so the trigger demands four symbol-clearing sweeps. Simulation
 // (200 games/config, 30 July) put the flush at ~6.5-7.3 tiles left on the board
 // against a 5-7 design target; the previous 3-of-4 gate flushed at ~9 and a
@@ -69,6 +94,171 @@ export const REFRESH_THRESHOLD = 4;
 // removes that variability (and most of the refresh's cupcake inflation) so the
 // flush is ordered for the board state, not farmed for the payout.
 export const TEA_POT_REWARD = 1;
+
+// ---------------------------------------------------------------------------
+// THE TASTING MENU - a race for a fixed set of public cards that never come back.
+// Adopted 5 August, REPLACING the Freshness Bonus outright, which had replaced
+// Today's Speciality the previous afternoon.
+//
+// THE RULE, in full. Deal PLAYERS + 1 Tasting Menus face up beside the market at
+// setup - 3 / 4 / 5 at 2 / 3 / 4 players, so there is always one more menu on the
+// table than there are people to take them, and none of them is anybody's by
+// default. They are public from turn one and are never replaced. Each names
+// either two ingredients at 2 each or one at 2 and two at 1, so every card
+// demands exactly FOUR TILES. The moment your CAKE STAND shows those ingredients
+// you take the card - immediately, free, automatic; it costs no action, no
+// cupcake and no part of your turn, and it is not a decision. Each menu can only
+// ever be taken by ONE player: first to qualify wins it and it is out of the game.
+// Ingredients are NOT consumed, so the same tiles can satisfy more than one menu.
+// Only the cake stand counts - tiles in the crumb tray are invisible. Worth
+// TASTING_MENU_VP each at the end.
+//
+// THAT IS THE WHOLE RULE. There is no reset, no per-period timing, and NO
+// INTERACTION WITH THE POT OF TEA - which is the entire point. Both previous
+// attempts built urgency out of something that came back, and a reward on a reset
+// cycle is by construction never your last chance at it. The device here is
+// borrowed from outside the game (Splendor's nobles, and the same shape in
+// Century and Patchwork): the thing you are racing for will be GONE, taken by a
+// NAMED OPPONENT, and will not return. If this module ever grows a line that
+// touches brewFreshPot, something has gone wrong.
+//
+// WHY THE TWO IT REPLACED FAILED, kept written down so neither is re-proposed:
+//   - TODAY'S SPECIALITY plus the Teapot Track was a decaying reward on a clock
+//     nobody controlled. It handed seat 1 up to +4.3 points of win share and did
+//     not move claims-by-game-third by a single point.
+//   - THE FRESHNESS BONUS was first-to-claim each ingredient, reset every pot. It
+//     fixed the seat bias and delivered the game's first anti-runaway, but 77.6%
+//     of claims won a token: it added points without adding a decision, and at
+//     9.0 VP per player (18.5% of score) it was measured too high.
+//
+// The deck itself is src/engine/tastingMenus.js - generated from a ring
+// construction rather than typed out, so it stays balanced if the ingredient list
+// changes. Do not hand-retype it.
+//
+// A Tasting Menu is worth this at game end. IT WAS 8 UNTIL 5 AUGUST 2026 and is
+// now 5 - Dean's call, taking the measured answer below.
+//
+// WHY IT STARTED AT 8: rather than the Splendor-equivalent 10 (a noble is ~20% of
+// a winning Splendor score; 10/49.2 was 20.5% here) because the first build should
+// under-dose - raising this after playtesting is trivial, discovering the module
+// has eaten the game is not. The floor was about 6: below that the card is worth
+// less than the 2-4 VP of stand and card value a player gives up by redirecting a
+// claim, and nobody chases it, which is exactly how the Freshness Bonus ended up
+// doing nothing.
+//
+// THEN THE DECK CHANGED UNDER THAT NUMBER ON 5 AUGUST. Both halves lost a tile -
+// 2/2 + 2/1/1 became 2/1 + 1/1/1 - because the four-tile deck failed its own
+// reachability test (57.9% dead cardboard against a menu-aware bot, where over 50%
+// was the stated condemnation). Three tiles fixed that decisively (21.9%), and the
+// cost landed here: menus per player went 0.56 -> 1.04, so at 8 VP the module was
+// dosing 8.33 VP/player. For scale, this section was built to aim at 4.4, and the
+// Freshness Bonus was condemned as too heavy at 9.0.
+//
+// SO 8 WAS TOO HIGH FOR THE THREE-TILE DECK, AND 5 IS THE MEASURED ANSWER - 2,000
+// games, 3p, basicBot: dose 4.52 VP/player against the 4.4 target, dead cardboard
+// 32.2% (still nowhere near the 50% line), contested menus 0.446 (still 3.4x the
+// four-tile deck's 0.131). The old floor of 6 was reasoned from what a player
+// gives up by redirecting a claim on a FOUR-tile card; a three-tile card redirects
+// less, so the floor moves down with it and 5 sits above it.
+//
+// 5 ALSO HALVES A SEAT PROBLEM THIS MODULE CREATES. Metric 12 at 3p: the base game
+// is +1.7 for seat 1 (inside target), the four-tile menu +4.2, the three-tile menu
+// at 8 VP +7.5, and at 5 VP +4.4. A race to be first to a reachable target favours
+// the seat that acts first, and lighter cards make the races shorter, so turn order
+// decides more of them. For scale, the Teapot Track was deleted for +4.3. Dropping
+// to 5 gets back to the four-tile deck's cost but NOT inside the target - that part
+// is structural and needs a different device, not a different number.
+//
+// REVISE IT IF: the steered rate comes in below 0.4 menus per player (raise) or
+// above 0.8 (drop). If DEAD CARDBOARD goes back above 50% with a menu-aware bot,
+// revise the DECK instead, not this. See simulate.js metric 13.
+export const TASTING_MENU_VP = 5;
+
+// PLAYERS PLUS ONE - so 3 / 4 / 5 menus dealt at 2 / 3 / 4 players. Adopted
+// 5 August, changed from a flat one per player.
+//
+// THE SURPLUS IS THE POINT, and it is the standard fix for the shape of race this
+// module runs: with exactly one card per player, a player who loses every race
+// still had a card's worth of the deal notionally "theirs", and the arithmetic
+// quietly promises everyone one. A surplus of one breaks that promise honestly -
+// there are more menus than players, so no menu is anybody's by default, and the
+// question is which of them you can actually reach. It is the same reason
+// Splendor deals nobles at players + 1.
+//
+// WHAT IT COSTS, measured before the change: dealing MORE barely moves dead
+// cardboard. At 3p, going from 3 dealt to 7 lifted the share of players
+// qualifying for at least one from 18.8% to 33.5% while dead cardboard stayed
+// flat at 80-81% unsteered, because the extra cards are unreachable in the same
+// proportion as the rest. So expect this to raise the DOSE and the qualifying
+// share while leaving the dead-cardboard percentage roughly where it was - and
+// read the dead-card COUNT alongside the percentage, because the denominator has
+// just grown.
+export const TASTING_MENU_SURPLUS = 1;
+
+// How many menus a game of `playerCount` deals. The single place the rule is
+// expressed - createGame, the metrics header and the test suite all call it, so
+// none of them can drift from the others.
+export function getTastingMenuCount(playerCount) {
+  return playerCount + TASTING_MENU_SURPLUS;
+}
+
+// Dean's original statement of the rule capped a player at one Tasting Menu per
+// turn. Measured incidence of qualifying for two at once was 0.7% UNSTEERED, but a
+// steering player can deliberately build an overlapping pair (t1 and t6 share a
+// lemon and need only five tiles between them), so the cap matters more once bots
+// chase menus - and on the three-tile deck they do: 27.2% of players now finish
+// with two or more menus. Still shipped OFF, behind this flag, so it can be A/B'd
+// rather than argued about, but it is a live question now rather than a remote
+// one.
+export const TASTING_MENU_ONE_PER_TURN = false;
+
+// THE A/B SEAM for the whole module, following the pattern the Freshness Bonus
+// used because the probes depend on it: one call switches the Tasting Menu off,
+// so a single simulation run can measure with and without it. When disabled no
+// menus are dealt and every hook is a no-op - see isTastingMenuInPlay, which is
+// the one predicate engine, bots and UI all read. PRODUCTION CODE MUST NEVER CALL
+// THE SETTER; the game always starts from the constant.
+export const TASTING_MENU_ENABLED = true;
+let tastingMenusEnabled = TASTING_MENU_ENABLED;
+export function getTastingMenusEnabled() { return tastingMenusEnabled; }
+export function setTastingMenusEnabled(on) { tastingMenusEnabled = !!on; }   // tests and harnesses only
+
+// Deal `count` menus at random without replacement from the ten. Each dealt entry
+// is a FRESH object carrying its own `takenBy`, so the shared TASTING_MENUS
+// constant is never written to - the deck is read-only for the life of the
+// process and a game cannot poison the next one.
+//
+// Fisher-Yates over a copy, matching createTileBag and initGameDeck.
+function dealTastingMenus(count) {
+  const pool = [...TASTING_MENUS];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, Math.min(count, pool.length)).map(menu => ({
+    id: menu.id,
+    shape: menu.shape,
+    need: { ...menu.need },
+    // null until somebody qualifies, then the player id - and it NEVER reverts.
+    // This module has no reset of any kind.
+    takenBy: null,
+  }));
+}
+
+// A pinned deal from the harness: anything naming a real menu id is used
+// verbatim, so a probe or a test can force a known setup. Same normalisation as
+// the random deal, so a pinned entry cannot smuggle a shared `need` object or a
+// pre-set takenBy onto the table.
+function normaliseTastingMenus(pinned) {
+  const out = [];
+  for (const entry of pinned) {
+    const id = typeof entry === 'string' ? entry : entry && entry.id;
+    const menu = TASTING_MENUS.find(m => m.id === id);
+    if (!menu) continue;
+    out.push({ id: menu.id, shape: menu.shape, need: { ...menu.need }, takenBy: null });
+  }
+  return out;
+}
 
 // Cupcake cost of each claim BEYOND the first in a turn (design doc §6).
 //
@@ -115,8 +305,8 @@ export function setExtraClaimCupcakeCost(cost) {
 // Shared by the engine (the tea pot), the bots (tea timing), and the UI
 // (rendering + pot preview) so all three read visibility the same way: purely
 // from cell emptiness, with no separate symbol state.
-export function getVisibleCupcakeSymbols(gameState) {
-  const cells = CUPCAKE_SYMBOL_CELLS;
+export function getVisibleTeapotSymbols(gameState) {
+  const cells = TEAPOT_SYMBOL_CELLS;
   let visible = 0;
   for (const idx of cells) {
     if (gameState.market[idx] === null || gameState.market[idx] === undefined) visible++;
@@ -129,13 +319,18 @@ export function getVisibleCupcakeSymbols(gameState) {
 // stand array (rowIndex 0 = bottom/4-plate row … rowIndex 3 = top/1-plate row;
 // plateIndex counts plates left→right from the row's locking plate). These are
 // the SECOND plate of every multi-plate row plus the top row's single plate —
-// bottom[1], second[1], third[1], top[0] — the four plates the board art marks
-// with a cupcake icon (images/cake_stand.png). Plating onto one grants 1 cupcake
-// from the supply — always (there is no cupcake cap; see plateTileOntoRow). The
-// opening-plate variant was rejected in playtesting, so no row's first plate
-// (plateIndex 0, except the top) appears.
+// bottom[1], second[1], third[1], top[0] — plus, since 5 August, the bottom
+// row's FOURTH plate. That completion cupcake rode in with the same day's
+// STAND_ROW_VALUES revaluation (see that comment): the bottom row was
+// cupcake-poor per tile (1 per 4 tiles against 3 per 6 across the upper rows),
+// and putting the second one on the LAST plate keeps it completion-shaped —
+// measured clean as cell C of ab-stand-2026-08-05.mjs. Plating onto one grants
+// 1 cupcake from the supply — always (there is no cupcake cap; see
+// plateTileOntoRow). The opening-plate variant was rejected in playtesting, so
+// no row's first plate (plateIndex 0, except the top) appears.
 export const CUPCAKE_PLATES = [
   { rowIndex: 0, plateIndex: 1 },
+  { rowIndex: 0, plateIndex: 3 },
   { rowIndex: 1, plateIndex: 1 },
   { rowIndex: 2, plateIndex: 1 },
   { rowIndex: 3, plateIndex: 0 },
@@ -361,7 +556,7 @@ function sampleTurnStart(gameState) {
     gameState.stats.turnsPlayed,
     gameState.currentPlayerIndex,
     gameState.cardMarket.length,
-    getVisibleCupcakeSymbols(gameState),
+    getVisibleTeapotSymbols(gameState),
     isTeaDue(gameState),
   );
 }
@@ -428,13 +623,27 @@ function plateTileOntoRow(gameState, player, rowIndex, tile) {
   noteCupcakeSupply(gameState);
 }
 
-export function createGame(playerConfigs, statsCollector = null) {
+// The third argument is an OPTIONS BAG, added 4 August so a harness can pin the
+// setup deal without reaching into the state after the fact.
+// `tastingMenus` names which Tasting Menus are dealt this game - an array of menu
+// ids (or of menu objects), used VERBATIM so a probe can pin a deal. Omit it and
+// the deal is random, exactly as the physical setup works.
+export function createGame(playerConfigs, statsCollector = null, { tastingMenus = null } = {}) {
   const bag = createTileBag();
   const playerCount = playerConfigs.length;
   // The market is MARKET_SIZE square at every player count. It is still copied
   // onto the game state because engine, bots and UI all read gameState.marketSize
   // rather than importing the constant.
   const marketSize = MARKET_SIZE;
+
+  // THE TASTING MENU: which menus are on the table this game. An EMPTY array when
+  // the module is switched off, so the shape on the state never changes and no
+  // consumer has to test for two different things.
+  const dealtMenus = !tastingMenusEnabled
+    ? []
+    : (Array.isArray(tastingMenus)
+      ? normaliseTastingMenus(tastingMenus)
+      : dealTastingMenus(getTastingMenuCount(playerCount)));
 
   const players = playerConfigs.map((config, index) => ({
     id: index,
@@ -463,6 +672,15 @@ export function createGame(playerConfigs, statsCollector = null) {
     // reserve is deleted — and is capped at RESERVE_LIMIT (1). Emptied by claim
     // (completing one), or left to score 0.
     reservedCards: [],
+    // TASTING MENUS taken, as card ids in the order they were taken. A menu can
+    // only ever be taken once by one player, so this is short - 0 or 1 entries in
+    // most games - and every id in it appears on exactly one player's list.
+    //
+    // The COUNT is what scores (calculateFinalScores multiplies by
+    // TASTING_MENU_VP); the ids are kept because they cost nothing and they are
+    // what the UI and the metrics read to say WHICH menu went to whom, which is
+    // the half of the race that makes it feel personal.
+    tastingMenus: [],
     score: 0,
   }));
 
@@ -557,6 +775,19 @@ export function createGame(playerConfigs, statsCollector = null) {
     cardsNeededToEnd,
     playerCount,
     marketSize,
+    // --- THE TASTING MENU (5 August) -----------------------------------------
+    // The dealt cards, in deal order. Each entry is { id, shape, need, takenBy },
+    // and takenBy goes from null to a player id exactly once and NEVER back. This
+    // is the whole of the module's table state: there is no second container, no
+    // per-period map and nothing a pot of tea touches.
+    //
+    // Empty when the module is off, which is the one thing isTastingMenuInPlay
+    // tests, so nothing has to go looking through the players to find out.
+    //
+    // MUTABLE ENTRIES - see mctsBot's cloneState. A shallow copy of this array
+    // shares the entry objects, so a rollout that sets takenBy would take a real
+    // card off the real table. It must be mapped, not spread.
+    tastingMenus: dealtMenus,
     // --- PER-TURN CUPCAKE ALLOWANCES (3 August) -----------------------------
     // Four outlets, four allowances. They are INDEPENDENT: buying an extra tile
     // at the sweep step does not stop you moving a tile at the spend step, nor
@@ -606,6 +837,12 @@ export function createGame(playerConfigs, statsCollector = null) {
     metrics(gameState)?.recordCupcakeGain(player.id, 'start', player.cupcakes);
   }
   noteCupcakeSupply(gameState);
+
+  // Metric: which menus were dealt this game. Over a long run all ten must come
+  // up evenly - anything else is a bug in the deal, not a design finding - and
+  // the deal is also the DENOMINATOR for dead cardboard, the number this module
+  // lives or dies by (see simulate.js metric 13).
+  metrics(gameState)?.recordTastingMenuDeal(dealtMenus.map(m => m.id));
 
   for (const card of cardMarket) {
     metrics(gameState)?.recordCardMarketEntry(card.id, 0);
@@ -723,7 +960,14 @@ export function sweep(gameState, rowOrCol, isRow, declaration, declarationType) 
 
   gameState.bonusTileAvailable = isLineClear;
 
-  metrics(gameState)?.recordSweep(sweptTiles.length);
+  // The declaration TYPE is passed since 4 August: any ingredient-scoring module
+  // should pull sweeps away from colour and toward ingredient, and the
+  // colour/symbol split is how far that moved is read. Baselines to compare
+  // against: 43.8 / 43.4 / 44.4% colour at 2/3/4p with no such module at all, and
+  // 42.8 / 42.9 / 43.4% under Today's Speciality - which moved it about one point
+  // and was one of the two readings that condemned it. Nothing in play reads it
+  // back.
+  metrics(gameState)?.recordSweep(sweptTiles.length, declarationType);
 
   // A line-clearing sweep pauses in the sweep phase to resolve the bonus tile
   // (see takeBonusTile / declineBonusTile), each of which then transitions into
@@ -922,7 +1166,65 @@ export function canBuyExtraTile(gameState) {
 // cells, so it reaches REFRESH_THRESHOLD faster. The last lap is deliberately a
 // short one.
 export function isTeaDue(gameState) {
-  return getVisibleCupcakeSymbols(gameState) >= REFRESH_THRESHOLD;
+  return getVisibleTeapotSymbols(gameState) >= REFRESH_THRESHOLD;
+}
+
+// ---------------------------------------------------------------------------
+// THE TASTING MENU ACCESSORS. The bot, the UI and the engine must ALL go through
+// these - none of the three may re-derive the rule and then disagree with it. The
+// Freshness Bonus build got this right and it is why the module was cheap to
+// remove; this one has the same shape for the same reason.
+// ---------------------------------------------------------------------------
+
+// Is the module in play at all? False only when it has been switched off at the
+// seam. Kept distinct from "are any menus left" because the UI needs to know
+// whether to draw the panel, and a game in which every menu has been taken is
+// still a game the module ran in.
+export function isTastingMenuInPlay(gameState) {
+  return !!gameState.tastingMenus && gameState.tastingMenus.length > 0;
+}
+
+// Ingredient multiset of a player's CAKE STAND only - { lemon: 2, almond: 1 }.
+// THE CRUMB TRAY IS INVISIBLE TO TASTING MENUS, and this function is the single
+// place that rule is expressed.
+export function getStandIngredients(player) {
+  const counts = {};
+  for (const row of player.stand) {
+    for (const tile of row.tiles) {
+      counts[tile.ingredient] = (counts[tile.ingredient] || 0) + 1;
+    }
+  }
+  return counts;
+}
+
+// Does this player's stand meet this menu right now? Ingredients are NOT
+// consumed, so this is a pure read: a menu the player has already taken still
+// reads true, and two overlapping menus can both be satisfied by tiles that
+// overlap.
+export function qualifiesForMenu(player, menu) {
+  return satisfies(getStandIngredients(player), menu);
+}
+
+// How many tiles short of `menu` this player's stand is - 0 when they qualify.
+// The natural heuristic, and what the "one tile short" highlight in the UI and
+// the bots' deficit terms are both reading.
+export function getMenuDeficit(player, menu) {
+  return deficit(getStandIngredients(player), menu);
+}
+
+// Every menu STILL ON THE TABLE that this player now qualifies for. The engine's
+// award loop and the UI both iterate exactly this.
+export function getClaimableMenus(gameState, player) {
+  if (!isTastingMenuInPlay(gameState)) return [];
+  const counts = getStandIngredients(player);
+  return gameState.tastingMenus.filter(menu => menu.takenBy === null && satisfies(counts, menu));
+}
+
+// The menus nobody has taken yet, in deal order. For the UI panel and for the
+// bots' "what is still worth racing for" read.
+export function getAvailableMenus(gameState) {
+  if (!isTastingMenuInPlay(gameState)) return [];
+  return gameState.tastingMenus.filter(menu => menu.takenBy === null);
 }
 
 // THE FRESH POT OF TEA, in full. It happens INSTEAD OF the end-of-turn card deal
@@ -1012,7 +1314,7 @@ function brewFreshPot(gameState, { isBackstop, turn }) {
   // tile flush covers them again) because the metrics log symbols and reward as
   // separate fields precisely so a payout change like this one cannot rewrite
   // the cadence history.
-  const potSize = getVisibleCupcakeSymbols(gameState);
+  const potSize = getVisibleTeapotSymbols(gameState);
   activePlayer.cupcakes += TEA_POT_REWARD;
   metrics(gameState)?.recordCupcakeGain(activePlayer.id, 'pot', TEA_POT_REWARD);
   noteCupcakeSupply(gameState);
@@ -1081,6 +1383,12 @@ function brewFreshPot(gameState, { isBackstop, turn }) {
     }
     collector.recordBagFlush(returned.map(t => t.colour), dealtColours, immediateReturns);
   }
+
+  // (d) THE POT TOUCHES THE TASTING MENUS NOT AT ALL, and that absence is the
+  // rule rather than an omission. The Freshness Bonus put every token back here;
+  // the Tasting Menu has no reset of any kind, because a reward on a reset cycle
+  // is by construction never your last chance at it. If a line reappears below
+  // this comment, the module has lost the one property it was built for.
 }
 
 export function place(gameState, placements) {
@@ -1256,6 +1564,37 @@ export function claim(gameState, cardId, removedBoardIndex, destination) {
   } else {
     player.crumbTray.push(removedTile);
   }
+
+  // THE TASTING MENU. The trigger is the STAND, not the removal: a menu reads the
+  // ingredients on your cake stand, so only a 'row' destination can change
+  // qualification and a tile sent to the crumb tray can never complete one.
+  //
+  // IT SITS AFTER THE DESTINATION BRANCH, and therefore after every validation has
+  // passed, for two reasons that both matter: a rejected claim must never score,
+  // and the stand must ALREADY CONTAIN the new tile when the check runs.
+  //
+  // VERIFIED 5 AUGUST: claim's 'row' branch is the only caller of plateTileOntoRow
+  // and plateTileOntoRow is the only code path that pushes onto a stand row's
+  // tiles array, so this is genuinely the only route by which a tile can enter a
+  // cake stand. If a spend-step effect, a bonus tile or an end-of-game placement
+  // ever gains one, the check must fire there too - a player who qualifies
+  // silently and is never awarded looks like bad luck, not like a crash.
+  //
+  // FIRST TO QUALIFY WINS IT, AND IT NEVER COMES BACK. takenBy goes null -> id
+  // exactly once. A second player meeting the same menu scores nothing; the loop
+  // below cannot even see the card, because getClaimableMenus filters on takenBy.
+  //
+  // INGREDIENTS ARE NOT CONSUMED, so the loop takes EVERY menu the stand now meets
+  // rather than stopping at the first - unless TASTING_MENU_ONE_PER_TURN is on.
+  if (tastingMenusEnabled && destination.type === 'row') {
+    for (const menu of getClaimableMenus(gameState, player)) {
+      menu.takenBy = player.id;
+      player.tastingMenus.push(menu.id);
+      metrics(gameState)?.recordTastingMenuTaken(player.id, menu.id, gameState.stats.turnsPlayed);
+      if (TASTING_MENU_ONE_PER_TURN) break;
+    }
+  }
+
   player.board[removedBoardIndex] = { type: 'blocked' };
   player.claimedCards.push(cardId);
   // A claim breaks the empty-market deadlock watch (see the backstop).
@@ -1264,7 +1603,14 @@ export function claim(gameState, cardId, removedBoardIndex, destination) {
   // fromReserve feeds the claims-from-reserve fraction metric (6). The row length
   // is passed for metric 3's "row size when the FIRST claim occurs" - read here,
   // before the splice below, so a market claim counts the card it is taking.
-  metrics(gameState)?.recordCardClaimed(cardId, gameState.stats.turnsPlayed, fromReserve, gameState.cardMarket.length);
+  //
+  // The fifth argument was the TEA PERIOD, added for the Freshness Bonus so its
+  // per-period race had a denominator. The Tasting Menu has no periods - it has no
+  // reset at all - so the argument is gone with the module that wanted it. Claims
+  // are still counted; they are simply not bucketed by anything.
+  metrics(gameState)?.recordCardClaimed(
+    cardId, gameState.stats.turnsPlayed, fromReserve, gameState.cardMarket.length,
+  );
   // A reserved card already recorded its market exit when it was reserved.
   if (!fromReserve) {
     metrics(gameState)?.recordCardMarketExit(cardId, gameState.stats.turnsPlayed);
@@ -2077,6 +2423,13 @@ export function calculateFinalScores(gameState) {
       if (card) score += card.vp;
     }
 
+    // The Tasting Menu (5 August). Every menu is worth the same flat
+    // TASTING_MENU_VP whenever it was taken - both card shapes demand exactly four
+    // tiles, which is what lets one value cover the deck - so the count is the
+    // whole record and there is no accumulate-as-you-earn term to keep in step.
+    // Zero for the whole game when the module is off.
+    score += player.tastingMenus.length * TASTING_MENU_VP;
+
     // (Ingredient objectives scored 3 VP per pair here until 4 August. The pantry
     // goals are deleted - see the note at the top of this file. Expect mean
     // scores roughly 3-6 VP per player lower than the 3 August figures purely
@@ -2132,3 +2485,7 @@ export function getWinningPlayers(gameState) {
 }
 
 export { BOARD_SIZE, COLOURS, INGREDIENTS, REWARD_CARDS, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, EMPTY_PLATES_PER_PLAYER };
+// The Tasting Menu deck and its two pure predicates, re-exported so every
+// consumer reads the module through game.js exactly as it reads the rest of the
+// rules, rather than half of it from a second file.
+export { TASTING_MENUS, satisfies as satisfiesMenu, deficit as menuDeficit };
