@@ -22,10 +22,10 @@ A 100% JavaScript implementation of the Fancy That! board game for 2–4 players
 4. **Play**:
    - **Human players**: Click a market tile to SWEEP, then click your board cells to PLACE tiles
    - **AI players**: Watch them play automatically with a 500ms pause between moves
-   - The game ends when the empty plate pool runs out, the bag is empty at the
-     moment the tile market needs refilling, or a player's board is full. Whichever
-     fires, the round is finished out so every player has had the same number of
-     turns, and only then is the game scored
+   - The game ends when a player's board is completely full, or when no tiles are
+     left in the supply (market and bag both empty). Whichever fires, the round is
+     finished out so every player has had the same number of turns, and only then
+     is the game scored
 
 ### Run Headless (Node)
 
@@ -63,8 +63,9 @@ node src/engine/game.js
 - **Cards**: 50 unique patisserie cards with specific colour patterns
 - **Tiles**: 5 colours × 5 ingredients = 25 types, 4 copies each = 100 tiles
 - **Cupcakes**: spend 1 to move a tile, 1 to reserve a card, 2 to take an extra
-  tile, 3 to remove an empty plate from your board (it returns to the box and does
-  not go back into circulation)
+  tile, 3 to remove an empty plate from your board (empty plates are unlimited, so
+  what this buys is a CELL - and because a full board ends the game, it is the one
+  action that pushes the ending away)
 
 ## Architecture
 

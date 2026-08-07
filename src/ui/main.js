@@ -52,7 +52,7 @@ function undoAction() {
 // changed is WHEN the flag arrives. An end condition now only ARMS the ending
 // (gameState.endTriggered), and play continues until the turn comes back round to
 // the start player so that everybody has had the same number of turns - so
-// gameOver can land several turns after the plate pool ran out. Do not add a
+// gameOver can land several turns after a player filled their board. Do not add a
 // check on endTriggered here and stop early; that is the bug the rule change
 // fixed. The end screen names the reason (endGameReasonText in board.js).
 function confirmTurn() {
@@ -185,7 +185,7 @@ function onMoveTile(fromIndex, toIndex) {
   }
 }
 
-// SPEND 3 CUPCAKES: REMOVE AN EMPTY PLATE, to the box. One click on the plate -
+// SPEND CUPCAKES (REMOVE_PLATE_CUPCAKE_COST): REMOVE AN EMPTY PLATE, to the box. One click on the plate -
 // unlike a tile move there is no destination to choose, because the plate leaves
 // the game rather than going anywhere on the board.
 function onRemovePlate(index) {
@@ -283,8 +283,9 @@ function autoSkipEmptyClaim() {
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   if (!currentPlayer.isHuman) return;
 
-  // An exhausted empty-plate supply makes every match unclaimable, so treat it
-  // exactly like having no match at all and skip the dead step for the player.
+  // canClaimMore is unconditionally true since 6 August (empty plates are
+  // unlimited), so in practice this is now just "is anything claimable". The call
+  // is kept as the engine's hook for a future claim limit - see canClaimMore.
   const cards = [...gameState.cardMarket, ...currentPlayer.reservedCards];
   const anyMatch = canClaimMore(gameState)
     && cards.some(card => getPatternMatches(currentPlayer.board, card.pattern).length > 0);
@@ -342,7 +343,9 @@ async function autoPlayGame() {
             if (bonusTileIndex !== null) {
               takeBonusTile(gameState, bonusTileIndex);
             } else {
-              // Decline the bonus and move to place (may trigger board overflow).
+              // Decline the bonus and move to the placement step. (It used to be
+              // able to trigger the board-overflow ending here; that ending is
+              // deleted - see the placement branch below.)
               declineBonusTile(gameState);
             }
           } else {
@@ -361,8 +364,11 @@ async function autoPlayGame() {
             sweep(gameState, sweepMove.rowOrCol, sweepMove.isRow, sweepMove.declaration, sweepMove.declarationType);
           }
         } else if (gameState.gamePhase === 'place') {
-          // Board overflow is handled by the engine at the transition into this
-          // phase (checkBoardOverflowOnPlace), so any state seen here is placeable.
+          // A sweep bigger than the board is legal since 6 August, and the bot's
+          // decidePlacements says so: it returns a null for every tile that will
+          // not fit, and place() sends those back into the bag. (This used to say
+          // the engine had already resolved an overflow before the phase was
+          // reached, because an overflow ended the game.)
           setThinkingState(currentPlayer.name, true);
           updateDisplay();
           // Buy an extra tile FIRST (3 August): it is a sweep-step option and the

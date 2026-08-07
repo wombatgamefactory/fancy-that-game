@@ -89,8 +89,10 @@ function parseCSV(filePath) {
 // tiles.js from a hardcoded template, which made the generator a silent
 // rule-reverter: the template still said "4 copies each = 100 tiles" and
 // "CARDS_TO_END_2P = 16" long after both were changed, and had never heard of
-// TILE_COPIES or EMPTY_PLATES_PER_PLAYER at all. Running it to pick up a card
-// edit would have quietly rolled back three unrelated rule changes.
+// TILE_COPIES at all. Running it to pick up a card edit would have quietly rolled
+// back three unrelated rule changes. (Both CARDS_TO_END_2P and the plate pool it
+// derived from were deleted outright on 6 August, which is the point exactly:
+// a template would still be printing them.)
 //
 // So it SPLICES now: everything in tiles.js outside the REWARD_CARDS block is
 // left exactly as found. The CSV owns the cards and nothing else.

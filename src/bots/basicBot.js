@@ -1,4 +1,4 @@
-import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleTeapotSymbols, getStandIngredients, getAvailableMenus, isTastingMenuInPlay, getMoveCost, canReserveCard, canBuyExtraTile, canRemovePlate, canClaimMore, countBoardIngredient, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, TASTING_MENU_VP } from '../engine/game.js';
+import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getVisibleTeapotSymbols, getMenuIngredients, getAvailableMenus, isTastingMenuInPlay, isFlavourInPlay, getFlavourCount, getMoveCost, canReserveCard, canBuyExtraTile, canRemovePlate, canClaimMore, countBoardIngredient, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, TASTING_MENU_VP, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
 
 // Approximate value of a completed claim beyond the card's printed VP: the
 // sacrificed tile is banked on the stand or crumb tray. A conservative floor —
@@ -8,6 +8,36 @@ import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacement
 // this would need TEA_WEAK_SWEEP_MAX and the pruning cutoffs re-tuned in lockstep,
 // so it is deliberately left as a stable floor.)
 const CLAIM_EXTRA = 2;
+
+// ── THE CLAIMS-REMAINING HORIZON (rewritten 6 August) ──────────────────────
+// Two decisions need to know roughly how much game is left: decideDestination,
+// which will not open a deep cake-stand row it cannot realistically fill (the
+// 26-point bottom row needs four claims), and decideReserve, which loosens its
+// standards once there is little time to complete anything.
+//
+// BOTH USED TO READ gameState.cardsNeededToEnd - the shared empty-plate pool -
+// as `ceil((pool - claimed) / playerCount)`. The pool is deleted, so the estimate
+// is re-denominated in the new clock: FREE CELLS ON THE FASTEST-FILLING BOARD,
+// over the measured tile draw. A player claims at most once per turn, so turns
+// remaining IS claims remaining.
+//
+// 2.5 TILES A TURN is the measured draw (22.3 tiles per player over 8.9 turns,
+// 6 August). It is an estimate feeding a heuristic, not a rule - nothing in the
+// engine depends on it, and being a turn out simply makes the bot slightly more
+// or less willing to open a deep row.
+//
+// THIS IS EXACTLY WHAT THE PROBE THAT MEASURED THE RULE DID
+// (probe-fillboard-end-2026-08-06.js, setClaimHorizon), so the simulated figures
+// the change was adopted on are the figures this bot produces.
+const TILES_DRAWN_PER_TURN = 2.5;
+
+function turnsRemaining(gameState) {
+  let minFree = Infinity;
+  for (const p of gameState.players) {
+    minFree = Math.min(minFree, getValidPlacements(p.board).length);
+  }
+  return Math.max(1, Math.ceil(minFree / TILES_DRAWN_PER_TURN));
+}
 
 // Value of gaining a cupcake by plating onto a cupcake plate. There is no cap,
 // so this gain always pays. A cupcake is worth at least 1 VP if simply kept, and
@@ -164,7 +194,7 @@ const RESERVE_FLUSH_RESCUE_VALUE = 3;
 // heuristic is a DEFICIT one: how many tiles short of the nearest live menu am I,
 // and does this action close that gap.
 //
-// Every term below reads the engine's accessors (getStandIngredients,
+// Every term below reads the engine's accessors (getMenuIngredients,
 // getAvailableMenus) rather than re-deriving the rule, and a menu whose takenBy is
 // set disappears from getAvailableMenus - so the bot stops chasing a card the
 // instant a rival takes it, which is the behaviour the race is supposed to produce
@@ -217,7 +247,7 @@ const MENU_ABANDON_DEFICIT = 3;
 // so it is kept in the list and priced at full value - the next plating banks it.
 function liveMenuTargets(gameState, player) {
   if (!gameState || !isTastingMenuInPlay(gameState)) return [];
-  const counts = getStandIngredients(player);
+  const counts = getMenuIngredients(player);
   const targets = [];
   for (const menu of getAvailableMenus(gameState)) {
     const wants = {};
@@ -285,6 +315,59 @@ function menuIngredientDemand(gameState, player) {
     }
   }
   return demand;
+}
+
+// ── The Flavour of the Day (6 August) ──────────────────────────────────────
+// THE SAME WARNING AS THE BLOCK ABOVE, and it applies harder here: every baseline
+// in the 6 August handoff was measured POST-HOC on games played by a bot that had
+// never heard of this module, so every one of them is a FLOOR. Until these terms
+// are wired up, no A/B of the Flavour is worth reading.
+//
+// WHAT IS DIFFERENT FROM THE TASTING MENU, and it is why this block is a fifth of
+// the size: a menu is a race to a named target that a rival can end for you, so it
+// needs deficits, taper and abandonment. The Flavour is a plain running count on
+// your own board. One tile is worth FLAVOUR_VP_PER_TILE, always, to everybody -
+// there is nothing to model but the majority and whether you are in it.
+//
+// AND THE ONE PLACE IT REALLY BITES IS THE CLAIM. This is the first opposed
+// gradient the claim step has ever had: a claim moves the sacrificed tile to the
+// stand or the crumb tray, where it stops counting for this lane. A bot without
+// the term below will cheerfully sacrifice its own Flavour tiles and the lane will
+// measure as pure noise.
+//
+// FLAVOUR_CONTEST_SHARE: how much of FLAVOUR_MAJORITY_VP one tile is credited with
+//   while this player is IN CONTENTION for the majority. Deliberately crude - "am
+//   I within one tile of the top" is the whole test, as the handoff asks - because
+//   the bonus is a single 3 VP lump and any attempt to amortise it exactly over an
+//   unknown number of remaining turns is false precision. At 0.4 a contested tile
+//   is worth about 2.2 VP against an uncontested 1, which keeps it below a stand
+//   plate (up to 14 for one placement) and well below a menu. Raising it is how a
+//   bot starts hoarding tiles it cannot use, which would misreport the dose upward.
+const FLAVOUR_CONTEST_SHARE = 0.4;
+// How far off the lead still counts as being in the race. ONE TILE, per the
+// handoff: the measured lead margin is about 2 tiles, so a player two or more back
+// is not one sweep from taking it and should be playing the colour puzzle instead.
+const FLAVOUR_CONTEST_GAP = 1;
+
+// What ONE MORE Flavour tile on this player's board is worth, and equally what one
+// LOST off it costs. The single number both the sweep term and the claim's
+// sacrifice penalty read, so the two cannot disagree about the lane's value.
+//
+// Returns 0 when the module is off, which makes every call site a no-op without
+// any of them having to test for it.
+function flavourTileValue(gameState, player) {
+  if (!gameState || !isFlavourInPlay(gameState)) return 0;
+  const mine = getFlavourCount(gameState, player);
+  let top = 0;
+  for (const other of gameState.players) {
+    const count = getFlavourCount(gameState, other);
+    if (count > top) top = count;
+  }
+  // In contention when level with the leader or within one tile of them - which
+  // includes BEING the leader, since holding a lead of one is exactly the position
+  // where one more tile is worth most.
+  const contending = mine + FLAVOUR_CONTEST_GAP >= top;
+  return FLAVOUR_VP_PER_TILE + (contending ? FLAVOUR_MAJORITY_VP * FLAVOUR_CONTEST_SHARE : 0);
 }
 
 // ── Claim-selection constants ──────────────────────────────────────────────
@@ -485,11 +568,9 @@ export function decideDestination(player, tile, gameState = null) {
     // entry rows (top 5, third 4) win — the redesign's "focus beats spread" intent.
     let futureSacrifices = Math.max(0, boardCount - 1);
     if (gameState) {
-      const claimed = getTotalCardsClaimed(gameState);
-      const myRemainingClaims = Math.ceil(
-        Math.max(0, gameState.cardsNeededToEnd - claimed) / gameState.playerCount
-      );
-      futureSacrifices = Math.min(futureSacrifices, myRemainingClaims);
+      // One claim per turn, so remaining turns IS remaining claims. See
+      // turnsRemaining for why this is denominated in board space since 6 August.
+      futureSacrifices = Math.min(futureSacrifices, turnsRemaining(gameState));
     }
 
     // Score each empty row by the cumulative value it can realistically reach
@@ -513,23 +594,28 @@ export function decideDestination(player, tile, gameState = null) {
       }
     }
 
-    // THE TASTING MENU, and the ONE place in this function it can change the
-    // answer. A menu reads the cake stand and ignores the crumb tray, so a tile
-    // that advances a menu must be plated - and this is the step that decides
-    // whether it is. The value is the same whichever empty row it lands in (the
-    // stand is read as one multiset, not row by row), so it does not move
-    // bestPick; it moves the CRUMB THRESHOLD below, which is exactly the decision
-    // the module exists to create.
+    // THE TASTING MENU. REWRITTEN 6 AUGUST, when the crumb tray started counting
+    // toward menus (MENU_COUNTS_CRUMB_TRAY). It used to be the one place in this
+    // function the module could change the answer, because a menu read the stand
+    // alone and so a menu-advancing tile HAD to be plated.
     //
-    // Without this a tile completing a menu could still be crumbed for its
-    // guaranteed 1 VP whenever no empty row looked worth opening, and the module
-    // would quietly stop working for precisely the player who had built for it.
+    // That is no longer true: both destinations advance a menu equally, so the
+    // menu value is now the SAME on both sides of the crumb comparison and
+    // therefore cancels out of it entirely. Leaving it added to the row side only
+    // would be a thumb on the scale for plating that the rules no longer justify -
+    // exactly the bug that makes a bot measure a floor instead of a result.
+    //
+    // It is still computed, because it belongs in the value the CALLER sees (a
+    // tile that completes a menu really is worth more to remove than one that does
+    // not, whichever destination it goes to), and destinationValue returns it.
     const menuValue = gameState ? menuValueOfPlating(gameState, player, tile.ingredient) : 0;
 
-    // Opening a row banks at least its entry value (>= 2), which clears the
-    // guaranteed 1-VP crumb; the check keeps the crumb fallback meaningful if
-    // the value table is ever retuned downward.
-    if (bestValue + menuValue > 1) return { type: 'row', rowIndex: bestPick };
+    // Opening a row banks at least its entry value (>= 1), which clears the
+    // guaranteed 1-VP crumb; the check keeps the crumb fallback meaningful if the
+    // value table is ever retuned downward. menuValue is deliberately NOT added
+    // here any more - see above: it is equal on both sides now, so adding it to
+    // one would bias the choice toward plating for a reason the rules deleted.
+    if (bestValue > 1) return { type: 'row', rowIndex: bestPick };
   }
 
   // c. No room anywhere: crumb.
@@ -571,12 +657,47 @@ function sweepContext(player, cardMarket, gameState = null) {
     // ingredient declaration, which is this.
     menuHeld[ingredient] = countBoardIngredient(player.board, ingredient);
   }
+  // THE FLAVOUR OF THE DAY. One ingredient and one flat per-tile value, computed
+  // once for the whole sweep ranking - it is a fact about the table and this
+  // player's standing in the majority, and no candidate sweep changes either.
+  //
+  // THIS IS THE STEP THE MODULE WAS BUILT FOR. Sweeping is the action no card lock
+  // can refuse, so this is the term that turns a locked claim step into a turn that
+  // still scores something.
+  const flavourIngredient = (gameState && isFlavourInPlay(gameState)) ? gameState.flavourOfTheDay : null;
   return {
     colourValue: buildColourDemand(player.board, cardMarket),
     wantedIngredients,
     menuDemand,
     menuHeld,
+    flavourIngredient,
+    flavourValue: flavourIngredient ? flavourTileValue(gameState, player) : 0,
   };
+}
+
+// WHAT A TILE THROWN BACK INTO THE BAG COSTS (6 August).
+//
+// scoreSweeps ranked purely on pattern value and knew nothing about board space,
+// which was harmless while an oversized sweep ENDED THE GAME - the bot simply
+// never met the situation. Under the trim rule it is legal, so a near-full board
+// would happily rank a 3-tile sweep top with one cell free and hand two tiles
+// straight back. That is legal play and it cost only about a tile a game in
+// simulation (a 1-tile sweep is nearly always available, so the bot got lucky),
+// but it is not correct play.
+//
+// PRICED, NOT FORBIDDEN. A tile that will not fit is not a disaster - the rest of
+// the sweep still lands and the turn is otherwise untouched - so this is a
+// deduction rather than a filter. Deliberately modest: a heavy penalty would push
+// the bot onto tiny sweeps late on, which fills its board more slowly and drags
+// the game out, and the length figure is the thing this change must not move.
+// Half a turn is the tolerance; measured at 3.0 the change is well inside it.
+const SWEEP_WASTED_TILE_COST = 3.0;
+
+// Free cells on the active player's board, minus anything already in hand. The
+// budget a candidate sweep is measured against.
+function sweepCapacity(gameState) {
+  const player = gameState.players[gameState.currentPlayerIndex];
+  return Math.max(0, getValidPlacements(player.board).length - gameState.pendingSweepTiles.length);
 }
 
 // Raw tile value of one sweep to the player whose context this is. No symbol
@@ -617,6 +738,14 @@ function rawSweepScore(market, sweep, marketSize, ctx) {
       // than a cliff, because a tile in the wrong PLACE is not removable, so spare
       // copies genuinely do help a little.
       score += demand.value * (held >= demand.wanted ? 0.4 : 1);
+    }
+    // THE FLAVOUR OF THE DAY. Flat, undiscounted and with NO taper - unlike the
+    // menu term above there is no "enough" here: the tenth Flavour tile scores
+    // exactly as much as the first, and holding more of them than anybody else is
+    // the majority. The value already carries the contention half (see
+    // flavourTileValue), so this line stays one addition.
+    if (ctx.flavourIngredient && tile.ingredient === ctx.flavourIngredient) {
+      score += ctx.flavourValue;
     }
   }
 
@@ -693,10 +822,16 @@ function scoreSweeps(gameState) {
   const ctx = sweepContext(currentPlayer, gameState.cardMarket, gameState);
 
   const visibleNow = getVisibleTeapotSymbols(gameState);
+  // How many tiles this player can actually place this turn - see
+  // SWEEP_WASTED_TILE_COST. Computed once: nothing in the loop touches the board.
+  const capacity = sweepCapacity(gameState);
 
   const scored = validSweeps.map(sweep => {
+    const taken = getSweptTiles(gameState.market, sweep, marketSize).length;
+    const wasted = Math.max(0, taken - capacity);
     const score = rawSweepScore(gameState.market, sweep, marketSize, ctx)
-      + symbolTriggerValue(visibleNow, symbolsExposedBySweep(gameState.market, sweep, marketSize));
+      + symbolTriggerValue(visibleNow, symbolsExposedBySweep(gameState.market, sweep, marketSize))
+      - wasted * SWEEP_WASTED_TILE_COST;
     return { sweep, score };
   });
 
@@ -734,16 +869,17 @@ function minMissingForCard(board, card) {
 // armed and a bot that only checked legality would order tea again, on the same
 // turn, for another pot, forever (~200 refreshes, games that never ended). That
 // hole is CLOSED in the rules, though not the way it was on 1 August: since
-// 4 August isTeaDue is a pure symbol count with no bag check in it, a short bag
-// deals what it has and play continues over the thinner market, and it is the
-// NEXT needed refill against an empty bag that ends the game ('bagEmpty'). Either
-// way nothing here is load-bearing for termination.
+// 4 August isTeaDue is a pure symbol count with no bag check in it, and a short
+// bag deals what it has while play continues over the thinner market. Since
+// 6 August a pot due against an EMPTY bag is simply a pot that does not happen -
+// it ends nothing at all. Either way nothing here is load-bearing for termination,
+// which is now a board filling up.
 //
 // NOTHING USES IT AS A VETO SINCE 1 AUGUST, because there is no longer a decision
 // to veto - tea fires automatically at the end of a turn. Kept as a small public
 // predicate: "would a flush right now actually restock the board, or just
 // reshuffle what is left?" is still a real question about a position, and it is
-// how a caller can spot the flush that will drain the bag and end the game.
+// how a caller can spot the last flush a game will ever get.
 export function refreshWouldRestockBoard(gameState) {
   let onBoard = 0;
   for (const tile of gameState.market) if (tile) onBoard++;
@@ -802,12 +938,9 @@ export function decideReserve(gameState) {
   if (!canReserveCard(gameState)) return null;
   const player = gameState.players[gameState.currentPlayerIndex];
 
-  // Roughly how many more claims this player gets before the card-count end
-  // condition fires. The same public estimate decideDestination uses.
-  const claimed = getTotalCardsClaimed(gameState);
-  const myRemainingClaims = Math.ceil(
-    Math.max(0, gameState.cardsNeededToEnd - claimed) / gameState.playerCount
-  );
+  // Roughly how many more claims this player gets before a board fills and ends
+  // the game. The same public estimate decideDestination uses - see turnsRemaining.
+  const myRemainingClaims = turnsRemaining(gameState);
   const maxMissing = myRemainingClaims <= RESERVE_LATE_CLAIMS
     ? RESERVE_LATE_MAX_MISSING
     : RESERVE_MAX_MISSING;
@@ -893,7 +1026,12 @@ export function decideExtraTile(gameState) {
   // nothing here to buy. Simulate the placements decidePlacements would make.
   const plan = gameState.pendingSweepTiles.length > 0 ? decidePlacements(gameState) : [];
   for (let i = 0; i < plan.length; i++) {
-    if (plan[i] >= 0) projected[plan[i]] = gameState.pendingSweepTiles[i];
+    // NULL means "back into the bag" under the 6 August trim rule, and it must be
+    // tested for explicitly: `null >= 0` is TRUE in JavaScript, so the old
+    // `plan[i] >= 0` guard would write the tile to projected['null'] and quietly
+    // stop projecting the board at all.
+    if (plan[i] === null || plan[i] === undefined) continue;
+    projected[plan[i]] = gameState.pendingSweepTiles[i];
   }
   for (const card of candidateCards) {
     if (getPatternMatches(projected, card.pattern).length > 0) return null; // not locked
@@ -932,9 +1070,11 @@ export function decideExtraTile(gameState) {
   //
   // MULTIPLIED BY THE PRICE, which it was not before: this read
   // `bestVp < RESERVE_CUPCAKE_VALUE` back when an extra tile cost exactly 1
-  // cupcake, so the two happened to coincide. At EXTRA_TILE_CUPCAKE_COST = 2 that
-  // form would let the bot pay two cupcakes for a one-cupcake payoff and the price
-  // rise would show up in the report as no behaviour change at all.
+  // cupcake, so the two happened to coincide. At a price of 2 that form would let
+  // the bot pay two cupcakes for a one-cupcake payoff and the price rise would
+  // show up in the report as no behaviour change at all. The price went back to 1
+  // on 7 August, so the two coincide again - KEEP THE MULTIPLICATION ANYWAY, since
+  // that coincidence is exactly what hid the bug the first time.
   if (bestVp < EXTRA_TILE_CUPCAKE_COST * RESERVE_CUPCAKE_VALUE) return null;
 
   // Among tiles of the winning colour, prefer one on a teapot cell, then one
@@ -1007,16 +1147,24 @@ export function decideBonusTile(gameState) {
 
 // NOTE: place() pairs placements[i] with pendingSweepTiles[i] BY INDEX, so
 // the returned array must be aligned to the original tile order.
+//
+// THE TRIM RULE (6 August). A sweep may be bigger than the board's free space.
+// The array is still one entry per swept tile, but an entry may be NULL, meaning
+// "this tile goes back into the bag". Exactly getSweepPlacementCount(gameState)
+// of them must be non-null - fewer is illegal and more is impossible - and this
+// falls out of the loop below: it commits one best (tile, cell) pair at a time
+// and stops when the cells run out, leaving the tiles it never reached as nulls.
+// So the tiles GIVEN UP are the ones the placement heuristic wanted least, which
+// is the right answer without a second decision.
+//
+// It used to throw here when the tiles outnumbered the cells, because that state
+// ended the game and the bot was never meant to see it.
 export function decidePlacements(gameState) {
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   const tilesToPlace = gameState.pendingSweepTiles;
   const board = [...currentPlayer.board]; // scratch copy, updated as we commit
 
-  if (getValidPlacements(board).length < tilesToPlace.length) {
-    throw new Error('Not enough valid positions to place tiles');
-  }
-
-  const placements = new Array(tilesToPlace.length).fill(-1);
+  const placements = new Array(tilesToPlace.length).fill(null);
   const remaining = tilesToPlace.map((tile, index) => ({ tile, index }));
 
   // THE TASTING MENU. A menu-wanted tile only ever reaches the cake stand if it is
@@ -1032,12 +1180,26 @@ export function decidePlacements(gameState) {
   // point steering a placement toward a prize that is not there any more.
   const menuDemand = menuIngredientDemand(gameState, currentPlayer);
 
+  // THE FLAVOUR OF THE DAY IS DELIBERATELY ABSENT FROM THIS FUNCTION, and that is
+  // a decision rather than an omission. The Flavour scores off the board wherever
+  // the tile sits, so by the time a swept tile reaches this step the point is
+  // already banked - the placement question is purely "which cell", and this
+  // heuristic answers it for pattern position. The only thing a Flavour term could
+  // steer here is keeping such tiles OUT of completed patterns so a claim never
+  // sacrifices them, and that is a hoarding term of exactly the kind the module's
+  // handoff rules out: it would fight the claim step, which pays several times
+  // more. The sweep decides whether we get the tile; the claim decides whether we
+  // keep it. Neither of them is here.
+
   // Commit one (tile, position) pair at a time, always the globally best one,
   // recomputing window demand after each commit so a tile that opens up a
   // near-complete window is immediately followed up on.
   while (remaining.length > 0) {
     const demand = buildPlacementDemand(board, gameState.cardMarket);
     const positions = getValidPlacements(board);
+    // Out of cells: everything still in `remaining` keeps its null and goes back
+    // into the bag. See the trim-rule note above.
+    if (positions.length === 0) break;
 
     let bestEntry = remaining[0];
     let bestPos = positions[0];
@@ -1094,8 +1256,17 @@ export function decidePlacements(gameState) {
 
 // ── Empty-plate removal constants ──────────────────────────────────────────
 // These were written for the 2-cupcake plate MOVE. That action is deleted; the
-// plate is now REMOVED to the box for REMOVE_PLATE_CUPCAKE_COST (3), and the
-// same valuation applies with one term dropped and one term raised.
+// plate is now REMOVED to the box for REMOVE_PLATE_CUPCAKE_COST, and the same
+// valuation applies with one term dropped and one term raised.
+//
+// AND THE VALUATION IS NOW KNOWN TO BE WRONG, 7 AUGUST. It predates 6 August,
+// when a removed plate stopped being board repair and became the only action
+// that pushes the game's ending away - so this heuristic prices a reclaimed cell
+// at its board value and ignores its value as TIME. The price came down to 2 on
+// 7 August and purchases rose about 33-fold even under this undervaluation, so
+// the true rate under competent play is higher than the harness reports. Teach
+// decideRemovePlate that a cell is worth a fraction of a turn before reading any
+// A/B of this price as settled.
 //
 // PLATE_REMOVE_MAX_GAP: how many cells a window may still need AFTER the plate is
 //   cleared before the bot stops caring. The freed cell always counts as one of
@@ -1241,7 +1412,7 @@ export function decideMove(gameState) {
   return bestTile ? { fromIndex: bestTile.fromIndex, toIndex: bestTile.toIndex } : null;
 }
 
-// SPEND 3 CUPCAKES: REMOVE AN EMPTY PLATE, revive the windows it was killing.
+// SPEND CUPCAKES (REMOVE_PLATE_CUPCAKE_COST): REMOVE AN EMPTY PLATE, reviving the windows it was killing.
 // Returns a board index to remove, or null.
 //
 // Every claim leaves a plate behind on the sacrificed tile's cell - by
@@ -1347,8 +1518,11 @@ function destinationValue(player, tile, gameState) {
 //     armed right now, in which case the whole row can be discarded before our
 //     next turn and the row card is the one to bank (CLAIM_FLUSH_RISK_BONUS).
 export function decideClaim(gameState) {
-  // No empty plates left in the table's supply means no claim is legal, whatever
-  // the board shows - see canClaimMore in the engine.
+  // canClaimMore is unconditionally true since 6 August - empty plates are
+  // unlimited and nothing caps claiming. The call stays because the engine keeps
+  // the function as the hook a future claim limit would live in, and a bot that
+  // stopped asking would be the thing that had to be found and fixed if one ever
+  // arrived. It does NOT mean there is a supply to check.
   if (!canClaimMore(gameState)) return null;
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
@@ -1414,6 +1588,16 @@ export function decideClaim(gameState) {
   // Freshness cups it never comes back, so a bot that loses a race abandons it
   // permanently and re-targets. That is the module working as designed.
 
+  // THE FLAVOUR OF THE DAY: what one board tile of the Flavour is worth to this
+  // player right now, which is exactly what sacrificing one COSTS them. Computed
+  // once per decision - it does not change between candidate cards - and 0 when the
+  // module is off, so the term below disappears without a guard.
+  //
+  // THIS IS THE OPPOSED GRADIENT. Until 6 August every part of a claim was
+  // positive; a claim that eats a Flavour tile now costs a point and possibly the
+  // majority, and this is the only place in the bot that can see it.
+  const flavourCost = flavourTileValue(gameState, currentPlayer);
+
   let best = null;
   for (const candidate of claimableCards) {
     const patternCells = candidate.matches[0].cells;
@@ -1431,6 +1615,7 @@ export function decideClaim(gameState) {
     let bestRemoveScore = -Infinity;
     let bestRemoveValue = 1;
     let bestRemoveMenu = 0;
+    let bestRemoveFlavour = 0;
     let bestDestination = null;
 
     for (const cellIndex of patternCells) {
@@ -1440,20 +1625,33 @@ export function decideClaim(gameState) {
       const { destination, value } = destinationValue(currentPlayer, tile, gameState);
       let score = value * CLAIM_DEST_WEIGHT;
 
-      // THE TASTING MENU. The trigger is the DESTINATION, not the removal - a tile
-      // sent to the crumb tray is invisible to every menu - which is exactly why
-      // this is gated on the chosen destination being a stand row. That gating is
-      // the one structural difference from the Freshness term it replaces, which
-      // paid on the removal either way.
+      // THE TASTING MENU. The destination gate that stood here until 6 August is
+      // GONE. It read: score the menu only when the tile is being plated, because
+      // a crumbed tile is invisible to every menu. The crumb tray counts now
+      // (MENU_COUNTS_CRUMB_TRAY), so the gate would suppress the term on precisely
+      // the removals a trailing player can actually make - which is the opposite
+      // of what the rule change is for, and would have measured as "the change did
+      // nothing".
       //
-      // destinationValue has already picked where this tile would go, and
-      // decideDestination itself prices the menu (see there), so the two agree: a
-      // tile that completes a menu is plated rather than crumbed even when the row
-      // alone would not have been worth opening.
-      const menu = destination.type === 'row'
-        ? menuValueOfPlating(gameState, currentPlayer, tile.ingredient)
-        : 0;
+      // The term is now about the REMOVAL: this tile's ingredient advances a menu
+      // wherever it lands, so it is worth more to take off the board than a tile
+      // that does not.
+      const menu = menuValueOfPlating(gameState, currentPlayer, tile.ingredient);
       score += menu;
+
+      // THE FLAVOUR OF THE DAY - THE SACRIFICE PENALTY, and the term this whole
+      // module turns on. Only the PLAYER BOARD counts for the Flavour, so a
+      // sacrificed Flavour tile stops scoring the moment it reaches the stand or
+      // the crumb tray: prefer to give up a tile that is not the Flavour, all else
+      // being equal.
+      //
+      // A PREFERENCE, NOT A VETO. It is priced against the other terms rather than
+      // filtering the cell out, because a card worth 5 VP is still worth a 1 VP
+      // tile - the bot should feel the cost, not refuse the claim over it.
+      const flavourLoss = (gameState.flavourOfTheDay && tile.ingredient === gameState.flavourOfTheDay)
+        ? flavourCost
+        : 0;
+      score -= flavourLoss;
 
       // Prefer removing a tile that extends a locked stand row.
       if (lockedUnfilled.has(tile.ingredient)) score += 5;
@@ -1481,6 +1679,7 @@ export function decideClaim(gameState) {
         bestRemoveIndex = cellIndex;
         bestRemoveValue = value;
         bestRemoveMenu = menu;
+        bestRemoveFlavour = flavourLoss;
         bestDestination = destination;
       }
     }
@@ -1490,7 +1689,11 @@ export function decideClaim(gameState) {
     // tile to sacrifice: a card whose pattern happens to sit on the tile that
     // completes a menu is worth TASTING_MENU_VP more than an identical one that
     // does not, and that is a bigger swing than any card's printed VP.
-    let cardScore = (candidate.card.vp || 0) + bestRemoveValue * CLAIM_DEST_WEIGHT + bestRemoveMenu;
+    // The Flavour comes off the same way, and for the same reason as the menu term
+    // rides on: WHICH card to claim is partly a question of what its pattern is
+    // standing on. A card whose only sacrifice is a Flavour tile is worth strictly
+    // less than an identical one that leaves the Flavour alone.
+    let cardScore = (candidate.card.vp || 0) + bestRemoveValue * CLAIM_DEST_WEIGHT + bestRemoveMenu - bestRemoveFlavour;
     const fromReserve = reservedIds.has(candidate.card.id);
     if (fromReserve) cardScore += CLAIM_RESERVE_BONUS;
     else if (rowAtRisk) cardScore += CLAIM_FLUSH_RISK_BONUS;

@@ -1,3 +1,15 @@
+// CARRIED FORWARD 6 AUGUST, HEURISTICS UNTOUCHED. This is an ARCHIVED A/B arm,
+// frozen against the rules of its own day, and it stays that way - but two things
+// in it stopped being valid code rather than merely out of date, and both were
+// repaired so `node arena.js` still runs it:
+//   - the claims-remaining horizon read gameState.cardsNeededToEnd, the deleted
+//     empty-plate pool. It now reads free cells on the fastest-filling board over
+//     ~2.5 tiles a turn, exactly as basicBot does. Left alone it read undefined
+//     and produced NaN, which is worse than a wrong estimate - it is a silent one.
+//   - decidePlacements threw when the swept tiles outnumbered the free cells.
+//     Sweeping more than you can place is legal now (the excess goes back into the
+//     bag), so it returns a null-padded array like every other bot.
+// DO NOT tune anything else here. If a heuristic needs to change, change basicBot.
 // tuneBot: basicBot with its tuning constants exposed as environment
 // variables, for arena.js sweeps. REGENERATED FROM basicBot.js - do not edit the
 // heuristics here, edit basicBot and regenerate, or the comparison is meaningless.
@@ -10,6 +22,18 @@
 // TEA_TRIGGER_PRIORITY_VALUE and TEA_TRIGGER_HANDOVER_COST replace them.
 const K = (n, d) => (process.env[n] !== undefined ? parseFloat(process.env[n]) : d);
 import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleTeapotSymbols, canClaimMore, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE } from '../engine/game.js';
+
+// The claims-remaining horizon, re-denominated in the 6 August clock (a full
+// board) rather than the deleted plate pool. Copied from basicBot deliberately -
+// an archived arm must not import a live bot's internals.
+const TILES_DRAWN_PER_TURN = 2.5;
+function turnsRemaining(gameState) {
+  let minFree = Infinity;
+  for (const p of gameState.players) {
+    minFree = Math.min(minFree, getValidPlacements(p.board).length);
+  }
+  return Math.max(1, Math.ceil(minFree / TILES_DRAWN_PER_TURN));
+}
 
 // Approximate value of a completed claim beyond the card's printed VP: the
 // sacrificed tile is banked on the stand or crumb tray. A conservative floor —
@@ -315,10 +339,7 @@ export function decideDestination(player, tile, gameState = null) {
     // entry rows (top 5, third 4) win — the redesign's "focus beats spread" intent.
     let futureSacrifices = Math.max(0, boardCount - 1);
     if (gameState) {
-      const claimed = getTotalCardsClaimed(gameState);
-      const myRemainingClaims = Math.ceil(
-        Math.max(0, gameState.cardsNeededToEnd - claimed) / gameState.playerCount
-      );
+      const myRemainingClaims = turnsRemaining(gameState);
       futureSacrifices = Math.min(futureSacrifices, myRemainingClaims);
     }
 
@@ -557,10 +578,7 @@ export function decideTeaReserve(gameState, reserverIndex) {
 
   // Roughly how many more claims this player gets before the card-count end
   // condition fires. The same public estimate decideDestination uses.
-  const claimed = getTotalCardsClaimed(gameState);
-  const myRemainingClaims = Math.ceil(
-    Math.max(0, gameState.cardsNeededToEnd - claimed) / gameState.playerCount
-  );
+  const myRemainingClaims = turnsRemaining(gameState);
   const maxMissing = myRemainingClaims <= RESERVE_LATE_CLAIMS
     ? RESERVE_LATE_MAX_MISSING
     : RESERVE_MAX_MISSING;
@@ -633,11 +651,7 @@ export function decidePlacements(gameState) {
   const tilesToPlace = gameState.pendingSweepTiles;
   const board = [...currentPlayer.board]; // scratch copy, updated as we commit
 
-  if (getValidPlacements(board).length < tilesToPlace.length) {
-    throw new Error('Not enough valid positions to place tiles');
-  }
-
-  const placements = new Array(tilesToPlace.length).fill(-1);
+  const placements = new Array(tilesToPlace.length).fill(null); // null = back into the bag
   const remaining = tilesToPlace.map((tile, index) => ({ tile, index }));
 
   // Commit one (tile, position) pair at a time, always the globally best one,
@@ -646,6 +660,8 @@ export function decidePlacements(gameState) {
   while (remaining.length > 0) {
     const demand = buildPlacementDemand(board, gameState.cardMarket);
     const positions = getValidPlacements(board);
+    // Out of cells: whatever is left keeps its null and goes back into the bag.
+    if (positions.length === 0) break;
 
     let bestEntry = remaining[0];
     let bestPos = positions[0];

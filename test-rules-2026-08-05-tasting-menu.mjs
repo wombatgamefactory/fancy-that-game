@@ -12,8 +12,9 @@
 // with the rule it tested.
 //
 // THE RULE. Deal one Tasting Menu per player face up at setup, from a deck of ten.
-// The moment a player's CAKE STAND shows the named ingredients they take the card,
-// free and automatic. Each menu can only ever be taken by one player and never
+// The moment a player's CAKE STAND OR CRUMB TRAY shows the named ingredients they
+// take the card, free and automatic (the crumb tray was added 6 August; it read the
+// stand alone as shipped). Each menu can only ever be taken by one player and never
 // comes back. Ingredients are not consumed. Worth TASTING_MENU_VP each.
 //
 // WHAT THE INTERESTING TESTS ARE ACTUALLY GUARDING. Four things, and every one of
@@ -21,8 +22,9 @@
 //   - FIRST TO QUALIFY WINS IT, ONCE (§3). A second player meeting the same menu
 //     must score NOTHING. If that ever silently passes, the module has become a
 //     public objective everybody scores and the race is gone.
-//   - THE CRUMB TRAY IS INVISIBLE (§4). If a crumbed tile ever completes a menu,
-//     the module stops arguing with the cake stand, which is half its job.
+//   - THE CRUMB TRAY COUNTS, THE STAND READ STAYS NARROW (§4). Two accessors that
+//     must not collapse into one another: getMenuIngredients is stand + crumbs,
+//     getStandIngredients is stand only and the stand metrics depend on it.
 //   - NOTHING RELEASES A MENU (§5). No pot of tea, no refill, no end condition.
 //     The whole design claim is that the deadline is an opponent rather than a
 //     clock, and a reset anywhere would hand that back.
@@ -32,9 +34,12 @@
 import {
   createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipSpend, refill,
   calculateFinalScores, getPatternMatches, getValidSweeps, getValidPlacements,
-  isTastingMenuInPlay, getStandIngredients, qualifiesForMenu, getMenuDeficit,
+  isTastingMenuInPlay, getStandIngredients, getMenuIngredients, qualifiesForMenu, getMenuDeficit,
   getClaimableMenus, getAvailableMenus,
   getTastingMenusEnabled, setTastingMenusEnabled,
+  // The Flavour of the Day's seam (6 August). Used by 8c only, which asserts an
+  // exact total and therefore has to silence every lane except the one under test.
+  getFlavourEnabled, setFlavourEnabled, FLAVOUR_ENABLED,
   TASTING_MENU_ENABLED, TASTING_MENU_VP, TASTING_MENU_SURPLUS, getTastingMenuCount,
   TASTING_MENU_ONE_PER_TURN, TASTING_MENUS,
   TEAPOT_SYMBOL_CELLS, STAND_ROW_VALUES, REWARD_CARDS, INGREDIENTS,
@@ -297,12 +302,15 @@ check('3d: a rejected claim takes no menu', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. Only the cake stand counts
+// 4. The crumb tray counts too (6 August - INVERTED from the shipped 5 August
+//    rule, which read the cake stand alone)
 // ---------------------------------------------------------------------------
 
-check('4a: A TILE SENT TO THE CRUMB TRAY DOES NOT COMPLETE A MENU', () => {
-  // Half the module's job is arguing with the cake stand. If a crumbed tile
-  // counted, the argument would be over.
+check('4a: A TILE SENT TO THE CRUMB TRAY DOES COMPLETE A MENU', () => {
+  // This assertion was the exact opposite until 6 August. The stand-only reading
+  // was never a decision anybody took, and it made the module multiply the cake
+  // stand's convex reward: menus read the stand, so the player with the deepest
+  // stand won 2.5x as many of them. Reading the crumb tray decouples the two.
   const { s, p } = claimState({ tileIngredient: 'chocolate', menus: ['t1'] });
   stock(p, 0, 'lemon', 2);
   eq(getMenuDeficit(p, s.tastingMenus[0]), 1, 'setup: one chocolate short');
@@ -311,9 +319,21 @@ check('4a: A TILE SENT TO THE CRUMB TRAY DOES NOT COMPLETE A MENU', () => {
 
   eq(p.crumbTray.length, 1, 'the tile really did go to the crumb tray');
   eq(p.crumbTray[0].ingredient, 'chocolate', 'and it is the exact ingredient needed');
-  eq(p.tastingMenus.length, 0, 'AND IT COMPLETES NOTHING');
-  eq(s.tastingMenus[0].takenBy, null, 'the menu is still on the table');
-  eq(getMenuDeficit(p, s.tastingMenus[0]), 1, 'and the deficit has not moved');
+  eq(p.tastingMenus.length, 1, 'AND IT COMPLETES THE MENU');
+  eq(s.tastingMenus[0].takenBy, p.id, 'the card is taken, by this player');
+  eq(getMenuDeficit(p, s.tastingMenus[0]), 0, 'and the deficit has closed');
+});
+
+check('4b: getStandIngredients still reads the STAND ALONE', () => {
+  // The two accessors must not collapse into each other: the stand-shape metrics
+  // and the UI's stand panel depend on the narrow one staying narrow.
+  const { s, p } = claimState({ tileIngredient: 'chocolate', menus: ['t1'] });
+  stock(p, 0, 'lemon', 2);
+  claim(s, 1, 0, { type: 'crumb' });
+
+  eq(getStandIngredients(p).chocolate || 0, 0, 'the crumbed tile is NOT on the stand');
+  eq(getStandIngredients(p).lemon, 2, 'the stand read is otherwise intact');
+  eq(getMenuIngredients(p).chocolate, 1, 'but the MENU read sees it');
 });
 
 // ---------------------------------------------------------------------------
@@ -549,6 +569,13 @@ check('8c: setTastingMenusEnabled(false) awards nothing and scores nothing', () 
   eq(getTastingMenusEnabled(), true, 'the module starts from the constant');
   try {
     setTastingMenusEnabled(false);
+    // AND THE FLAVOUR OF THE DAY GOES OFF WITH IT (6 August). This test asserts an
+    // EXACT total, so every lane that is not under test has to be held at zero -
+    // otherwise it is asserting the whole scoring function rather than the absence
+    // of one term. It also made the test FLAKY rather than merely wrong: the
+    // Flavour is drawn at random from five, so it collided with the almond left on
+    // the board about one run in five and the suite passed four times out of five.
+    setFlavourEnabled(false);
     const s = newGame(3);
     eq(s.tastingMenus.length, 0, 'no menus are dealt');
     assert(!isTastingMenuInPlay(s), 'and the module is not in play');
@@ -575,8 +602,10 @@ check('8c: setTastingMenusEnabled(false) awards nothing and scores nothing', () 
       'and scores nothing for it - stand + card VP and no more');
   } finally {
     setTastingMenusEnabled(TASTING_MENU_ENABLED);
+    setFlavourEnabled(FLAVOUR_ENABLED);
   }
   eq(getTastingMenusEnabled(), true, 'the seam is restored for everything after this');
+  eq(getFlavourEnabled(), true, 'both seams are restored');
 });
 
 // ---------------------------------------------------------------------------

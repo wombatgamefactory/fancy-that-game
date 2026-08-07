@@ -1,6 +1,6 @@
 // Fancy That! - responsive layout regression suite.
 //
-// Promoted out of the scratchpad on 4 August (RESPONSIVE_PLAN_2026-08-04_v4.md
+// Promoted out of the scratchpad on 4 August (../../Web UI/RESPONSIVE_PLAN_2026-08-04_v4.md
 // section 9). This is no longer a measuring tape - it is the test that keeps the
 // signed-off XL layout frozen while the breakpoints below it are built.
 //
@@ -540,6 +540,14 @@ async function measure(page) {
       '.ft-player-score': box('.ft-player-score'),
       '.ft-section--cards': box('.ft-section--cards'),
       '.ft-centre-head': box('.ft-centre-head'),
+      // THE TWO REVEALED-CARD PANELS on the meters rail. Both were shipped
+      // unmeasured - the responsive plan's heights predate the Tasting Menu and
+      // the Flavour of the Day entirely - and both sit in the protected gap
+      // between the market and your own board at the M and S bands, which is the
+      // one adjacency criterion 3 exists to defend. They are the first thing to
+      // look at when that criterion fails.
+      '#tastingMenuPanel': box('#tastingMenuPanel'),
+      '#flavourPanel': box('#flavourPanel'),
       '.ft-phase-bar': box('.ft-phase-bar'),
       '#workingArea1': box('#workingArea1'),
       '.ft-panel__header': box('#playerPanel1 .ft-panel__header'),

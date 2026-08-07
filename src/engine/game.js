@@ -1,4 +1,4 @@
-import { BOARD_SIZE, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, EMPTY_PLATES_PER_PLAYER, CARDS_TO_END_2P, REWARD_CARDS, COLOURS, INGREDIENTS, createTileBag } from './tiles.js';
+import { BOARD_SIZE, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, REWARD_CARDS, COLOURS, INGREDIENTS, createTileBag } from './tiles.js';
 import { TASTING_MENUS, satisfies, deficit } from './tastingMenus.js';
 
 // Side length of the TILE MARKET board: 5×5 = 25 cells at EVERY player count.
@@ -32,7 +32,10 @@ export const MARKET_SIZE = 5;
 // falls to 10-16% (tile-budget substitution - tiles sent deep cannot also go
 // wide), which is why its table got fatter increments (2/4/6) rather than the
 // old 2/5/7-shaped middle. The optional completion cupcake on bottom plate 4
-// (cell C) measured clean but was NOT adopted - CUPCAKE_PLATES is unchanged.
+// (cell C) measured clean and WAS adopted on 5 August - though it has since moved
+// again: CUPCAKE_PLATES was relocated on 7 August to the first plate of every row
+// plus the bottom row's last, which keeps the completion cupcake and adds the
+// commitment one. See that constant for the measurement.
 export const STAND_ROW_VALUES = [[1, 4, 12, 26], [2, 6, 12], [3, 7], [5]];
 
 // Teapot symbols printed on the tile-market board. FIVE cells carry a printed
@@ -210,6 +213,11 @@ export function getTastingMenuCount(playerCount) {
 // with two or more menus. Still shipped OFF, behind this flag, so it can be A/B'd
 // rather than argued about, but it is a live question now rather than a remote
 // one.
+//
+// RULED 7 AUGUST: TAKING MORE THAN ONE MENU IN A TURN IS PERMITTED. Dean's call,
+// and it confirms what has been shipping. The engine does not move; what changes
+// is that the rulebook can now PRINT the sentence, which it has been holding back
+// because the question was open. The flag stays for A/B work only.
 export const TASTING_MENU_ONE_PER_TURN = false;
 
 // THE A/B SEAM for the whole module, following the pattern the Freshness Bonus
@@ -222,6 +230,45 @@ export const TASTING_MENU_ENABLED = true;
 let tastingMenusEnabled = TASTING_MENU_ENABLED;
 export function getTastingMenusEnabled() { return tastingMenusEnabled; }
 export function setTastingMenusEnabled(on) { tastingMenusEnabled = !!on; }   // tests and harnesses only
+
+// ---------------------------------------------------------------------------
+// THE FLAVOUR OF THE DAY (6 August). One ingredient revealed at setup, scored at
+// the end from the PLAYER BOARD ONLY. Spec: ../../../Design Log/DESIGN_CHANGES_2026-08-06_
+// FLAVOUR_OF_THE_DAY_JS_HANDOFF.md.
+//
+// WHY THIS LANE EXISTS, and it is not "more scoring": every other scoring lane in
+// this game is fed by the claim step - the stand, card VP and the Tasting Menu all
+// fire only when a card is claimed. Measured on the shipped engine, the trailing
+// player is refused the claim on 37.7 / 42.5 / 44.2% of the claim steps they reach
+// at 2/3/4 players, so on nearly half their turns they do not score less, they
+// score NOTHING. This lane is fed by SWEEPING AND PLACING, which nobody can
+// decline and no card lock can refuse. That is the whole design brief.
+export const FLAVOUR_VP_PER_TILE = 1;
+
+// Bonus to the player OR PLAYERS holding the most Flavour tiles on their board.
+// FRIENDLY TIES BY DESIGN - everyone tied at the top takes the full bonus, and
+// there is deliberately no tiebreak rule: ties occur in 11.3 / 13.8 / 18.0% of
+// games at 2/3/4 players, so a tiebreaker would fire about one game in five.
+//
+// WHY 3 AND NOT 5. Calibrated against the game's own accepted module rather than
+// guessed. The Tasting Menu at its settled 5 VP decides the winner in 12.1 / 22.5
+// / 26.5% of games; this module at 1+3 decides 12.9 / 17.9 / 20.4%, consistently
+// below it. At 1+5 it reads 16.6 / 21.6 / 26.3% - i.e. a SECOND Tasting Menu, and
+// two ingredient-driven modules each deciding a quarter of games would leave the
+// colour-pattern puzzle deciding correspondingly fewer. That is the shape of the
+// 4 August Pantry Goals failure and the reason for the lower number.
+//
+// It is also the balanced choice between the two clauses: the typical lead is
+// about 2 tiles, so a 3 VP bonus is worth roughly what the margin is worth. At 5
+// the bonus dominates and the per-tile clause becomes a consolation.
+//
+// RAISE IT TO 5 IF the module measures thin in play. Do not lower it below 3.
+export const FLAVOUR_MAJORITY_VP = 3;
+
+export const FLAVOUR_ENABLED = true;
+let flavourEnabled = FLAVOUR_ENABLED;
+export function getFlavourEnabled() { return flavourEnabled; }
+export function setFlavourEnabled(on) { flavourEnabled = !!on; }   // tests and harnesses only
 
 // Deal `count` menus at random without replacement from the ten. Each dealt entry
 // is a FRESH object carrying its own `takenBy`, so the shared TASTING_MENUS
@@ -317,22 +364,55 @@ export function getVisibleTeapotSymbols(gameState) {
 // Cupcake plates: the (rowIndex, plateIndex) stand positions that grant a
 // cupcake the moment a tile is plated onto them. Indices are 0-based into the
 // stand array (rowIndex 0 = bottom/4-plate row … rowIndex 3 = top/1-plate row;
-// plateIndex counts plates left→right from the row's locking plate). These are
-// the SECOND plate of every multi-plate row plus the top row's single plate —
-// bottom[1], second[1], third[1], top[0] — plus, since 5 August, the bottom
-// row's FOURTH plate. That completion cupcake rode in with the same day's
-// STAND_ROW_VALUES revaluation (see that comment): the bottom row was
-// cupcake-poor per tile (1 per 4 tiles against 3 per 6 across the upper rows),
-// and putting the second one on the LAST plate keeps it completion-shaped —
-// measured clean as cell C of ab-stand-2026-08-05.mjs. Plating onto one grants
-// 1 cupcake from the supply — always (there is no cupcake cap; see
-// plateTileOntoRow). The opening-plate variant was rejected in playtesting, so
-// no row's first plate (plateIndex 0, except the top) appears.
+// plateIndex counts plates left→right from the row's locking plate). Plating onto
+// one grants 1 cupcake from the supply — always, there is no cupcake cap (see
+// plateTileOntoRow).
+//
+// RELOCATED 7 AUGUST to the FIRST plate of every row, plus the bottom row's LAST:
+//
+//        C        top row     — its only plate
+//        C.       third row   — first plate
+//        C..      second row  — first plate
+//        C..C     bottom row  — first AND last plate
+//
+// Still five. WAS bottom[1], bottom[3], second[1], third[1], top[0] — the second
+// plate of every multi-plate row plus the top, plus the 5 August completion
+// cupcake on bottom[3].
+//
+// WHY. Dean's observation at the table: a player who runs out of cupcakes runs out
+// of things they can do about a bad turn. Measured, that is real — under the old
+// table a player spent 47.7% of sweep steps at 4 players (55.9% at 3) unable to
+// afford the 2-cupcake extra tile, which is the only spend that cures a locked
+// claim step. This layout cuts that to 36.6% and 44.3%.
+//
+// WHY THE FIRST PLATE OF EVERY ROW AND NOT SOME OTHER REDISTRIBUTION. Six layouts
+// were measured in ab-cupcakeplates-2026-08-06.mjs, 1,500 games per cell per
+// count. Every layout that moved cupcakes OFF the bottom row bought 2-3 points of
+// last-as-a-share-of-winner and paid for it by HALVING bottom-row completion, from
+// ~31% to 14-20% — i.e. it bought its anti-runaway by deleting the deep-row gamble
+// the 5 August revaluation was adopted to create. Adding back a completion
+// cupcake, an early cupcake, or an opening-plate cupcake each failed to rescue it.
+//
+// THIS ONE COSTS THE BOTTOM ROW NOTHING: completion measured 30.9% against the old
+// table's 30.9% at 4 players and 32.7% against 32.6% at 3 — identical, twice. It is
+// the only layout of the seven that pays the deep row at BOTH ENDS, bottom[0] for
+// committing and bottom[3] for finishing, and that is what keeps it worth starting.
+//
+// THE 20 JULY PLAYTEST REJECTED AN OPENING-PLATE VARIANT as too easy and too
+// spread-rewarding. Neither objection survives: cupcakes stopped scoring VP on
+// 3 August, so more of them is a bigger toolbox rather than free points; and
+// unchanged bottom-row completion is precisely the evidence that this layout does
+// not reward spreading. Recorded so the old note is not applied to this table.
+//
+// Buys the least anti-runaway of the six alternatives (+1.8 at 4 players, +2.1 at
+// 3), and that is the right trade now: the Flavour of the Day landed the same day
+// and bought +3.3 to +4.8 on its own, so there is no longer a reason to spend the
+// bottom row on another two points.
 export const CUPCAKE_PLATES = [
-  { rowIndex: 0, plateIndex: 1 },
+  { rowIndex: 0, plateIndex: 0 },
   { rowIndex: 0, plateIndex: 3 },
-  { rowIndex: 1, plateIndex: 1 },
-  { rowIndex: 2, plateIndex: 1 },
+  { rowIndex: 1, plateIndex: 0 },
+  { rowIndex: 2, plateIndex: 0 },
   { rowIndex: 3, plateIndex: 0 },
 ];
 
@@ -368,13 +448,18 @@ function isCupcakePlate(rowIndex, plateIndex) {
 // "what is a cupcake worth" is the open question all of them rest on - see the
 // metrics note on statsCollector.cupcakeSpend.
 //
-// REPRICED 3 AUGUST (second revision), alongside the 100 -> 125 tile bag. The
-// menu is now a ladder at 1 / 2 / 3 plus the unchanged reserve:
+// REPRICED 3 AUGUST (second revision) into a ladder at 1 / 2 / 3.
+//
+// REPRICED AGAIN 7 AUGUST, and the ladder is now flatter - three spends at 1 and
+// one at 2. The two moves are independent of each other and were made for
+// opposite reasons: the extra tile came DOWN because it is the release valve and
+// was priced out of reach, the plate removal came DOWN because it acquired
+// control of the game's clock on 6 August and nobody could afford to use it.
 //
 //   1  move a tile               MOVE_TILE_CUPCAKE_COST
 //   1  reserve a card            RESERVE_CUPCAKE_COST
-//   2  take an extra tile        EXTRA_TILE_CUPCAKE_COST      (was 1)
-//   3  remove an empty plate     REMOVE_PLATE_CUPCAKE_COST    (new)
+//   1  take an extra tile        EXTRA_TILE_CUPCAKE_COST      (2 on 3 Aug, 1 before that)
+//   2  remove an empty plate     REMOVE_PLATE_CUPCAKE_COST    (was 3)
 //
 // MOVING an empty plate is DELETED. It cost 2 and shuffled the obstruction from
 // one cell to another; removing the plate outright supersedes it, so the two are
@@ -394,22 +479,46 @@ export const MOVE_TILE_CUPCAKE_COST = 1;
 // not change how often the tile CURES a lock, but it does change how often the
 // bot can afford to try, so the lock rate is expected to drift back up. That
 // drift is the thing this repricing has to be judged on.
-export const EXTRA_TILE_CUPCAKE_COST = 2;
+//
+// 7 AUGUST: BACK TO 1, and the drift above is what settled it. The price of 2
+// took the lock rate from 17.7 / 16.9 / 17.7% to about 30% at every count and
+// left a player unable to afford the only spend that cures a locked claim step
+// for a large share of the game - 47.7% of sweeps at four players before the
+// cupcake plates moved, 36.6% after. DEAN HAS ALSO NOW TESTED THE 1-CUPCAKE
+// PRICE WITH HUMANS AND REPORTS IT PLAYS WELL, which is the evidence six reviews
+// of simulation could not supply. The extra tile is the game's release valve and
+// it should be affordable when it is needed.
+export const EXTRA_TILE_CUPCAKE_COST = 1;
 // Take 1 card from the card market into your personal reserve, on your own turn.
 export const RESERVE_CUPCAKE_COST = 1;
 // Remove one EMPTY PLATE token from your own board and RETURN IT TO THE BOX.
 //
-// The plate is gone from the game: it does NOT go back into the supply, so this
-// buys board space and nothing else. In particular it does NOT buy extra claims -
-// the end condition counts CLAIMS MADE against cardsNeededToEnd (see
-// isCardEndConditionMet), not plates remaining, so removing plates cannot extend
-// the game's clock. That is the whole point of "return it to the box", and it is
-// structural here rather than a rule anyone has to remember.
+// The plate is gone from the game, and since 6 August there is no supply for it
+// to go back TO: empty plates are unlimited (see the endGameReason block in
+// createGame). What it buys is a CELL.
+//
+// AND THAT NOW MOVES THE GAME'S CLOCK, which is the reverse of what this comment
+// said until 6 August. The clock used to be the plate pool, and the whole point
+// of "return it to the box" was that retiring a plate could not touch it. The
+// clock is a FULL BOARD now, so buying a cell back is buying the table another
+// turn or so of play - and it is the only thing in the game that pushes the
+// ending away rather than pulling it closer.
 //
 // PRICED AT 3, the top of the ladder, because it is strictly better than the
 // 2-cupcake plate move it replaces: a moved plate still sterilised some cell
 // somewhere, a removed one sterilises nothing ever again.
-export const REMOVE_PLATE_CUPCAKE_COST = 3;
+//
+// 7 AUGUST: 3 -> 2, AND THE REASON IS THE PARAGRAPH ABOVE RATHER THAN THE ONE
+// BELOW IT. Pricing at the top of the ladder was set against what the action
+// costs an opponent; it should have moved when the action's JOB changed on
+// 6 August. Buying a cell back is now the only way to push the ending away, and
+// a lever that controls the game's clock deserves to be reachable. At 3 it was
+// bought 19 / 35 / 28 times in 3,000 games at 2 / 3 / 4 players - a rung of the
+// ladder that nobody has ever climbed. WHAT TO WATCH: this is the one price that
+// lengthens the game, so re-read turns per player and the board-fill share after
+// re-baselining, and note that the bot's decideRemovePlate heuristic still
+// predates the clock change and undervalues a reclaimed cell.
+export const REMOVE_PLATE_CUPCAKE_COST = 2;
 
 // Cards a player may hold in their personal reserve at once. The free tea-round
 // reserve (deleted 3 August) briefly ran uncapped; a PAID reserve is capped at 1
@@ -417,65 +526,75 @@ export const REMOVE_PLATE_CUPCAKE_COST = 3;
 export const RESERVE_LIMIT = 1;
 
 // ---------------------------------------------------------------------------
-// STARTING CUPCAKES BY SEAT, KEYED BY PLAYER COUNT (4 August, FINAL).
+// STARTING CUPCAKES BY SEAT, KEYED BY PLAYER COUNT (7 August).
 //
-//   2 players   2 / 2          total influx 4
-//   3 players   2 / 2 / 2      total influx 6
-//   4 players   2 / 2 / 3 / 3  total influx 10
+//   2 players   2 / 3           total influx 5
+//   3 players   2 / 3 / 4       total influx 9
+//   4 players   2 / 3 / 4 / 5   total influx 14
 //
-// SAY IT AS: everyone starts with 2. AT FOUR PLAYERS ONLY, the third and fourth
-// seats start with 3. There is no compensation at 2 or 3 players at all.
+// SAY IT AS: the start player takes 2 cupcakes, and each player after them takes
+// one more than the player before. One sentence, no per-count table to remember.
 //
-// WHY IT IS KEYED BY PLAYER COUNT, which is the part to preserve even if the
-// numbers move again. The old form was a single by-seat array, [2,3,4,5], so seat
-// 3 got 4 cupcakes whether there were three players or four. That scales the
-// compensation with SEAT NUMBER, when the thing being compensated scales with
-// POSITION IN THE ROUND: the tile market only refills at tea, so it is more
-// picked-over by the time it reaches a later seat. "Third of three" and "third of
-// four" are different positions, and one array cannot say so.
+// WHY IT IS STILL KEYED BY PLAYER COUNT even though every row is now the same
+// ladder: the thing being compensated scales with POSITION IN THE ROUND, not with
+// seat number, so "third of three" and "third of four" are different positions
+// and the shape must be able to say so. It has already had to.
 //
-// WHY 4 PLAYERS IS THE ONLY TABLE SIZE THAT NEEDS IT. Measured, not assumed: at
-// 2 and 3 players the market does not degrade far enough within a round for a
-// positional advantage to survive, so a compensating cupcake does not correct a
-// bias, it CREATES one in the other direction. Worst seat deviation from an even
-// win share, 3,000 games per configuration, compensated versus flat:
-//   2 players   2/3     -4.4      2/2     +1.4   <- flat wins
-//   3 players   2/2/3   +4.8      2/2/2   -3.1   <- flat wins
-//   4 players   2/2/3/3 +2.0      2/2/2/2 +3.4   <- compensation wins
-// At 4 players it also takes the score gradient first-to-last from -2.90 VP to
-// -0.60. 2/2/2/3 (one extra to the last seat only) was tested there and is worse
-// at -2.9, so it is the back-HALF split doing the work, not merely a smaller dose.
+// THE SIGN HAS FLIPPED TWICE. Read this before changing it a fourth time.
+//   3 Aug: a measured FIRST-player advantage (seat 1 winning 55.8 / 39.8 / 40.3%
+//     against an even 50 / 33.3 / 25%) was compensated with exactly this ladder.
+//   4 Aug: two changes removed most of the cause - the finished-out round
+//     equalised turn COUNTS, and the unlimited final-round plate supply stopped
+//     the last round being dead for seats that had not yet played. Re-measured,
+//     the ladder had over-corrected into a LAST-seat advantage (seat 1 at -6.3
+//     win share at 4p), so it was flattened to 2/2, 2/2/2, 2/2/3/3.
+//   7 Aug: the advantage came back, BIGGER, because the game grew two new
+//     first-mover races - the Tasting Menu (first to qualify keeps the card) and
+//     the Flavour of the Day (one shared ingredient the earlier seat sweeps for
+//     first every round). The flat table measured +6.2/+4.5 (2p), +5.8/+6.5 (3p)
+//     and +5.1/+3.9 (4p) across two independent 3,000-game runs. The ladder is
+//     correct again, for a different reason than in August's first week.
 //
-// THE HISTORY, because the sign has flipped once already. On 3 August a measured
-// FIRST-player advantage (seat 1 winning 55.8 / 39.8 / 40.3% against an even
-// 50 / 33.3 / 25%, on a 6.26 VP gradient at 4p) was compensated with an escalating
-// 2/3/4/5. Two 4 August changes then removed the causes of it - the finished-out
-// round equalised turn COUNTS, which the old turn-boundary checks never actually
-// did, and the unlimited final-round plate supply stopped the last round being
-// dead for the seats that had not yet played. Re-measured against the settled
-// rules, 2/3/4/5 had over-corrected into a LAST-seat advantage (seat 1 at -6.3
-// win share at 4p, gradient -2.90 VP). Do not reinstate a per-seat escalation
-// without re-running the measurement first: the advantage it was built for is
-// mostly gone.
+// THE MEASUREMENT, ab-startcupcakes-2026-08-07.mjs, 3,000 games per cell, TWO
+// independent runs because the margins between the good cells are near the noise
+// floor. Worst seat deviation, run 1 / run 2:
+//   2 players   2/2   +6.2 / +4.5      2/3     +1.6 / +0.9   <- ladder
+//                                      2/4     -1.6 / -2.8   (overshoots)
+//   3 players   2/2/2 +5.8 / +6.5      2/2/3   +4.4 / +3.1
+//                                      2/3/3   -3.3 / +1.3   (inconsistent)
+//                                      2/2/4   -5.0 / -4.7   (overshoots seat 2)
+//                                      2/3/4   +0.7 / +1.7   <- ladder
+//   4 players   2/2/3/3 +5.1 / +3.9    2/3/3/4 -3.3 / +2.3
+//                                      2/2/3/4 +4.4 / +4.2
+//                                      2/3/4/4 -1.9 / -4.2   (inconsistent)
+//                                      2/3/4/5 +1.8 / +1.5   <- ladder
+// The ladder is the only table inside +/-3 in BOTH runs at all three counts, and
+// the only one whose score gradient first-to-last goes to about zero (-0.65/-0.10
+// at 3p, +0.61/+0.41 at 4p, against +2.92/+2.69 and +2.44/+2.05 flat).
 //
-// AT 3 PLAYERS THE TARGET IS UNREACHABLE WITH WHOLE CUPCAKES, and that is why the
-// flat row is not a failure to tune. One cupcake is worth roughly 8 points of win
-// share at that table size, so flat undershoots at -3.1 and 2/2/3 oversteps to
-// +4.8. Nothing in between exists. Closing that gap needs a finer-grained
-// compensation than a starting cupcake, not a different arrangement of whole ones.
+// A ONE-OFF GRANT WORKS ON THIS DESPITE THE ADVANTAGE COMPOUNDING, which is worth
+// recording because the opposite was predicted. The Flavour-tile gap between seat
+// 1 and the last seat grows over the game (0.33 tiles at round 1 to 0.53 by round
+// 7), so a single cupcake "should" not cover it. It does, because a cupcake buys
+// an extra tile from anywhere - market access, which is the exact currency of the
+// advantage - and the compounding is mild rather than exponential.
 //
-// WHAT A CUPCAKE IS WORTH IS STILL A GUESS, AND MUST BE VERIFIED RATHER THAN
-// ASSUMED. Re-run probe-seat.js (or simulate.js metric 12) and check every seat
-// lands within ±2 points of even. Two cautions learned on 4 August: run at least
-// 3,000 games per configuration, and note that two INDEPENDENT runs of an
-// identical configuration were observed 2.2 points apart, so the ±1.8 band the
-// harness prints is the band for ONE measurement, not for the difference between
-// two. Treat anything within about 3 points of even as indistinguishable from
-// fair rather than as a number to chase.
+// THIS COMPENSATES THE BIAS RATHER THAN REMOVING IT. Seat 1 still sweeps a fuller
+// market every round; the later seats are now paid for it. If the underlying cause
+// is ever fixed at source - the tile market refilling more often than at tea, say -
+// re-measure immediately, because this ladder will over-correct again the moment
+// it does. That is exactly what happened on 4 August.
+//
+// WHAT A CUPCAKE IS WORTH MUST BE VERIFIED RATHER THAN ASSUMED. Re-run
+// probe-seat.js (or simulate.js metric 12) and check every seat lands within about
+// 3 points of even. Two cautions: run at least 3,000 games per configuration, and
+// note that two INDEPENDENT runs of an identical configuration have been observed
+// 2.2 points apart, so the band the harness prints is for ONE measurement, not for
+// the difference between two.
 export const STARTING_CUPCAKES_BY_SEAT = {
-  2: [2, 2],
-  3: [2, 2, 2],
-  4: [2, 2, 3, 3],
+  2: [2, 3],
+  3: [2, 3, 4],
+  4: [2, 3, 4, 5],
 };
 
 // The starting cupcakes for a given table size, as an array indexed by seat.
@@ -628,7 +747,10 @@ function plateTileOntoRow(gameState, player, rowIndex, tile) {
 // `tastingMenus` names which Tasting Menus are dealt this game - an array of menu
 // ids (or of menu objects), used VERBATIM so a probe can pin a deal. Omit it and
 // the deal is random, exactly as the physical setup works.
-export function createGame(playerConfigs, statsCollector = null, { tastingMenus = null } = {}) {
+// `flavour` names the Flavour of the Day (6 August) - honoured verbatim when it is
+// a real member of INGREDIENTS, and otherwise ignored in favour of a random draw,
+// the same way a bad menu id is dropped rather than dealt.
+export function createGame(playerConfigs, statsCollector = null, { tastingMenus = null, flavour = null } = {}) {
   const bag = createTileBag();
   const playerCount = playerConfigs.length;
   // The market is MARKET_SIZE square at every player count. It is still copied
@@ -644,6 +766,18 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     : (Array.isArray(tastingMenus)
       ? normaliseTastingMenus(tastingMenus)
       : dealTastingMenus(getTastingMenuCount(playerCount)));
+
+  // THE FLAVOUR OF THE DAY: one ingredient, drawn uniformly from the five, or null
+  // when the module is off. A pinned `flavour` is used verbatim only when it names
+  // a real ingredient; anything else falls back to the draw, the same way a bad
+  // pinned menu list does. FIVE DISTINCT OPENINGS IS THE POINT - this is the first
+  // between-game setup variance the game has carried since the pantry goals were
+  // deleted on 4 August, and it costs one card.
+  const flavourOfTheDay = !flavourEnabled
+    ? null
+    : (typeof flavour === 'string' && INGREDIENTS.includes(flavour)
+      ? flavour
+      : INGREDIENTS[Math.floor(Math.random() * INGREDIENTS.length)]);
 
   const players = playerConfigs.map((config, index) => ({
     id: index,
@@ -693,13 +827,10 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
   // counting setup here made every game report one refill it never had.
 
   const { gameDeck, cardMarket } = initGameDeck();
-  // cardsNeededToEnd = EMPTY_PLATES_PER_PLAYER × player count. This encodes the
-  // tabletop end condition "the game ends when the last empty plate is placed"
-  // per player, and is the primary live playtime-tuning lever. 3 August: the pool
-  // dropped from 8 to 6 per player, so 12 / 18 / 24 rather than 16 / 24 / 32 —
-  // see EMPTY_PLATES_PER_PLAYER in tiles.js for the measured reason and for why
-  // 4 players must NOT be pre-corrected to 5.
-  const cardsNeededToEnd = EMPTY_PLATES_PER_PLAYER * playerCount;
+  // (cardsNeededToEnd stood here until 6 August: EMPTY_PLATES_PER_PLAYER x player
+  // count, the shared plate pool that used to be the game's clock. The pool is
+  // DELETED - not raised, deleted - and nothing may reintroduce a field like it.
+  // See the endGameReason block below for what replaced it.)
 
   const gameState = {
     players,
@@ -742,23 +873,50 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     // turns but did not - a boundary check firing at seat 3 of 4 left seats 1-3
     // a turn ahead of seat 4.
     endTriggered: false,
-    // endGameReason - every value the engine can set:
-    //   'cardMarket'    - the card end condition: cardsNeededToEnd cards have been
-    //                     claimed, i.e. the table's empty plate pool is spent.
-    //   'bagEmpty'      - a REFILL WAS NEEDED AND THE BAG WAS ALREADY EMPTY
-    //                     (4 August rule). NOT simply "the bag hit zero": a bag
-    //                     that cannot cover the 25 cells now deals what it has and
-    //                     play continues across the thinning market (see
-    //                     brewFreshPot step c). It is the NEXT pot of tea, with
-    //                     nothing left to pour, that triggers this.
-    //   'boardFull'     - the incoming player's personal board has no free cell.
-    //   'marketTiles'   - the empty-market deadlock valve (see
-    //                     applyEmptyMarketRule). Defence in depth, not an expected
-    //                     path: an empty market shows all five teapot symbols, so
-    //                     'bagEmpty' fires a turn earlier.
-    //   'boardOverflow' - a board that cannot accept the tiles just swept. Since
-    //                     4 August this is an ordinary trigger like the others
-    //                     rather than a separate countdown.
+    // endGameReason - every value the engine can set. THERE ARE TWO (6 August).
+    //
+    //   'boardFull'   - END CONDITION 1, AND THE GAME'S CLOCK. Any player's
+    //                   personal board is completely full: all 25 cells hold a
+    //                   tile or an empty plate. Checked across EVERY player at the
+    //                   end of every turn (advanceToNextTurn), so a board that
+    //                   fills on its owner's own turn arms the ending immediately
+    //                   rather than waiting a lap for their next one.
+    //   'marketTiles' - END CONDITION 2. No tiles remain in the supply: the tile
+    //                   market is empty AND the bag is empty (applyEmptyMarketRule).
+    //
+    // THE THREE THAT WERE DELETED ON 6 AUGUST, written down so none of them is
+    // reinvented as "the obvious missing ending":
+    //
+    //   'cardMarket'    - the shared empty-plate pool being spent. This was the
+    //                     game's clock and it ended 70.9 / 59.5 / 44.4% of games at
+    //                     2/3/4 players. THE POOL IS DELETED OUTRIGHT, not raised:
+    //                     empty plates are unlimited, they are not a resource and
+    //                     not a clock, and NO RULE ANYWHERE MAY TEST ONE. It was
+    //                     replaced rather than retuned because a clock denominated
+    //                     in claims is denominated in the winner's own currency -
+    //                     the leader ends the game on the trailing player. A full
+    //                     board is denominated in TILES TAKEN, which is a different
+    //                     currency, and every seat spends it at about the same rate.
+    //   'bagEmpty'      - a pot of tea coming due against an empty bag. No longer
+    //                     an ending: the pot simply does not arrive, and play
+    //                     continues across the thinning market until condition 2
+    //                     finds it bare. See endTurn.
+    //   'boardOverflow' - sweeping more tiles than the board could hold, which
+    //                     ended 21.3 / 31.2 / 22.7% of games. No longer an ending
+    //                     either: it is the ordinary placement rule now. Place all
+    //                     you can and the excess goes back into the bag, and the
+    //                     player keeps their spend and their claim. See place().
+    //
+    // WHY CONDITION 2 CAN ESSENTIALLY NEVER FIRE, so nobody "fixes" it. Every
+    // board cell permanently absorbs exactly one tile - a claim moves the tile off
+    // the cell to the stand or the crumb tray and drops a plate on the same cell,
+    // so the cell is spent either way. The table can absorb 25 x playerCount tiles
+    // (plus one more per plate bought off a board) against a bag of TILE_BAG_SIZE =
+    // 100. That is 50 / 75 / 100, so at 2 and 3 players condition 2 is
+    // STRUCTURALLY UNREACHABLE and at 4 it is a photo finish the board fill wins.
+    // Over 3,000 simulated games condition 1 ended 100% of them at every count. It
+    // is kept because it is what stops a pathological table sitting on a dry market
+    // for ever, and it costs one line.
     endGameReason: null,
     // Turns since the last card was claimed by anybody (reset in claim). This was
     // the deadlock safety valve for the empty-market rule: with market and bag
@@ -772,7 +930,6 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     // last turns claim nothing is a game whose final round is doing no work - and
     // deleting it would remove the only record of that.
     turnsSinceLastClaim: 0,
-    cardsNeededToEnd,
     playerCount,
     marketSize,
     // --- THE TASTING MENU (5 August) -----------------------------------------
@@ -788,6 +945,12 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     // shares the entry objects, so a rollout that sets takenBy would take a real
     // card off the real table. It must be mapped, not spread.
     tastingMenus: dealtMenus,
+    // THE FLAVOUR OF THE DAY - a single INGREDIENT STRING, or null when the module
+    // is off. IMMUTABLE for the life of the game: nothing anywhere writes to it
+    // after setup, which is exactly why it needs no handling in mctsBot's
+    // cloneState (a primitive copies by value, and boards are already deep-copied).
+    // If anything ever assigns to this field, that reasoning breaks.
+    flavourOfTheDay,
     // --- PER-TURN CUPCAKE ALLOWANCES (3 August) -----------------------------
     // Four outlets, four allowances. They are INDEPENDENT: buying an extra tile
     // at the sweep step does not stop you moving a tile at the spend step, nor
@@ -815,10 +978,22 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     // reserved card is claimed. Reset in advanceToNextTurn.
     claimsThisTurn: 0,
     // Empty plates bought off the board and returned to the BOX over the whole
-    // game (see removePlate). Physical-component context, not a rule: it is what
-    // says whether the 24 plates in the box are still enough once players can
-    // retire them, and it deliberately does NOT feed any end condition.
+    // game (see removePlate). Physical-component context, not a rule, and it
+    // deliberately does NOT feed any end condition.
+    //
+    // MORE INTERESTING SINCE 6 AUGUST, not less, which is why it survived the
+    // deletion of the pool it was written to watch: a retired plate buys a cell
+    // back, and cells are the clock now, so this counts how much the table bought
+    // itself in extra playing time.
     platesReturnedToBox: 0,
+    // --- THE TRIM RULE (6 August) -------------------------------------------
+    // Two running totals for the new placement rule, kept for the same reason as
+    // platesReturnedToBox: they are what the harness reports and neither is read
+    // by any rule. `trimmedSweeps` counts TURNS on which a sweep did not fit;
+    // `tilesReturnedToBag` counts the individual tiles that went back. Measured at
+    // about 0.5 turns and 1 tile per game - see place().
+    trimmedSweeps: 0,
+    tilesReturnedToBag: 0,
     stats: {
       turnsPlayed: 0,
     },
@@ -844,6 +1019,14 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
   // lives or dies by (see simulate.js metric 13).
   metrics(gameState)?.recordTastingMenuDeal(dealtMenus.map(m => m.id));
 
+  // Metric: which Flavour was revealed. Over a long run all five must come up
+  // evenly - anything else is a bug in the draw, not a design finding - and null
+  // (the module switched off for an A/B) is recorded as such rather than skipped,
+  // so a run can tell "off" from "never called". This is the ONLY thing metric 14
+  // needs logged: the lane fires no events during play, so every other figure it
+  // reports is read off the finished boards.
+  metrics(gameState)?.recordFlavourDeal(flavourOfTheDay);
+
   for (const card of cardMarket) {
     metrics(gameState)?.recordCardMarketEntry(card.id, 0);
   }
@@ -857,9 +1040,11 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
 
 // Deal the reward deck for a new game: shuffle all 50 cards, seed the face-up
 // card row, and put EVERY remaining card (50 − INITIAL_MARKET_CARDS = 47) into
-// the draw deck. The whole deck must be reachable so the card-count end
-// condition (cardsNeededToEnd up to 32 at 4p) can actually fire — an earlier
-// version capped the deck at 16, which made 3p/4p games unable to end that way.
+// the draw deck. The whole deck stays reachable. (The reason used to be the
+// card-count end condition, which needed up to 32 claims to be possible at 4p;
+// that ending is deleted, but an earlier version capped the deck at 16 and the
+// cap is still wrong - the row is refilled every turn and flushed at every pot,
+// so a short deck simply starves the card market.)
 //
 // INITIAL_MARKET_CARDS is the row's STARTING length only, not its size. From the
 // 28 July rework the row is variable-length: it grows by one at the end of every
@@ -971,11 +1156,16 @@ export function sweep(gameState, rowOrCol, isRow, declaration, declarationType) 
 
   // A line-clearing sweep pauses in the sweep phase to resolve the bonus tile
   // (see takeBonusTile / declineBonusTile), each of which then transitions into
-  // placement and runs the overflow check itself. A non-clearing sweep goes
-  // straight to placement, so we check overflow here.
+  // placement itself. A non-clearing sweep goes straight to placement.
+  //
+  // 6 AUGUST: an overflow check used to run on this transition, and on both of
+  // the bonus-tile ones, because sweeping more than the board could hold ENDED
+  // THE GAME and the check had to fire before anything else could happen. It does
+  // not end anything now - the excess simply goes back into the bag at the
+  // placement step - so there is nothing to resolve here and the sweep is always
+  // legal, whatever the board looks like. See getSweepPlacementCount and place().
   if (!isLineClear) {
     gameState.gamePhase = 'place';
-    checkBoardOverflowOnPlace(gameState);
   }
 
   return gameState;
@@ -997,32 +1187,34 @@ function triggerEndGame(gameState, reason) {
   gameState.endGameReason = reason;
 }
 
-// Board-overflow end condition. Runs at every transition INTO the place phase:
-// if the current player cannot fit all their pending swept tiles on their board
-// (empty cells < swept tiles), the end is triggered, the pending tiles are
-// discarded, and the turn skips straight to refill. Returns true when the
-// overflow end fired. Centralised so the check is identical whether placement is
-// reached from a plain sweep, a taken bonus tile, a declined bonus tile, or a
-// directly-constructed state calling place().
+// THE TRIM RULE (6 August), replacing checkBoardOverflowOnPlace.
 //
-// 4 AUGUST: this used to seed its own final-turn countdown
-// (remainingTurnsInEndGame), which was the only end condition that granted extra
-// turns and granted the wrong ones - one more turn each to the OTHER players,
-// which leaves the triggering seat a turn short. It is an ordinary trigger now
-// and gets the same finish-the-round treatment as every other ending.
+// SWEEPING MORE THAN YOU CAN PLACE IS NO LONGER AN ENDING. Place all the tiles
+// you sweep if you can; any you cannot place go back into the BAG, and the player
+// keeps the rest of their turn - spend step and claim both. Nothing here arms
+// anything, and nothing here jumps the phase: a trimmed sweep is an ordinary turn
+// that took fewer tiles than it lifted.
 //
-// A player whose board is full still takes their remaining turns: they may sweep
-// and claim as normal, and this check simply discards whatever they swept.
-function checkBoardOverflowOnPlace(gameState) {
+// This function is the whole of what the transitions into the place phase need
+// from that rule: HOW MANY of the pending tiles the board can actually take.
+// place() enforces the count and does the returning; see there for why the choice
+// of WHICH tiles are lost belongs to the player rather than to the engine.
+//
+// (The 6 August handoff calls this trimSweepToBoard and describes it mutating
+// pendingSweepTiles itself. That is the fallback it names for a UI that cannot
+// offer the choice. Taking the choice seriously means the tiles must all still be
+// in hand at the placement step, so what is left here is the count.)
+//
+// Zero is a legal answer: a player whose board is already full sweeps, places
+// nothing, and every swept tile goes back to the bag. It is a corner rather than
+// a normal turn - see advanceToNextTurn for why a full board rarely gets another
+// turn at all - but it must not throw.
+export function getSweepPlacementCount(gameState) {
   const player = gameState.players[gameState.currentPlayerIndex];
-  const emptyCount = getValidPlacements(player.board).length;
-  if (gameState.pendingSweepTiles.length > emptyCount) {
-    triggerEndGame(gameState, 'boardOverflow');
-    gameState.pendingSweepTiles = [];
-    gameState.gamePhase = 'refill'; // Skip directly to refill to move to next player
-    return true;
-  }
-  return false;
+  return Math.min(
+    gameState.pendingSweepTiles.length,
+    getValidPlacements(player.board).length,
+  );
 }
 
 export function takeBonusTile(gameState, marketIndex) {
@@ -1033,20 +1225,19 @@ export function takeBonusTile(gameState, marketIndex) {
   gameState.market[marketIndex] = null;
   gameState.bonusTileAvailable = false;
   gameState.gamePhase = 'place';
-  checkBoardOverflowOnPlace(gameState);
 
   return gameState;
 }
 
-// Decline the offered bonus tile after a line-clearing sweep. Replaces the
-// inlined "bonusTileAvailable = false; gamePhase = 'place'" that drivers used
-// to run, so the overflow check fires on this transition too (a base sweep can
-// already exceed the board's remaining space).
+// Decline the offered bonus tile after a line-clearing sweep. Kept as an engine
+// call rather than the inlined "bonusTileAvailable = false; gamePhase = 'place'"
+// drivers used to run, so both bonus-tile answers leave the game in exactly the
+// same shape. (Until 6 August it also had to fire the overflow END CONDITION on
+// this transition; that condition is deleted - see getSweepPlacementCount.)
 export function declineBonusTile(gameState) {
   if (!gameState.bonusTileAvailable) throw new Error('Bonus tile not available');
   gameState.bonusTileAvailable = false;
   gameState.gamePhase = 'place';
-  checkBoardOverflowOnPlace(gameState);
   return gameState;
 }
 
@@ -1066,8 +1257,14 @@ export function declineBonusTile(gameState) {
 //
 // ONCE PER TURN, not repeatable, and illegal if you have no legal placement -
 // which here means the board must have room for this tile ON TOP OF everything
-// already pending, or the placement step would overflow. Only 0.4-3.8% of card
-// locks are structurally unbuyable this way (board full).
+// already pending. Only 0.4-3.8% of card locks are structurally unbuyable this
+// way (board full).
+//
+// THAT GATE SURVIVES 6 AUGUST UNCHANGED, and deliberately. The excess of a sweep
+// now goes back into the bag rather than ending the game, so an unplaceable extra
+// tile would no longer be a catastrophe - but it would be a player paying 2
+// cupcakes to put a tile straight back in the bag, which is not a decision worth
+// offering. Refusing it is the honest answer.
 //
 // NOTE: taking the tile CAN uncover a teapot symbol, exactly as a sweep can, so
 // it can be what fires this turn's pot of tea. That is intended.
@@ -1087,8 +1284,8 @@ export function takeExtraTile(gameState, marketIndex) {
   if (gameState.market[marketIndex] === null || gameState.market[marketIndex] === undefined) {
     throw new Error('No tile at selected position');
   }
-  // Room for one MORE tile than is already pending, else the extra tile would
-  // simply overflow the board and end the game.
+  // Room for one MORE tile than is already pending, else the tile just bought
+  // would go straight back into the bag at the placement step.
   if (getValidPlacements(player.board).length <= gameState.pendingSweepTiles.length) {
     throw new Error('No legal placement for an extra tile');
   }
@@ -1184,9 +1381,33 @@ export function isTastingMenuInPlay(gameState) {
   return !!gameState.tastingMenus && gameState.tastingMenus.length > 0;
 }
 
+// DOES THE CRUMB TRAY COUNT TOWARD A TASTING MENU? Since 6 August, YES.
+//
+// It shipped on 5 August reading the cake stand alone, which was never a decision
+// anybody took - it was assumed into the handoff and carried through the build.
+// Dean asked for the crumb tray to count on 6 August, and the measurement agrees
+// for a reason worth writing down, because it is the only anti-runaway argument
+// in the game that does not touch a single point value:
+//
+//   The cake stand is a CONVEX reward - the bottom row's marginal tiles pay
+//   1, 3, 8, 14 - so a player with 38% more stand tiles ends with 87% more stand
+//   VP. Menus read the stand, so they multiply that same advantage: the winner
+//   takes 2.5x as many. Reading the crumb tray too DECOUPLES the module from the
+//   thing that is already compounding, and it lands on the trailing player, who
+//   crumbs slightly more often.
+//
+// It also revives a dead option. The crumb tray runs at about 2% of removals and
+// nobody chooses it; giving it a second job is the cheapest way to make it a real
+// destination rather than a legality backstop.
+//
+// Left as a constant rather than inlined so ab-menucrumb-2026-08-06.mjs can
+// rewrite it, and so the rule is visible where the rest of the module lives.
+export const MENU_COUNTS_CRUMB_TRAY = true;
+
 // Ingredient multiset of a player's CAKE STAND only - { lemon: 2, almond: 1 }.
-// THE CRUMB TRAY IS INVISIBLE TO TASTING MENUS, and this function is the single
-// place that rule is expressed.
+// STAND ONLY, deliberately: this is what the stand-shape metrics and the UI's
+// stand panel read. THE MENU PREDICATE IS getMenuIngredients BELOW - do not
+// reach for this one when the question is about a Tasting Menu.
 export function getStandIngredients(player) {
   const counts = {};
   for (const row of player.stand) {
@@ -1197,27 +1418,72 @@ export function getStandIngredients(player) {
   return counts;
 }
 
-// Does this player's stand meet this menu right now? Ingredients are NOT
-// consumed, so this is a pure read: a menu the player has already taken still
-// reads true, and two overlapping menus can both be satisfied by tiles that
-// overlap.
-export function qualifiesForMenu(player, menu) {
-  return satisfies(getStandIngredients(player), menu);
+// Ingredient multiset a TASTING MENU is read against: the cake stand, plus the
+// crumb tray when MENU_COUNTS_CRUMB_TRAY is on. The single place that rule is
+// expressed - qualifiesForMenu, getMenuDeficit and getClaimableMenus all come
+// through here, so the bot, the UI and the award loop cannot disagree about it.
+export function getMenuIngredients(player) {
+  const counts = getStandIngredients(player);
+  if (MENU_COUNTS_CRUMB_TRAY) {
+    for (const tile of player.crumbTray) {
+      counts[tile.ingredient] = (counts[tile.ingredient] || 0) + 1;
+    }
+  }
+  return counts;
 }
 
-// How many tiles short of `menu` this player's stand is - 0 when they qualify.
-// The natural heuristic, and what the "one tile short" highlight in the UI and
-// the bots' deficit terms are both reading.
+// Does this player meet this menu right now? Ingredients are NOT consumed, so
+// this is a pure read: a menu the player has already taken still reads true, and
+// two overlapping menus can both be satisfied by tiles that overlap.
+export function qualifiesForMenu(player, menu) {
+  return satisfies(getMenuIngredients(player), menu);
+}
+
+// How many tiles short of `menu` this player is - 0 when they qualify. The
+// natural heuristic, and what the "one tile short" highlight in the UI and the
+// bots' deficit terms are both reading.
 export function getMenuDeficit(player, menu) {
-  return deficit(getStandIngredients(player), menu);
+  return deficit(getMenuIngredients(player), menu);
 }
 
 // Every menu STILL ON THE TABLE that this player now qualifies for. The engine's
 // award loop and the UI both iterate exactly this.
 export function getClaimableMenus(gameState, player) {
   if (!isTastingMenuInPlay(gameState)) return [];
-  const counts = getStandIngredients(player);
+  const counts = getMenuIngredients(player);
   return gameState.tastingMenus.filter(menu => menu.takenBy === null && satisfies(counts, menu));
+}
+
+// ---------------------------------------------------------------------------
+// THE FLAVOUR OF THE DAY - the three accessors. Engine, bots and UI all read
+// these; none of them may re-derive the rule and then disagree with it. That is
+// the pattern the Tasting Menu used and it is why that module was cheap to change
+// twice in two days.
+// ---------------------------------------------------------------------------
+export function isFlavourInPlay(gameState) {
+  return !!gameState.flavourOfTheDay;
+}
+
+// How many Flavour tiles this player has ON THEIR BOARD. The single place the
+// board-only rule is expressed. countBoardIngredient already skips empty plates
+// (they carry no `ingredient`) and empty cells, so it is exactly right - it was
+// deliberately KEPT when the pantry goals were deleted on 4 August.
+export function getFlavourCount(gameState, player) {
+  if (!isFlavourInPlay(gameState)) return 0;
+  return countBoardIngredient(player.board, gameState.flavourOfTheDay);
+}
+
+// Every player currently holding the most - one id normally, more on a tie.
+//
+// THE ZERO RULE: if nobody holds a single Flavour tile, NOBODY takes the majority.
+// A tie at zero pays no one. Measured incidence is negligible, but it is exactly
+// the kind of thing that looks like a bug when it does fire.
+export function getFlavourLeaders(gameState) {
+  if (!isFlavourInPlay(gameState)) return [];
+  const counts = gameState.players.map(p => getFlavourCount(gameState, p));
+  const top = Math.max(...counts);
+  if (top <= 0) return [];
+  return gameState.players.filter((_, i) => counts[i] === top).map(p => p.id);
 }
 
 // The menus nobody has taken yet, in deal order. For the UI panel and for the
@@ -1391,13 +1657,34 @@ function brewFreshPot(gameState, { isBackstop, turn }) {
   // this comment, the module has lost the one property it was built for.
 }
 
+// Commit this turn's swept tiles to the board.
+//
+// `placements` is index-paired with pendingSweepTiles - placements[i] is where
+// pendingSweepTiles[i] goes - and must be exactly as long. That pairing predates
+// the trim rule and is kept, because it is what lets a placement be NULL.
+//
+// THE TRIM RULE (6 August). A null placement means "this tile goes back into the
+// BAG". You must place everything you can - getSweepPlacementCount says how many
+// that is - and whatever is left over is returned. The player keeps the whole of
+// the rest of their turn: the spend step and the claim both, exactly as on a turn
+// that fitted. This replaces the board-overflow ENDING, which binned the entire
+// sweep, skipped the turn straight to refill and closed the game.
+//
+// WHICH TILES ARE LOST IS THE PLAYER'S CHOICE AND THE ENGINE MUST NOT MAKE IT.
+// That is the whole reason the count is enforced here rather than the sweep being
+// trimmed at the transition into this phase: by the time anything is discarded
+// the player has to have had all the tiles in hand to choose from.
+//
+// BACK INTO THE BAG, NOT OUT OF THE GAME: a returned tile can be dealt out again
+// by the next pot of tea. It matters at 4 players, where the bag (100) and the
+// table's total board capacity (100) are the same size and the supply genuinely
+// runs thin. They go on the END of the bag - the bag is drawn from the front - so
+// a returned tile is not immediately re-dealt to the player who gave it up.
+//
+// Measured cost of the rule: about 0.5 turns per game hit it and roughly 1 tile
+// per game goes back.
 export function place(gameState, placements) {
   if (gameState.gamePhase !== 'place') throw new Error('Not in place phase');
-
-  // Defence in depth: the transition helpers above normally fire overflow
-  // before place() is ever reached, but a driver that constructs a place-phase
-  // state directly could still arrive here with an over-full board.
-  if (checkBoardOverflowOnPlace(gameState)) return gameState;
 
   if (placements.length !== gameState.pendingSweepTiles.length) {
     throw new Error('Must place all swept tiles');
@@ -1405,15 +1692,39 @@ export function place(gameState, placements) {
 
   const player = gameState.players[gameState.currentPlayerIndex];
 
+  // You must place all you can: fewer is illegal, more is impossible. Checked up
+  // front so a partial placement cannot be half-committed before it is refused.
+  const required = getSweepPlacementCount(gameState);
+  const offered = placements.reduce((n, p) => n + (p === null || p === undefined ? 0 : 1), 0);
+  if (offered !== required) {
+    throw new Error(
+      `Must place ${required} of the ${gameState.pendingSweepTiles.length} swept tiles - ` +
+      `you placed ${offered}. Any you cannot place go back into the bag.`
+    );
+  }
+
+  const returnedToBag = [];
+
   for (let i = 0; i < placements.length; i++) {
     const boardIndex = placements[i];
     const tile = gameState.pendingSweepTiles[i];
+
+    if (boardIndex === null || boardIndex === undefined) {
+      returnedToBag.push(tile);
+      continue;
+    }
 
     if (boardIndex < 0 || boardIndex >= BOARD_SIZE * BOARD_SIZE) throw new Error('Invalid board position');
     const cell = player.board[boardIndex];
     if (cell !== null) throw new Error('Cell already occupied or blocked');
 
     player.board[boardIndex] = tile;
+  }
+
+  if (returnedToBag.length > 0) {
+    for (const tile of returnedToBag) gameState.bag.push(tile);
+    gameState.trimmedSweeps++;
+    gameState.tilesReturnedToBag += returnedToBag.length;
   }
 
   gameState.pendingSweepTiles = [];
@@ -1486,13 +1797,10 @@ export function claim(gameState, cardId, removedBoardIndex, destination) {
 
   if (gameState.gamePhase !== 'claim') throw new Error('Not in claim phase');
 
-  // No empty plates left in the table's supply, no claim - see canClaimMore,
-  // which since 4 August stops binding once the ending is armed (the final
-  // round's plates come from an unlimited supply). So this can only fire on the
-  // turn that spends the last plate, which is the turn that arms the ending.
-  if (!canClaimMore(gameState)) {
-    throw new Error('No empty plates left - the supply is exhausted');
-  }
+  // (A canClaimMore guard stood here until 6 August - "No empty plates left, the
+  // supply is exhausted". Empty plates are unlimited now, so a claim is never
+  // refused for want of one. See canClaimMore, which is unconditionally true.)
+
   // Card lookup order: the shared market first, then this player's personal
   // reserve. A reserved card completes exactly like a market card except the row
   // is not spliced (see the fromReserve branches below), since the card left the
@@ -1565,20 +1873,24 @@ export function claim(gameState, cardId, removedBoardIndex, destination) {
     player.crumbTray.push(removedTile);
   }
 
-  // THE TASTING MENU. The trigger is the STAND, not the removal: a menu reads the
-  // ingredients on your cake stand, so only a 'row' destination can change
-  // qualification and a tile sent to the crumb tray can never complete one.
+  // THE TASTING MENU. The trigger is where the tile LANDED, and since 6 August
+  // BOTH destinations can change qualification - see MENU_COUNTS_CRUMB_TRAY. The
+  // destination test that used to guard this block is gone rather than widened,
+  // because with the crumb tray counting there is no destination that cannot
+  // complete a menu, and a condition that is always true is a condition to delete.
   //
   // IT SITS AFTER THE DESTINATION BRANCH, and therefore after every validation has
   // passed, for two reasons that both matter: a rejected claim must never score,
-  // and the stand must ALREADY CONTAIN the new tile when the check runs.
+  // and the destination must ALREADY CONTAIN the new tile when the check runs.
   //
-  // VERIFIED 5 AUGUST: claim's 'row' branch is the only caller of plateTileOntoRow
-  // and plateTileOntoRow is the only code path that pushes onto a stand row's
-  // tiles array, so this is genuinely the only route by which a tile can enter a
-  // cake stand. If a spend-step effect, a bonus tile or an end-of-game placement
-  // ever gains one, the check must fire there too - a player who qualifies
-  // silently and is never awarded looks like bad luck, not like a crash.
+  // VERIFIED 5 AUGUST, RE-VERIFIED 6 AUGUST for the crumb tray: claim's 'row'
+  // branch is the only caller of plateTileOntoRow, plateTileOntoRow is the only
+  // code path that pushes onto a stand row's tiles array, and claim's 'crumb'
+  // branch is the only code path that pushes onto crumbTray - so this is genuinely
+  // the only route by which a tile can enter either. If a spend-step effect, a
+  // bonus tile or an end-of-game placement ever gains one, the check must fire
+  // there too - a player who qualifies silently and is never awarded looks like
+  // bad luck, not like a crash.
   //
   // FIRST TO QUALIFY WINS IT, AND IT NEVER COMES BACK. takenBy goes null -> id
   // exactly once. A second player meeting the same menu scores nothing; the loop
@@ -1586,7 +1898,7 @@ export function claim(gameState, cardId, removedBoardIndex, destination) {
   //
   // INGREDIENTS ARE NOT CONSUMED, so the loop takes EVERY menu the stand now meets
   // rather than stopping at the first - unless TASTING_MENU_ONE_PER_TURN is on.
-  if (tastingMenusEnabled && destination.type === 'row') {
+  if (tastingMenusEnabled) {
     for (const menu of getClaimableMenus(gameState, player)) {
       menu.takenBy = player.id;
       player.tastingMenus.push(menu.id);
@@ -1701,7 +2013,9 @@ export function moveTile(gameState, fromIndex, toIndex) {
   return gameState;
 }
 
-// SPEND 3 CUPCAKES: REMOVE AN EMPTY PLATE FROM YOUR BOARD, TO THE BOX.
+// SPEND CUPCAKES: REMOVE AN EMPTY PLATE FROM YOUR BOARD, TO THE BOX.
+// (The price is REMOVE_PLATE_CUPCAKE_COST. It has been 3 and is now 2 - do not
+// write it into this header again.)
 //
 // Every claim plants an empty plate on the cell the sacrificed tile came from -
 // by construction in the middle of good territory - and a plate is the one
@@ -1709,15 +2023,15 @@ export function moveTile(gameState, fromIndex, toIndex) {
 // This is the outlet that undoes that, permanently.
 //
 // THE PLATE LEAVES THE GAME. It is not returned to any supply, and there is no
-// supply for it to be returned to: the engine has never tracked plates as
-// per-player inventory, it counts CLAIMS MADE against gameState.cardsNeededToEnd
-// (isCardEndConditionMet). So removing a plate cannot buy an extra claim or move
-// the game's clock in either direction - it buys one cell of board space. See
-// REMOVE_PLATE_CUPCAKE_COST for why that is worth 3.
+// supply for it to be returned to - plates are unlimited. What it buys is one
+// cell of board space, and since 6 August that means it also buys TIME: a full
+// board is the game's clock, so this is the one action in the game that pushes
+// the ending away. See REMOVE_PLATE_CUPCAKE_COST for what that is worth, and for
+// why the price came down to 2 on 7 August once this became the clock control.
 //
-// ONE PER TURN, mirroring the move allowance. At 3 cupcakes against a measured
-// income of about 5 per player per GAME a second one is nearly unaffordable
-// anyway, so this bounds a degenerate state rather than shaping normal play.
+// ONE PER TURN, mirroring the move allowance. Against a measured income of about
+// 5 cupcakes per player per GAME even the reduced price makes a second one
+// expensive, so this bounds a degenerate state rather than shaping normal play.
 export function removePlate(gameState, index) {
   if (gameState.gamePhase !== 'spend') {
     throw new Error('Can only remove a plate in the spend phase');
@@ -1934,24 +2248,15 @@ export function refill(gameState) {
 // decide whether to skip the end-of-turn card deal, and the pot replaces that
 // deal, so both must come from one evaluation.
 function endTurn(gameState, teaDue) {
-  // THE CARD END CONDITION: the table's empty plate pool is spent. Since
-  // 4 August this ARMS the ending rather than stopping play, so the branch that
-  // used to return here does not exist any more - the turn runs on through the
-  // pot and the rotation exactly as a normal one does, and advanceToNextTurn
-  // closes the game when the round completes.
-  //
-  // Checked every turn, including during the final round - but it can only ARM
-  // the ending, never re-arm it, so the extra claims the final round now permits
-  // (canClaimMore stops binding once armed, 4 August) cannot restate the reason
-  // or extend anything. The condition simply stays true once it is true.
-  if (isGameOver(gameState)) triggerEndGame(gameState, 'cardMarket');
+  // (THE CARD END CONDITION stood here - "the table's empty plate pool is spent",
+  // armed as 'cardMarket'. Deleted on 6 August with the pool itself. No end
+  // condition is resolved in this function any more: both of the two live ones
+  // belong to the turn boundary, and advanceToNextTurn owns them.)
 
-  // THE END-OF-TURN FRESH POT OF TEA (1 August rule change). Resolved here, after
-  // the end conditions that would stop the game outright - there is no point
-  // brewing for a game that is already over - and before the rotation, so the pot
-  // goes to the player whose turn this was. See isTeaDue for why the trigger moved
-  // here from the start of a turn, and brewFreshPot for what the tea player
-  // trades away.
+  // THE END-OF-TURN FRESH POT OF TEA (1 August rule change). Resolved before the
+  // rotation, so the pot goes to the player whose turn this was. See isTeaDue for
+  // why the trigger moved here from the start of a turn, and brewFreshPot for what
+  // the tea player trades away.
   //
   // NOT a decision: there is no "may" left in the rule. The choice sits upstream,
   // in whether the player's sweep uncovers that fourth teapot at all.
@@ -1959,22 +2264,22 @@ function endTurn(gameState, teaDue) {
   // refill() has already skipped this turn's card deal on the strength of the
   // same flag - the pot replaces it.
   //
-  // THE TILE END CONDITION LIVES HERE (4 August). "You need to refill the tile
-  // market and the bag is already empty" is precisely this line: teaDue is the
-  // need, an empty bag is the inability, and the two together trigger the end.
-  // Neither alone does - a due pot with tiles left brews normally, and a bag that
-  // has quietly hit zero is not an ending until something asks it for tiles.
+  // A DUE POT AGAINST AN EMPTY BAG IS A NO-OP (6 August). Not an ending - THE POT
+  // SIMPLY DOES NOT HAPPEN. No tile flush, no card redeal, no cupcake, and
+  // nothing armed; the turn ends exactly as if no teapot had been showing, and
+  // play continues over a market that from here on only thins. This is worth
+  // saying out loud because "the pot silently does not happen" is precisely the
+  // sort of thing a later reader assumes is a missing branch: it is the rule.
+  // Until 6 August this line armed 'bagEmpty' and closed the game.
   //
-  // NO POT IS POURED on that firing: no card flush, no cupcake, no tile deal. The
-  // refresh did not happen, so nothing that a refresh pays for happens either.
-  if (teaDue) {
-    if (gameState.bag.length === 0) {
-      triggerEndGame(gameState, 'bagEmpty');
-    } else {
-      // refill() has already counted the turn that just played, so the pot belongs
-      // to turnsPlayed - 1, not to the turn about to start.
-      brewFreshPot(gameState, { isBackstop: false, turn: gameState.stats.turnsPlayed - 1 });
-    }
+  // The market does eventually run bare, and that is end condition 2 - see
+  // applyEmptyMarketRule. In practice a board fills long before it (the whole
+  // table can only absorb 25 x playerCount tiles against a bag of 100), so the
+  // thinning market is a short last lap rather than a phase of the game.
+  if (teaDue && gameState.bag.length > 0) {
+    // refill() has already counted the turn that just played, so the pot belongs
+    // to turnsPlayed - 1, not to the turn about to start.
+    brewFreshPot(gameState, { isBackstop: false, turn: gameState.stats.turnsPlayed - 1 });
   }
 
   advanceToNextTurn(gameState);
@@ -1994,13 +2299,14 @@ function endTurn(gameState, teaDue) {
 // it: ending at the boundary in FRONT of seat 3 leaves seats 1-2 a turn up on
 // seats 3-4. Finishing the round is what actually delivers it.
 //
-//   BOARD-FULL TRIGGER: the incoming player's personal board is completely full
-//     (tiles + tart tokens), so they cannot place anything they sweep. It arms
-//     the ending; the player still takes their remaining turns, and
-//     checkBoardOverflowOnPlace discards whatever they sweep.
+//   BOARD-FULL TRIGGER (END CONDITION 1, and the game's clock since 6 August):
+//     ANY player's personal board is completely full - all 25 cells hold a tile or
+//     an empty plate. See the loop below for why it is every player rather than
+//     the incoming one, and why it runs before the stop.
 //
 // THE EMPTY-BAG CHECK IS GONE FROM HERE. An empty bag is no longer an ending in
-// itself (4 August) - see endTurn, where a needed refill against an empty bag is.
+// itself (4 August), and since 6 August a pot due against one is not an ending
+// either - see endTurn.
 //
 // NOTE: this does not always leave the game in the 'sweep' phase. The
 // empty-market rule below can leave the incoming player in 'spend' via its
@@ -2023,6 +2329,33 @@ function advanceToNextTurn(gameState) {
   // Count this turn toward the empty-market deadlock watch (reset by any claim).
   gameState.turnsSinceLastClaim++;
 
+  // END CONDITION 1: A BOARD IS FULL - the game's clock since 6 August.
+  //
+  // ACROSS EVERY PLAYER, not just the incoming one. The old check asked only
+  // whether the player about to start had a full board, which meant a board that
+  // filled on its OWNER'S OWN turn went unnoticed until the turn came back round
+  // to them - a whole extra lap of the table. The fill is the event; this notices
+  // it at the end of the turn it happened on.
+  //
+  // BEFORE THE EQUAL-TURNS STOP, and that ordering is load-bearing. A board that
+  // fills on the LAST seat's turn of a round arms here and is honoured by the stop
+  // immediately below, in the same call - every seat has had the same number of
+  // turns, so there is nothing left to owe anybody. Arming after the stop would
+  // cost that game a whole extra round.
+  //
+  // A CONSEQUENCE WORTH KNOWING: because the fill is armed at once and the round
+  // then finishes, the player who filled never takes another turn on a full board
+  // unless they are the start player - and if they are, the stop fires before their
+  // turn begins. So "a full board sweeps and bins everything" is a corner rather
+  // than a normal turn. It is legal and must not throw (see place()), but nothing
+  // elaborate is built for it.
+  for (const p of gameState.players) {
+    if (getValidPlacements(p.board).length === 0) {
+      triggerEndGame(gameState, 'boardFull');
+      break;
+    }
+  }
+
   // THE EQUAL-TURNS STOP. The turn has come back round to the start player, so
   // every seat has had the same number of turns and an armed ending can be
   // honoured. This is the one and only exit.
@@ -2030,11 +2363,6 @@ function advanceToNextTurn(gameState) {
     gameState.gameOver = true;
     calculateFinalScores(gameState);
     return;
-  }
-
-  const nextPlayer = gameState.players[gameState.currentPlayerIndex];
-  if (getValidPlacements(nextPlayer.board).length === 0) {
-    triggerEndGame(gameState, 'boardFull');
   }
 
   // Metric: the incoming turn is definitely going to be played (the stop above
@@ -2069,21 +2397,24 @@ function advanceToNextTurn(gameState) {
 //     against stripping the board bare, but it was the same shape as the
 //     start-of-turn tea rule the 1 August change removed - see isTeaDue - and it
 //     is now simply dead code rather than a live incentive.)
-//   - Market AND bag empty: a flush cannot produce a single tile. The player
-//     skips the sweep and place steps and goes straight to the spend phase, so
-//     they can still move a tile and claim - a turn with no tiles to take is not
-//     a turn with nothing to do. The ending is armed as 'marketTiles' if nothing
-//     has armed one already.
+//   - Market AND bag empty: THIS IS END CONDITION 2 (6 August) - "no tiles remain
+//     in the supply". It arms 'marketTiles', and the player then skips the sweep
+//     and place steps and goes straight to the spend phase, so they can still move
+//     a tile and claim: a turn with no tiles to take is not a turn with nothing to
+//     do. Play finishes the round from there as it does after any trigger.
 //
-//     REACHABLE AGAIN SINCE 4 AUGUST, in the final round only. An empty bag
-//     stopped being an ending in itself, so a game CAN now run its last turns
-//     with the bag at zero, and a player who strips the last tiles off the market
-//     hands their neighbour exactly this state. It cannot spin: endTriggered is
-//     already set by the time it happens (an empty market shows five teapot
-//     symbols, so the previous turn's isTeaDue found a dry bag and triggered), and
-//     the equal-turns stop closes the game at the end of the round regardless. The
-//     old turnsSinceLastClaim countdown that used to guard this is therefore
-//     redundant and is gone - the round boundary is the guard.
+//     IT IS A BACKSTOP, NOT A PATH, and the arithmetic says so rather than the
+//     hope. Every board cell permanently absorbs one tile, so the table can take
+//     25 x playerCount of them - 50 / 75 / 100 against a bag of 100. At 2 and 3
+//     players this branch is STRUCTURALLY UNREACHABLE; at 4 it is a photo finish
+//     that end condition 1 won in 100% of 3,000 simulated games. Keep it anyway:
+//     it is what stops a pathological table sitting on a dry market for ever.
+//
+//     (Until 6 August this was described as a deadlock valve of last resort,
+//     armed a turn behind 'bagEmpty' - the ending that fired when a pot came due
+//     against a dry bag. There is no 'bagEmpty' any more. A due pot with nothing
+//     to pour is simply a pot that does not happen, so nothing arms an ending
+//     ahead of this one and the market is now genuinely allowed to run bare.)
 // Called from advanceToNextTurn, the normal turn rotation, and from there only.
 // Since 3 August a pot is mechanical, so this branch brews one and hands the
 // incoming player their sweep in the same call - there is no interactive round
@@ -2107,10 +2438,10 @@ function applyEmptyMarketRule(gameState) {
     return;
   }
 
-  // Market and bag both empty. Arm the ending if nothing else has (triggerEndGame
-  // keeps the first reason, so in the expected case this is a no-op and the
-  // player is still told it was the tea that could not be poured), then jump to
-  // the spend phase so the player can still move a tile and claim this turn.
+  // Market and bag both empty - END CONDITION 2. Arm the ending if nothing else
+  // has (triggerEndGame keeps the first reason, so a board that filled earlier
+  // still gets the credit), then jump to the spend phase so the player can still
+  // move a tile and claim this turn.
   triggerEndGame(gameState, 'marketTiles');
   gameState.gamePhase = 'spend';
 }
@@ -2362,47 +2693,37 @@ export function getTotalCardsClaimed(gameState) {
   return gameState.players.reduce((sum, p) => sum + p.claimedCards.length, 0);
 }
 
-export function isGameOver(gameState) {
-  const totalCardsClaimed = getTotalCardsClaimed(gameState);
-  return totalCardsClaimed >= gameState.cardsNeededToEnd;
-}
+// (isGameOver stood here until 6 August: total claims >= cardsNeededToEnd, the
+// card-count ending. Its only caller was endTurn, and both it and the pool it
+// counted against are deleted.)
 
-// May the current player still claim? A claim plants an empty plate on the board
-// cell the sacrificed tile came from, so before the ending is armed this asks
-// whether the table's plate supply can pay for one.
+// May the current player still claim? ALWAYS, and unconditionally.
 //
-// THE POOL IS A SHARED TABLE SUPPLY of EMPTY_PLATES_PER_PLAYER × playerCount
-// (cardsNeededToEnd), NOT a per-player allowance. One player can out-claim their
-// own six as long as the table total holds; the engine has always counted it this
-// way and 3 August changed the number, not the mechanism.
+// It survives as a HOOK, not as a rule. Every bot and the UI call it, so making
+// it honest is a far smaller edit than deleting it, and a future claim limit -
+// if one is ever wanted - has a single place to live. There is no such limit
+// today.
 //
-// ONCE THE ENDING IS ARMED THE POOL STOPS BINDING (4 August ruling). Play
-// continues to the end of the round, and during that round a player may still
-// complete a card: the extra plates come from an UNLIMITED supply.
-//
-// WHY THAT IS THE RIGHT RULE, and not a fudge. The plate pool is a CLOCK, not a
-// resource - its whole job is to say when the game ends, and it has already done
-// that job by the time this matters. Letting it also switch claiming off for the
-// last round would make it do a second, different job, and a bad one: the players
-// who had not yet taken their turn in the triggering round would be the only ones
-// who could not use it. That is exactly the seat unfairness the finish-the-round
-// rule exists to remove, so leaving it in would have handed it straight back.
-//
-// The measured version of the same point: before this ruling, the last round of
-// roughly half of all games contained no claims at all, because 'cardMarket' is
-// the commonest ending and it fires precisely when the pool empties.
-//
-// COMPONENT CONSEQUENCE, and the reason the harness now reports it: the box needs
-// more plates than the pool, because a game can finish having placed more than
-// cardsNeededToEnd of them. How many more is a measurement, not a guess - see
-// simulate.js metric 10, which reports the overrun so the punchboard can be sized
-// off it rather than off the 24-plate pool.
+// WHAT IT USED TO ASK. A claim plants an empty plate on the board cell the
+// sacrificed tile came from, and the table had a shared pool of them
+// (EMPTY_PLATES_PER_PLAYER x playerCount). Running the pool dry was the game's
+// clock, and this refused a claim that could not be paid for. THE POOL IS DELETED
+// - not raised, deleted: empty plates are unlimited, they are not a resource, and
+// no rule anywhere may test one. The clock is a full board now. See the
+// endGameReason block in createGame for why the swap was made.
 export function canClaimMore(gameState) {
-  if (gameState.endTriggered) return true;
-  return getTotalCardsClaimed(gameState) < gameState.cardsNeededToEnd;
+  return true;
 }
 
 export function calculateFinalScores(gameState) {
+  // PASS 1 (6 August, for the Flavour of the Day). The majority needs EVERY
+  // player's count before anybody can be paid, so it is resolved BEFORE the
+  // scoring loop rather than inside it. This is the ONLY cross-player term in the
+  // whole function - everything else below is private to one player - and it is
+  // the one place a naive implementation quietly scores the first player against
+  // an incomplete picture.
+  const flavourLeaders = new Set(getFlavourLeaders(gameState));
+
   for (const player of gameState.players) {
     let score = 0;
 
@@ -2429,6 +2750,21 @@ export function calculateFinalScores(gameState) {
     // whole record and there is no accumulate-as-you-earn term to keep in step.
     // Zero for the whole game when the module is off.
     score += player.tastingMenus.length * TASTING_MENU_VP;
+
+    // THE FLAVOUR OF THE DAY (6 August). BOARD ONLY - the cake stand and the crumb
+    // tray do NOT count, and that is the rule rather than an oversight: tiles reach
+    // the stand only by claiming, so counting them would route this lane back
+    // through the claim step and undo the one thing the module exists for.
+    //
+    // Two intended consequences fall out. Sacrificing a Flavour tile on a claim
+    // COSTS you 1 VP and possibly the majority, which is the first opposed
+    // gradient the claim step has ever had. And the Flavour is shared, so the tile
+    // market is contested for it - the game's first reason to look at another
+    // player's board.
+    if (isFlavourInPlay(gameState)) {
+      score += getFlavourCount(gameState, player) * FLAVOUR_VP_PER_TILE;
+      if (flavourLeaders.has(player.id)) score += FLAVOUR_MAJORITY_VP;
+    }
 
     // (Ingredient objectives scored 3 VP per pair here until 4 August. The pantry
     // goals are deleted - see the note at the top of this file. Expect mean
@@ -2484,7 +2820,7 @@ export function getWinningPlayers(gameState) {
   return winners;
 }
 
-export { BOARD_SIZE, COLOURS, INGREDIENTS, REWARD_CARDS, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, EMPTY_PLATES_PER_PLAYER };
+export { BOARD_SIZE, COLOURS, INGREDIENTS, REWARD_CARDS, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS };
 // The Tasting Menu deck and its two pure predicates, re-exported so every
 // consumer reads the module through game.js exactly as it reads the rest of the
 // rules, rather than half of it from a second file.

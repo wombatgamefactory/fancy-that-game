@@ -9,8 +9,8 @@
 // that morning; this file is the live suite.
 //
 // 4 AUGUST, AND WHY THE FILENAME NO LONGER TELLS THE WHOLE STORY. This is the
-// live suite, so the day's changes were folded into it rather than starting a
-// third file:
+// live suite, so each day's changes are folded into it rather than starting a
+// new file:
 //   - the tile bag went BACK to 4 copies (section 1, which asserted 5 and 125);
 //   - a bag that cannot fill the market no longer ends the game (section 7);
 //   - the end is a TRIGGER, not a stop: play finishes the round so every player
@@ -19,18 +19,32 @@
 // this file for that, because this file never tested them - their tests were in
 // the superseded first file and went with it.
 //
+// 6 AUGUST - THE NEW END CONDITION. Sections 7 and 8 are rewritten and section 9
+// is new, because the file's whole account of how the game ends is superseded:
+//   - THE EMPTY-PLATE POOL IS DELETED. Plates are unlimited, a claim is never
+//     refused, and 'cardMarket' is not an end reason any more.
+//   - THE GAME ENDS ON TWO CONDITIONS AND NO OTHERS: a player's board is
+//     completely full ('boardFull'), or the market and the bag are both empty
+//     ('marketTiles'). 'bagEmpty' and 'boardOverflow' are gone.
+//   - A BOARD FILLING ARMS THE ENDING IMMEDIATELY, at the end of the turn it
+//     happened on, and across EVERY player - not when its owner next begins a turn.
+//   - SWEEPING MORE THAN YOU CAN PLACE IS NOT AN ENDING. Place all you can, the
+//     excess goes back into the BAG, and you keep your spend and your claim.
+// About a dozen assertions in this file tested the pool directly and every one of
+// them failed by design; they are rewritten below as the new rule rather than
+// deleted, so what changed is on the record next to what replaced it.
+//
 // SCOPE. This covers what the changes touched - the bag, the four prices, the
-// removal action and the allowances around it, the tile-market end rule and the
-// equal-turns rule - plus the invariants they could plausibly have broken (the
-// end conditions, and the claim clock NOT moving when plates leave the board).
+// removal action and the allowances around it, the end conditions and the
+// equal-turns rule - plus the invariants they could plausibly have broken.
 // Everything else the first file asserts is untouched and is not duplicated here.
 import {
   createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, canBuyExtraTile,
   place, claim, skipClaim, skipSpend, moveTile, removePlate, canRemovePlate,
   getMoveCost, reserveCard, canReserveCard, refill, calculateFinalScores,
-  getTotalCardsClaimed, getValidPlacements, canClaimMore,
+  getTotalCardsClaimed, getValidPlacements, canClaimMore, getSweepPlacementCount,
   MOVE_TILE_CUPCAKE_COST, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST,
-  RESERVE_CUPCAKE_COST, EMPTY_PLATES_PER_PLAYER,
+  RESERVE_CUPCAKE_COST,
   // 4 August: the tile-market and equal-turns blocks arm the tea trigger by hand,
   // which means uncovering the printed teapot cells rather than assuming indices.
   TEAPOT_SYMBOL_CELLS,
@@ -83,24 +97,29 @@ function spendState(playerCount = 2, cupcakes = 9) {
   return { s, p };
 }
 
-// --- 1. THE TILE BAG: 4 COPIES, 100 TILES ----------------------------------
+// --- 1. THE TILE BAG: 5 COPIES, 125 TILES ----------------------------------
 //
 // 4 AUGUST: back from 5 copies / 125 tiles. This block asserted the 125-tile bag
 // from the 3 August set; a 4-player game played to completion on 3 August never
 // came close to running out, so the extra 25 were buying nothing.
 //
+// 7 AUGUST: BACK TO 5 AND 125, and the pins below moved with it. The 4 August
+// reasoning was superseded by the board-full clock on 6 August, which made games
+// longer: four players then ran 327 turns per 3,000 games with a pot of tea due
+// and an empty bag to refill it from. See TILE_COPIES in tiles.js.
+//
 // THE LITERALS BELOW ARE DELIBERATE, AND THIS IS THE ONLY PLACE THEY BELONG. A
-// conformance test's whole job is to fail when the constant moves, so pinning 4
-// and 100 by hand is the point here. Everywhere else - report strings, skew
+// conformance test's whole job is to fail when the constant moves, so pinning 5
+// and 125 by hand is the point here. Everywhere else - report strings, skew
 // baselines, UI copy - must read TILE_COPIES / TILE_BAG_SIZE, which is the rule
 // that stopped being followed twice and left "125" printed under a 100-tile bag.
 
-check('the bag holds 4 copies of each of the 25 colour/ingredient combinations', () => {
-  eq(TILE_COPIES, 4, 'copies per combination');
+check('the bag holds 5 copies of each of the 25 colour/ingredient combinations', () => {
+  eq(TILE_COPIES, 5, 'copies per combination');
   eq(COLOURS.length, 5, 'colours');
   eq(INGREDIENTS.length, 5, 'ingredients');
   eq(generateTileTypes().length, 25, 'distinct tile types');
-  eq(TILE_BAG_SIZE, 100, 'derived bag size');
+  eq(TILE_BAG_SIZE, 125, 'derived bag size');
 
   const bag = createTileBag();
   eq(bag.length, TILE_BAG_SIZE, 'actual bag length matches the derived size');
@@ -143,14 +162,18 @@ check('a new game deals 25 tiles to the market and leaves the rest in the bag', 
 
 // --- 2. THE PRICE LADDER ---------------------------------------------------
 
-check('the cupcake menu is priced 1 / 1 / 2 / 3', () => {
+// REPRICED AGAIN 7 AUGUST: the extra tile back to 1 and the plate removal to 2,
+// so the ladder is 1 / 1 / 1 / 2. Both came DOWN, for opposite reasons - the
+// extra tile is the release valve and was priced out of reach, the plate removal
+// took charge of the game's clock on 6 August and nobody could afford it.
+check('the cupcake menu is priced 1 / 1 / 1 / 2', () => {
   eq(MOVE_TILE_CUPCAKE_COST, 1, 'move a tile');
   eq(RESERVE_CUPCAKE_COST, 1, 'reserve a card');
-  eq(EXTRA_TILE_CUPCAKE_COST, 2, 'take an extra tile');
-  eq(REMOVE_PLATE_CUPCAKE_COST, 3, 'remove an empty plate');
+  eq(EXTRA_TILE_CUPCAKE_COST, 1, 'take an extra tile');
+  eq(REMOVE_PLATE_CUPCAKE_COST, 2, 'remove an empty plate');
 });
 
-check('an extra tile now charges 2 cupcakes, not 1', () => {
+check('an extra tile charges 1 cupcake again', () => {
   const s = newGame(2);
   const p = s.players[0];
   s.currentPlayerIndex = 0;
@@ -163,15 +186,19 @@ check('an extra tile now charges 2 cupcakes, not 1', () => {
   eq(p.cupcakes, 4 - EXTRA_TILE_CUPCAKE_COST, 'charged the extra-tile price');
 });
 
-check('an extra tile is refused at 1 cupcake, which used to be enough', () => {
+check('an extra tile is refused at 0 cupcakes, and 1 is now enough', () => {
   const s = newGame(2);
   const p = s.players[0];
   s.currentPlayerIndex = 0;
   s.gamePhase = 'place';
   s.pendingSweepTiles = [];
-  p.cupcakes = 1;
-  assert(!canBuyExtraTile(s), 'canBuyExtraTile should refuse at 1 cupcake');
+  p.cupcakes = 0;
+  assert(!canBuyExtraTile(s), 'canBuyExtraTile should refuse at 0 cupcakes');
   threw(() => takeExtraTile(s, s.market.findIndex(t => t !== null)), 'Not enough cupcakes');
+  // The 7 August repricing, asserted from the other side: what used to be one
+  // cupcake short is now exactly the price.
+  p.cupcakes = 1;
+  assert(canBuyExtraTile(s), 'canBuyExtraTile should allow at 1 cupcake');
 });
 
 // --- 3. MOVING: TILES ONLY -------------------------------------------------
@@ -223,19 +250,21 @@ check('the removed plate is counted as returned to the box', () => {
   eq(s.platesReturnedToBox, 1, 'the retired plate is counted');
 });
 
-check('removing a plate does NOT move the claim clock in either direction', () => {
-  // The whole meaning of "it does not go back into circulation": the end
-  // condition counts claims made, so retiring plates can neither buy an extra
-  // claim nor shorten the game.
+check('removing a plate buys a cell back, and so pushes the ending AWAY', () => {
+  // 6 AUGUST, AND THIS ASSERTION IS THE REVERSE OF THE ONE IT REPLACES. The old
+  // test pinned "retiring a plate does not move the claim clock in either
+  // direction", which was the point of returning it to the box while the clock
+  // was the plate pool. The clock is a FULL BOARD now, so a retired plate is the
+  // one thing in the game that buys the table more playing time.
   const { s, p } = spendState();
-  const clockBefore = s.cardsNeededToEnd;
   const claimedBefore = getTotalCardsClaimed(s);
-  p.board[3] = { type: 'blocked' };
-  p.board[4] = { type: 'blocked' };
+  p.board = Array(25).fill(null).map(() => ({ type: 'blocked' }));
+  eq(getValidPlacements(p.board).length, 0, 'the board starts completely full');
+
   removePlate(s, 3);
-  eq(s.cardsNeededToEnd, clockBefore, 'the target is unchanged');
-  eq(getTotalCardsClaimed(s), claimedBefore, 'the claim count is unchanged');
-  eq(s.cardsNeededToEnd, EMPTY_PLATES_PER_PLAYER * s.playerCount, 'still plates x players');
+  eq(getValidPlacements(p.board).length, 1, 'the retired plate freed a cell');
+  eq(getTotalCardsClaimed(s), claimedBefore, 'and did not touch the claim count');
+  assert(!('cardsNeededToEnd' in s), 'the deleted plate pool must not be back on the state');
 });
 
 check('one plate removal per turn', () => {
@@ -247,15 +276,17 @@ check('one plate removal per turn', () => {
   assert(!canRemovePlate(s), 'canRemovePlate agrees the allowance is spent');
 });
 
-check('a removal is refused on a tile, an empty cell, and at 2 cupcakes', () => {
-  const { s, p } = spendState(2, 2);
+// The cupcake figure here tracks REMOVE_PLATE_CUPCAKE_COST and must stay one
+// short of it: 2 was a refusal at the old price of 3 and is now the price itself.
+check('a removal is refused on a tile, an empty cell, and at 1 cupcake', () => {
+  const { s, p } = spendState(2, 1);
   p.board[0] = { colour: 'pink', ingredient: 'lemon' };
   p.board[1] = { type: 'blocked' };
   threw(() => removePlate(s, 0), 'No empty plate at that cell');
   threw(() => removePlate(s, 2), 'No empty plate at that cell');
   threw(() => removePlate(s, 1), 'Not enough cupcakes');
-  assert(!canRemovePlate(s), 'canRemovePlate refuses at 2 cupcakes');
-  eq(p.cupcakes, 2, 'nothing was charged');
+  assert(!canRemovePlate(s), 'canRemovePlate refuses at 1 cupcake');
+  eq(p.cupcakes, 1, 'nothing was charged');
 });
 
 check('canRemovePlate is false when the board holds no plate', () => {
@@ -377,39 +408,62 @@ check('no game ever draws more tiles than the bag holds', () => {
   }
 });
 
-check('claims exceed the plate clock ONLY during the finish-out round', () => {
-  // This assertion used to be the flat "claims never exceed the plate clock",
-  // which was right when the pool was an inventory. Since the 4 August
-  // correction the pool is only a clock: the final round claims on from an
-  // unlimited supply, so an overrun is legal - but ONLY a final round's worth of
-  // one. A game can play at most playerCount - 1 further turns after the pool
-  // empties, and the one-claim-per-turn rule caps each of them at a single card,
-  // so anything above that ceiling means the ending failed to arm when it should
-  // have and the clock has stopped working.
+check('nothing caps claiming, and no claim is ever refused for want of a plate', () => {
+  // THIS REPLACES "claims exceed the plate clock ONLY during the finish-out
+  // round", which pinned the pool overrun to at most playerCount - 1. There is no
+  // pool and no overrun. What remains true, and is worth pinning in its place, is
+  // the one structural cap that survives: ONE CLAIM PER TURN. Total claims can
+  // therefore never exceed turns played, whatever else changes.
   for (const pc of [2, 3, 4]) {
     for (let g = 0; g < 5; g++) {
       const s = playOut(pc);
-      const overrun = getTotalCardsClaimed(s) - s.cardsNeededToEnd;
-      assert(overrun <= pc - 1,
-        `${pc}p: ${getTotalCardsClaimed(s)} claims is ${overrun} past a ${s.cardsNeededToEnd} clock, ` +
-        `more than the ${pc - 1} turns a finish-out round can add (${s.endGameReason})`);
+      assert(getTotalCardsClaimed(s) <= s.stats.turnsPlayed,
+        `${pc}p: ${getTotalCardsClaimed(s)} claims over ${s.stats.turnsPlayed} turns breaks one-claim-per-turn`);
+      eq(canClaimMore(s), true, `${pc}p: claiming is never closed off`);
     }
   }
 });
 
-// --- 7. THE TILE-MARKET END RULE (4 August) --------------------------------
+check('a full board ends the game, and it is the ending that fires in real play', () => {
+  // The headline of the 6 August change, asserted against real bot games rather
+  // than a constructed state: the board fill is the clock, and it is expected to
+  // end essentially every game (100% of 3,000 in simulation). Five games apiece is
+  // not a rate measurement - it is a check that the OTHER conditions have not
+  // quietly taken the job back.
+  for (const pc of [2, 3, 4]) {
+    for (let g = 0; g < 5; g++) {
+      const s = playOut(pc);
+      assert(s.endGameReason === 'boardFull' || s.endGameReason === 'marketTiles',
+        `${pc}p: ended on '${s.endGameReason}', which is not one of the two live conditions`);
+      if (s.endGameReason === 'boardFull') {
+        assert(s.players.some(p => getValidPlacements(p.board).length === 0),
+          `${pc}p: 'boardFull' was reported but no board is actually full`);
+      }
+    }
+  }
+});
+
+// --- 7. THE TWO END CONDITIONS (6 August) ----------------------------------
 //
-// THE RULE. A bag that cannot fill all 25 market cells does NOT end the game: the
-// fresh pot deals out as many tiles as remain and play continues across a partly
-// filled market. The end fires only when a refill is NEEDED and the bag is
-// ALREADY empty - the pot of tea with nothing left to pour.
+// THE RULE, in full. The game ends when EITHER
+//   1. a player's board is completely full - all 25 cells hold a tile or an empty
+//      plate ('boardFull'), or
+//   2. no tiles remain in the supply - the tile market is empty AND the bag is
+//      empty ('marketTiles').
+// Nothing else ends the game. As before, a trigger only ARMS the ending and play
+// continues until the turn returns to the start player.
 //
-// 'bagEmpty' therefore MEANS THAT, and no longer means "the bag hit zero". The
-// two halves are tested apart, because the old rule would pass a test that only
-// checked the ending eventually happens.
+// WHAT THIS SECTION USED TO SAY, and why it is worth writing down rather than
+// simply deleting: it pinned the 4 August tile-market rule, in which a pot of tea
+// coming due against an already-empty bag ended the game as 'bagEmpty'. That
+// ending is deleted. The pot now simply does not arrive - no flush, no cupcake,
+// no card redeal, no ending - and play continues over a market that only thins
+// from there. The half of the old rule that survives is the short deal: a bag
+// that cannot fill 25 cells deals what it has and play carries on.
 //
 // Every state here is hand-built and driven through refill(), which is where the
-// rule lives (isTeaDue asks the question, endTurn resolves it against the bag).
+// turn boundary lives (isTeaDue asks the question, endTurn resolves it against
+// the bag, advanceToNextTurn owns both end conditions).
 
 // Uncover every teapot cell, which is what arms isTeaDue - no two symbols share a
 // row or column, so this is the only cheap way to reach the threshold by hand.
@@ -446,27 +500,186 @@ check('an empty bag alone is not an ending - nothing has asked it for tiles', ()
   eq(s.endGameReason, null, 'and names no reason');
 });
 
-check("a refill NEEDED against an already-empty bag ends the game as 'bagEmpty'", () => {
+check('a pot due against an empty bag is a NO-OP, not an ending', () => {
+  // THE 6 AUGUST DELETION, asserted directly. This exact state used to arm
+  // 'bagEmpty' and close the game out over the following round. Now: nothing
+  // happens at all. No tiles dealt, no cupcake paid, no card row flushed, no
+  // ending armed - and the turn passes on as an ordinary one.
   const s = newGame(2);
   s.bag = [];
   armTeaTrigger(s);
+  s.currentPlayerIndex = 0;
+  const cupcakesBefore = s.players[0].cupcakes;
+  const rowBefore = s.cardMarket.map(c => c.id);
+
+  s.gamePhase = 'refill';
+  refill(s);
+
+  eq(s.endTriggered, false, 'a pot that cannot be poured arms NOTHING');
+  eq(s.endGameReason, null, 'and names no reason');
+  eq(s.gameOver, false, 'and certainly does not end the game');
+  eq(s.market.filter(t => t !== null).length, 25 - TEAPOT_SYMBOL_CELLS.length,
+    'no tiles were dealt - the pot did not happen');
+  eq(s.players[0].cupcakes, cupcakesBefore, 'no cupcake was paid');
+  eq(JSON.stringify(s.cardMarket.map(c => c.id)), JSON.stringify(rowBefore),
+    'and the card row was not flushed');
+  eq(s.currentPlayerIndex, 1, 'the turn simply passed on');
+
+  // And it stays a no-op - a second dry turn does not accumulate into an ending.
+  s.gamePhase = 'refill';
+  refill(s);
+  eq(s.gameOver, false, 'still running a turn later');
+  eq(s.endTriggered, false, 'and still nothing armed');
+});
+
+check("END CONDITION 2: market and bag both empty arms 'marketTiles'", () => {
+  const s = newGame(2);
+  s.market = s.market.map(() => null);
+  s.bag = [];
   s.currentPlayerIndex = 0;
 
   s.gamePhase = 'refill';
   refill(s);
   eq(s.endTriggered, true, 'the ending is armed');
-  eq(s.endGameReason, 'bagEmpty', 'and named for the tea that could not be poured');
+  eq(s.endGameReason, 'marketTiles', 'and named for the supply, not the tea');
   eq(s.gameOver, false, 'but play is NOT stopped on the spot - the round finishes');
-  // NO POT IS POURED on that firing: no tiles are dealt, so the market is exactly
-  // as the trigger found it.
-  eq(s.market.filter(t => t !== null).length, 25 - TEAPOT_SYMBOL_CELLS.length,
-    'no tiles were dealt - the refresh did not happen');
+  // The incoming player has nothing to sweep, so they are dropped straight into
+  // the spend phase: a turn with no tiles to take is not a turn with nothing to do.
+  eq(s.gamePhase, 'spend', 'and the player can still spend and claim');
 
-  // The second seat finishes the round, and the game is scored there.
   s.gamePhase = 'refill';
   refill(s);
   eq(s.gameOver, true, 'the round completed, so the game is over');
-  eq(s.endGameReason, 'bagEmpty', 'and the reason is unchanged');
+  eq(s.endGameReason, 'marketTiles', 'and the reason is unchanged');
+});
+
+check("END CONDITION 1: a board filling arms 'boardFull' at once, not a lap later", () => {
+  // THE CHANGE THAT MATTERS MOST TO GAME LENGTH. The old check asked only whether
+  // the player ABOUT TO START had a full board, so a board that filled on its
+  // owner's own turn went unnoticed until the turn came back round to them - a
+  // whole extra lap of the table. Here seat 1 fills their own board and the
+  // ending must be armed on the rotation out of that same turn.
+  const s = newGame(3);
+  s.currentPlayerIndex = 0;
+  s.players[0].board = Array(25).fill(null).map(() => ({ type: 'blocked' }));
+
+  s.gamePhase = 'refill';
+  refill(s);
+  eq(s.endTriggered, true, "the fill armed the ending on the turn it happened");
+  eq(s.endGameReason, 'boardFull', 'and named the board');
+  eq(s.currentPlayerIndex, 1, 'play passed on to seat 2');
+  eq(s.gameOver, false, 'seats 2 and 3 are still owed their turns');
+
+  s.gamePhase = 'refill'; refill(s);
+  eq(s.gameOver, false, 'seat 3 is still owed a turn');
+  s.gamePhase = 'refill'; refill(s);
+  eq(s.gameOver, true, 'the round is complete, so the game is scored');
+  eq(s.stats.turnsPlayed % 3, 0, 'a whole number of rounds was played');
+});
+
+check('a board that fills on the LAST seat of a round ends it there, with no extra lap', () => {
+  // The ordering case the board-full check exists to get right: the fill happens
+  // on the last seat's turn, so by the time it is noticed the turn has already
+  // come back round to the start player and every seat has had the same number of
+  // turns. Arming AFTER the equal-turns stop would cost this game a whole round.
+  const s = newGame(3);
+  s.gamePhase = 'refill'; refill(s);   // seat 1
+  s.gamePhase = 'refill'; refill(s);   // seat 2
+  eq(s.currentPlayerIndex, 2, 'seat 3 is up');
+
+  s.players[2].board = Array(25).fill(null).map(() => ({ type: 'blocked' }));
+  s.gamePhase = 'refill'; refill(s);
+  eq(s.gameOver, true, 'the game closed on the same rotation');
+  eq(s.endGameReason, 'boardFull', 'for the right reason');
+  eq(s.stats.turnsPlayed, 3, 'exactly one round was played, not two');
+});
+
+// --- 7b. THE TRIM RULE (6 August) ------------------------------------------
+//
+// SWEEPING MORE THAN YOU CAN PLACE IS NO LONGER AN ENDING. Place all the tiles
+// you sweep if you can; any you cannot place go back into the BAG, and the player
+// keeps the rest of their turn - spend step and claim both. Which tiles are given
+// up is the PLAYER'S choice: place() pairs placements[i] with pendingSweepTiles[i]
+// and a null entry means "this one goes back".
+
+// A place-phase state with `free` empty cells and `swept` tiles in hand.
+function placeState(free, swept) {
+  const s = newGame(2);
+  s.currentPlayerIndex = 0;
+  const p = s.players[0];
+  p.board = Array(25).fill(null).map((_, i) => (i < free ? null : { type: 'blocked' }));
+  s.gamePhase = 'place';
+  s.pendingSweepTiles = Array.from({ length: swept }, (_, i) => ({
+    colour: COLOURS[i % COLOURS.length], ingredient: 'lemon',
+  }));
+  return { s, p };
+}
+
+check('a sweep bigger than the board trims: the excess goes back into the BAG', () => {
+  const { s, p } = placeState(1, 3);
+  const bagBefore = s.bag.length;
+  const keep = s.pendingSweepTiles[1];         // the player's choice, not the engine's
+  const lost = [s.pendingSweepTiles[0], s.pendingSweepTiles[2]];
+
+  eq(getSweepPlacementCount(s), 1, 'one cell means one tile placed');
+  place(s, [null, 0, null]);
+
+  eq(p.board[0], keep, 'the tile the PLAYER chose is the one on the board');
+  eq(s.bag.length, bagBefore + 2, 'the other two went back into the bag');
+  assert(lost.every(t => s.bag.includes(t)), 'and they are those two tiles, not copies');
+  eq(s.endTriggered, false, 'trimming arms NO ending');
+  eq(s.endGameReason, null, 'and names no reason');
+  eq(s.gamePhase, 'spend', 'and the player keeps their spend and their claim');
+  eq(s.trimmedSweeps, 1, 'the turn is counted as a trimmed one');
+  eq(s.tilesReturnedToBag, 2, 'and the returned tiles are counted');
+});
+
+check('you must place all you can - placing fewer is illegal', () => {
+  const { s } = placeState(2, 3);
+  eq(getSweepPlacementCount(s), 2, 'two cells means two tiles placed');
+  threw(() => place(s, [0, null, null]), 'Must place 2 of the 3 swept tiles');
+  eq(s.gamePhase, 'place', 'and the refused placement committed nothing');
+});
+
+check('a full board sweeps, places nothing, and bins the lot without throwing', () => {
+  // The zero-cell corner. Nearly unreachable in real play - a fill arms the
+  // ending at once, so the player who filled does not get another turn on a full
+  // board - but it must be legal rather than an exception.
+  const { s, p } = placeState(0, 2);
+  const bagBefore = s.bag.length;
+  eq(getSweepPlacementCount(s), 0, 'no cells, no placements');
+  place(s, [null, null]);
+  eq(s.bag.length, bagBefore + 2, 'both tiles went back into the bag');
+  eq(s.gamePhase, 'spend', 'and the turn continues to the spend step');
+  eq(getValidPlacements(p.board).length, 0, 'the board is still full');
+});
+
+check('a sweep that fits is unaffected - no nulls, nothing returned', () => {
+  const { s, p } = placeState(25, 3);
+  const bagBefore = s.bag.length;
+  eq(getSweepPlacementCount(s), 3, 'room for all three');
+  place(s, [0, 1, 2]);
+  eq(s.bag.length, bagBefore, 'nothing went back into the bag');
+  eq(s.trimmedSweeps, 0, 'and the turn is not counted as trimmed');
+  assert(p.board[0] && p.board[1] && p.board[2], 'all three landed');
+});
+
+check('a sweep is legal however full the board is', () => {
+  // The other half of the deletion: the overflow check used to fire on the
+  // transition INTO the place phase and end the game there. A sweep must now
+  // simply leave the tiles in hand for the placement step to resolve.
+  const s = newGame(2);
+  s.currentPlayerIndex = 0;
+  s.players[0].board = Array(25).fill(null).map(() => ({ type: 'blocked' }));
+  const first = s.market.findIndex(t => t !== null);
+  const tile = s.market[first];
+  sweep(s, Math.floor(first / s.marketSize), true, tile.colour, 'colour');
+  // A sweep that happens to clear its line pauses for the bonus tile; decline it
+  // so the assertion below is about the placement transition either way.
+  if (s.bonusTileAvailable) declineBonusTile(s);
+  eq(s.gamePhase, 'place', 'the sweep landed in the place phase as normal');
+  eq(s.endTriggered, false, 'and armed nothing');
+  assert(s.pendingSweepTiles.length > 0, 'with the swept tiles still in hand to choose from');
 });
 
 // --- 8. THE EQUAL-TURNS RULE (4 August) ------------------------------------
@@ -484,11 +697,13 @@ check("a refill NEEDED against an already-empty bag ends the game as 'bagEmpty'"
 //
 // So the assertion is made for EVERY reason that can be armed, each one armed on
 // a NON-START seat - arming on seat 1 would make equal turns true by accident
-// rather than by rule. 'marketTiles' is not among them and cannot be: reaching an
-// empty market with an empty bag necessarily passes through a due refill against
-// that same empty bag one turn earlier, so 'bagEmpty' always arms first and
-// triggerEndGame keeps the first reason. It is defence in depth, as the engine
-// says, not a path.
+// rather than by rule.
+//
+// 6 AUGUST: THERE ARE TWO REASONS NOW, and both are exercised here. The three
+// that went - 'cardMarket', 'bagEmpty' and 'boardOverflow' - had an armer each in
+// this table and all three are deleted with them. 'marketTiles' used to be
+// excluded on the grounds that 'bagEmpty' always armed a turn ahead of it; with
+// 'bagEmpty' gone it is genuinely reachable and is armed here like any other.
 
 // One ARMER per end reason: a mutation that makes that condition fire on the turn
 // of whoever is the current player when it runs. Kept as mutations rather than as
@@ -496,37 +711,17 @@ check("a refill NEEDED against an already-empty bag ends the game as 'bagEmpty'"
 // TELEPORT the game into the middle of a round, so the seats it skipped would show
 // as a turn short and the test would fail on its own setup rather than on the rule.
 const END_REASON_ARMERS = {
-  // The table's empty plate pool is spent. Card ids are real ones so the final
-  // scoring can look them up.
-  cardMarket(s) {
-    for (let i = 0; i < s.cardsNeededToEnd; i++) {
-      s.players[i % s.playerCount].claimedCards.push((i % 50) + 1);
-    }
-  },
-  // A refill is needed and the bag is already empty.
-  bagEmpty(s) {
-    s.bag = [];
-    armTeaTrigger(s);
-  },
-  // The INCOMING player's board has no free cell, so this fires on the rotation
-  // out of the current player's turn rather than during it.
+  // END CONDITION 1. THE CURRENT player's own board is full, which is the case the
+  // 6 August change exists for: it must arm on the rotation out of THIS turn
+  // rather than waiting for the turn to come back round to them.
   boardFull(s) {
-    const incoming = s.players[(s.currentPlayerIndex + 1) % s.playerCount];
-    incoming.board = Array(25).fill(null).map(() => ({ type: 'blocked' }));
+    s.players[s.currentPlayerIndex].board = Array(25).fill(null).map(() => ({ type: 'blocked' }));
   },
-  // A board that cannot accept the tiles just swept. Armed by walking the state
-  // through place(), which is where the overflow check lives; place() leaves the
-  // turn in 'refill' with the turn itself still unplayed, so the driver below
-  // still counts it as this seat's.
-  boardOverflow(s) {
-    const p = s.players[s.currentPlayerIndex];
-    p.board = Array(25).fill(null).map((_, i) => (i === 0 ? null : { type: 'blocked' }));
-    s.gamePhase = 'place';
-    s.pendingSweepTiles = [
-      { colour: 'pink', ingredient: 'lemon' },
-      { colour: 'blue', ingredient: 'lemon' },
-    ];
-    place(s, []);
+  // END CONDITION 2. No tiles anywhere: the market is bare and the bag is empty.
+  // Armed by applyEmptyMarketRule at the start of the NEXT player's turn.
+  marketTiles(s) {
+    s.market = s.market.map(() => null);
+    s.bag = [];
   },
 };
 
@@ -579,19 +774,19 @@ for (const [reason, arm] of Object.entries(END_REASON_ARMERS)) {
 }
 
 check('the end is a TRIGGER, not a stop - armed turns still get played', () => {
-  // The specific behaviour that changed: 'cardMarket' used to end the game the
-  // instant the pool ran out, mid-round. Armed on seat 2 of a 4-player game, seats
-  // 3 and 4 must each still get the turn they were owed.
+  // The specific behaviour that changed on 4 August: an ending used to stop play
+  // the instant it fired, mid-round. Armed on seat 2 of a 4-player game, seats 3
+  // and 4 must each still get the turn they were owed.
   const s = newGame(4);
   s.gamePhase = 'refill';
   refill(s);                       // seat 1 plays a plain turn
   eq(s.currentPlayerIndex, 1, 'the turn is now seat 2');
 
-  END_REASON_ARMERS.cardMarket(s);
+  END_REASON_ARMERS.boardFull(s);
   s.gamePhase = 'refill';
   refill(s);
   eq(s.endTriggered, true, 'armed on seat 2');
-  eq(s.endGameReason, 'cardMarket', 'and named the plate pool');
+  eq(s.endGameReason, 'boardFull', 'and named the full board');
   eq(s.gameOver, false, 'but seats 3 and 4 have not played this round yet');
   eq(s.currentPlayerIndex, 2, 'and the turn passed on normally');
 
@@ -602,55 +797,55 @@ check('the end is a TRIGGER, not a stop - armed turns still get played', () => {
   eq(s.stats.turnsPlayed % 4, 0, 'a whole number of rounds was played');
 });
 
-check('the spent plate pool stops gating claims once the ending is armed', () => {
-  // 4 AUGUST CORRECTION. The pool is the CLOCK, not an inventory: emptying it
-  // triggers the ending, and during the round that is then finished out a player
-  // may still complete a card, taking extra plates from an unlimited supply.
-  //
-  // WHY IT MATTERS, and why it is asserted rather than assumed: 'cardMarket' is
-  // the commonest ending and it fires exactly when the pool empties, so the old
-  // behaviour left the last round of roughly half of all games with no claims
-  // possible - and only for the seats that had not yet played, which is the same
-  // seat unfairness the finish-the-round rule exists to remove.
+check('claiming is never refused - empty plates are unlimited', () => {
+  // 6 AUGUST. This block replaces two tests that pinned the plate pool: that a
+  // spent pool refused a claim while the ending was unarmed, and that it stopped
+  // refusing once the ending was armed. There is no pool. canClaimMore survives
+  // as a hook for a future claim limit and is unconditionally true - before the
+  // ending is armed, after it is armed, and however many cards have been taken.
   const s = newGame(4);
-  eq(canClaimMore(s), true, 'claims are open at the start of the game');
+  eq(canClaimMore(s), true, 'open at the start of the game');
 
-  END_REASON_ARMERS.cardMarket(s);
-  eq(getTotalCardsClaimed(s), s.cardsNeededToEnd, 'the pool is exactly spent');
-  eq(s.endTriggered, false, 'nothing is armed until the turn ends');
-  eq(canClaimMore(s), false, 'and while unarmed, a spent pool DOES refuse a claim');
-
-  s.gamePhase = 'refill';
-  refill(s);
-  eq(s.endTriggered, true, 'ending the turn arms it');
-  eq(canClaimMore(s), true, 'and now the pool no longer gates claiming');
-
-  // The gate must stay open for the WHOLE finish-out round, not just one turn,
-  // and must not care how far past the pool the total has run.
-  s.players[0].claimedCards.push(7, 8, 9);
-  assert(getTotalCardsClaimed(s) > s.cardsNeededToEnd, 'the total has run past the pool');
-  eq(canClaimMore(s), true, 'claiming past the pool stays legal during the final round');
-
-  s.gamePhase = 'refill'; refill(s);
-  eq(canClaimMore(s), true, 'still open on the next seat of the same round');
-});
-
-check('an ending armed by something OTHER than the pool also frees the plates', () => {
-  // The unlimited supply is a property of the FINAL ROUND, not of the plate
-  // ending. A game that armed on an empty bag can still empty its pool during the
-  // round that follows, and must not lock claiming when it does.
-  const s = newGame(4);
-  END_REASON_ARMERS.bagEmpty(s);
-  s.gamePhase = 'refill';
-  refill(s);
-  eq(s.endGameReason, 'bagEmpty', 'armed on the bag, not the pool');
-
-  // Now spend the pool dry mid-finale.
-  for (let i = 0; i < s.cardsNeededToEnd; i++) {
+  // Far more claims than the deleted pool would ever have allowed (it was 6 per
+  // player, so 24 at this count).
+  for (let i = 0; i < 40; i++) {
     s.players[i % s.playerCount].claimedCards.push((i % 50) + 1);
   }
-  eq(canClaimMore(s), true, 'the pool being spent mid-finale does not close the gate');
-  eq(s.endGameReason, 'bagEmpty', 'and it does not steal the end reason either');
+  eq(canClaimMore(s), true, 'still open after 40 claims');
+
+  END_REASON_ARMERS.boardFull(s);
+  s.gamePhase = 'refill';
+  refill(s);
+  eq(s.endTriggered, true, 'the ending is armed');
+  eq(canClaimMore(s), true, 'and claiming is open through the finish-out round too');
+});
+
+check('a real claim goes through with no plate supply behind it', () => {
+  // canClaimMore returning true is not the same as claim() accepting - the guard
+  // that read it lived inside claim() and had its own error message. Drive an
+  // actual claim to be sure the refusal is genuinely gone.
+  const s = newGame(2);
+  s.currentPlayerIndex = 0;
+  const p = s.players[0];
+  // Pretend the whole table has claimed a great many cards already.
+  for (let i = 0; i < 40; i++) s.players[i % 2].claimedCards.push((i % 50) + 1);
+
+  const card = s.cardMarket[0];
+  // Lay the card's pattern out on the top-left of an otherwise empty board.
+  p.board = Array(25).fill(null);
+  const cells = [];
+  for (let i = 0; i < card.pattern.length; i++) {
+    if (card.pattern[i] === null) continue;
+    const idx = Math.floor(i / 3) * 5 + (i % 3);
+    p.board[idx] = { colour: card.pattern[i], ingredient: 'lemon' };
+    cells.push(idx);
+  }
+
+  s.gamePhase = 'claim';
+  claim(s, card.id, cells[0], { type: 'crumb' });
+  assert(p.claimedCards.includes(card.id), 'the card was claimed');
+  assert(p.board[cells[0]] && p.board[cells[0]].type === 'blocked',
+    'and an empty plate landed on the cell, from an unlimited supply');
 });
 
 check('real bot games also finish on a whole number of rounds', () => {

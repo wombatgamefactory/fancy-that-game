@@ -1,4 +1,4 @@
-import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, calculateFinalScores, canClaimMore, getLegalDestinations, STAND_ROW_VALUES, REWARD_CARDS, BOARD_SIZE, getPatternMatches, getPatternWindows, TASTING_MENU_VP } from '../engine/game.js';
+import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, calculateFinalScores, canClaimMore, getLegalDestinations, countBoardIngredient, STAND_ROW_VALUES, REWARD_CARDS, BOARD_SIZE, getPatternMatches, getPatternWindows, TASTING_MENU_VP, FLAVOUR_VP_PER_TILE } from '../engine/game.js';
 import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacements, decideClaim as greedyClaim, decideMove as greedyMove, decideRemovePlate as greedyRemovePlate, decideReserve as greedyReserve, decideExtraTile as greedyExtraTile, rankSweeps, rankBonusTiles } from './basicBot.js';
 
 // The two PAID cupcake decisions (3 August) are delegated to the basicBot
@@ -34,7 +34,12 @@ const MAX_BONUS_ACTIONS = 5;
 // still agree line for line. CUPCAKES ARE NOT IN IT since 3 August: they score
 // nothing and are only a tiebreaker, so counting them here would make the search
 // hoard exactly the resource the rule change exists to make it spend.
-function committedScore(player) {
+//
+// IT TAKES THE STATE AS WELL AS THE PLAYER since 6 August, for the Flavour of the
+// Day: that lane is scored off the board against an ingredient that lives on the
+// game state, so the player alone is no longer enough to mirror the scoring
+// function. The argument is optional so a caller with only a player still works.
+function committedScore(player, state = null) {
   let s = 0;
   for (let i = 0; i < player.stand.length; i++) {
     const row = player.stand[i];
@@ -51,6 +56,21 @@ function committedScore(player) {
   // greedy claim policy the rollouts share (decideClaim in basicBot) steers toward
   // removals that close a menu deficit inside the playouts too.
   s += (player.tastingMenus ? player.tastingMenus.length : 0) * TASTING_MENU_VP;
+  // THE FLAVOUR OF THE DAY (6 August). Board tiles of the revealed ingredient,
+  // 1 VP each. Unlike every other term here this one is NOT banked - a claim can
+  // take a Flavour tile off the board again - but it is the closest thing the
+  // rollout has to a running total of the lane, and pricing it is what stops the
+  // search sacrificing Flavour tiles for free.
+  //
+  // THE MAJORITY HALF IS DELIBERATELY OMITTED, and that is a decision rather than
+  // an oversight: it is a CROSS-PLAYER term, so modelling it inside a rollout
+  // means recomputing every opponent's count at every evaluation to price a bonus
+  // that moves by 3 VP at most. It costs more than it is worth. The search still
+  // chases the majority indirectly, because the per-tile term already pushes it
+  // toward holding more of the ingredient than anyone else.
+  if (state && state.flavourOfTheDay) {
+    s += countBoardIngredient(player.board, state.flavourOfTheDay) * FLAVOUR_VP_PER_TILE;
+  }
   return s;
 }
 
@@ -108,6 +128,14 @@ const CHUNK_SIZE = 20;
 // let every playout run past the end of the game and score a position that cannot
 // happen. Do not "tidy" the spread away into an explicit field list without
 // carrying both of them.
+//
+// 6 AUGUST: the rollout no longer emulates ANY end condition. It used to arm
+// 'boardOverflow' by hand at the placement step; that ending is deleted, and both
+// of the two live ones - a full board, and an empty market against an empty bag -
+// are armed by the engine itself inside advanceToNextTurn, which every rollout
+// reaches through refill(). Nothing here has to know the rule. What the clone
+// still has to carry is the end STATE those conditions write, which is the
+// paragraph above.
 // THE TASTING MENU NEEDS TWO EXPLICIT COPIES, and this is the single most likely
 // bug in this build. The Freshness Bonus had exactly the same shape - two mutable
 // containers, both written by the engine - and both had to be copied here or a
@@ -123,6 +151,12 @@ const CHUNK_SIZE = 20;
 // Nothing else the module adds is mutable: TASTING_MENU_VP is a constant, and the
 // deck in tastingMenus.js is never written to (createGame deals fresh entries).
 // There is a test for this - section 12 of test-rules-2026-08-05-tasting-menu.mjs.
+//
+// THE FLAVOUR OF THE DAY (6 August) NEEDS NOTHING HERE, and that is deliberate -
+// do not add a line for it. `state.flavourOfTheDay` is an IMMUTABLE STRING that
+// nothing writes to after createGame, so the spread copies it by value, and the
+// only other thing the module reads is player.board, which is deep-copied above.
+// A module with no mutable state has no clone hazard.
 function cloneState(state) {
   return {
     ...state,
@@ -394,7 +428,8 @@ function getActionsForPhase(state) {
     actions.push(null); // spend nothing
     return actions;
   } else if (phase === 'claim') {
-    // No plates left in the table's supply means skipping is the only action.
+    // canClaimMore is unconditionally true since 6 August (plates are unlimited);
+    // kept as the engine's hook for a future claim limit. Harmless here.
     if (!canClaimMore(state)) return [null];
     // Only actually claimable cards, and for each give MCTS a real plate-vs-crumb
     // choice: one action per legal destination of the tile the removal heuristic
@@ -496,7 +531,7 @@ function evaluateState(state, playerIndex) {
   const opponents = state.players.filter((_, i) => i !== playerIndex);
 
   // Already-banked score.
-  const playerCommitted = committedScore(player);
+  const playerCommitted = committedScore(player, state);
 
   // Board progress: a completed pattern is worth vp*2 (claimable now); an
   // incomplete one gets credit for its best viable window, quadratic in
@@ -532,7 +567,7 @@ function evaluateState(state, playerIndex) {
   // Opponents: committed score only.
   let bestOpponentCommitted = 0;
   for (const opponent of opponents) {
-    bestOpponentCommitted = Math.max(bestOpponentCommitted, committedScore(opponent));
+    bestOpponentCommitted = Math.max(bestOpponentCommitted, committedScore(opponent, state));
   }
 
   return playerEstimate - bestOpponentCommitted;
@@ -574,28 +609,19 @@ function rollout(state, playerIndex) {
           sweep(cloned, action.rowOrCol, action.isRow, action.declaration, action.declarationType);
         }
       } else if (cloned.gamePhase === 'place') {
-        // Mirror the engine's board-overflow handling so rollouts don't throw
-        // (and end the game) when the board can't accept all swept tiles.
-        const board = cloned.players[cloned.currentPlayerIndex].board;
-        const empty = getValidPlacements(board).length;
-        if (cloned.pendingSweepTiles.length > empty) {
-          // Mirrors triggerEndGame + checkBoardOverflowOnPlace as they stand
-          // since 4 August: overflow ARMS the ending and the swept tiles are
-          // discarded, and play then runs on until the turn comes back round to
-          // startPlayerIndex. It no longer seeds a countdown of its own - the old
-          // remainingTurnsInEndGame field is deleted from the engine, and it gave
-          // the wrong number of turns anyway (one more each to the OTHER players,
-          // leaving the triggering seat short). FIRST REASON WINS, as in the
-          // engine, so an ending already armed keeps its own reason.
-          if (!cloned.endTriggered) {
-            cloned.endTriggered = true;
-            cloned.endGameReason = 'boardOverflow';
-          }
-          cloned.pendingSweepTiles = [];
-          cloned.gamePhase = 'refill';
-        } else {
-          place(cloned, greedyPlacements(cloned));
-        }
+        // NO SPECIAL CASE ANY MORE (6 August). This branch used to re-implement
+        // triggerEndGame + checkBoardOverflowOnPlace inline: a sweep bigger than
+        // the board armed 'boardOverflow', binned the whole sweep and jumped the
+        // turn to refill. That ending is deleted. Sweeping more than you can place
+        // is an ordinary turn now - place what fits, the excess goes back into the
+        // bag - and greedyPlacements returns the nulls that say so, so the engine's
+        // own place() handles it and there is nothing here to emulate.
+        //
+        // An emulation that outlives the rule it copies is worse than none: this
+        // one would have kept ending rollouts on a condition the real game cannot
+        // reach, and every playout past a tight board would have scored a position
+        // that cannot happen.
+        place(cloned, greedyPlacements(cloned));
       } else if (cloned.gamePhase === 'spend') {
         // Spend the cupcakes in playouts too — an otherwise unclaimable card
         // completed by a move, and a card banked into the reserve, are both real

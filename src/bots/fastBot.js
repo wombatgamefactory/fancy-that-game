@@ -61,17 +61,21 @@ export function decideBonusTile(gameState) {
   return availableTiles[Math.floor(Math.random() * availableTiles.length)].index;
 }
 
+// THE TRIM RULE (6 August). The array must be ONE ENTRY PER SWEPT TILE, with
+// null for any tile that will not fit and therefore goes back into the bag - the
+// pairing is by index, so a short array is not the same thing and place() refuses
+// it. This function used to return a short array, which was harmless only because
+// an over-full board ended the game before place() was ever reached.
 export function decidePlacements(gameState) {
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-  const validPositions = getValidPlacements(currentPlayer.board);
+  const availablePositions = getValidPlacements(currentPlayer.board);
   const tilesToPlace = gameState.pendingSweepTiles.length;
 
-  const placements = [];
-  const availablePositions = [...validPositions];
+  const placements = new Array(tilesToPlace).fill(null);
 
   for (let i = 0; i < tilesToPlace && availablePositions.length > 0; i++) {
     const idx = Math.floor(Math.random() * availablePositions.length);
-    placements.push(availablePositions[idx]);
+    placements[i] = availablePositions[idx];
     availablePositions.splice(idx, 1);
   }
 
@@ -79,7 +83,8 @@ export function decidePlacements(gameState) {
 }
 
 export function decideClaim(gameState) {
-  // The table's empty-plate supply is exhausted - no claim is legal.
+  // canClaimMore is unconditionally true since 6 August (plates are unlimited);
+  // kept as the engine's hook for a future claim limit. See basicBot.decideClaim.
   if (!canClaimMore(gameState)) return null;
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 

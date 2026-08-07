@@ -110,7 +110,9 @@ console.log(`  ${nameA} win share of decisive games: ${decisive ? (100 * winsA /
 console.log(`  mean score: ${nameA}=${(scoreA / nA).toFixed(2)} (n=${nA})  ${nameB}=${(scoreB / nB).toFixed(2)} (n=${nB})`);
 // Since 4 August a reason names WHICH CONDITION ARMED the ending, not where play
 // stopped - the game finishes the round after it fires so every seat gets equal
-// turns, and the FIRST reason to arm is the one kept. 'bagEmpty' specifically
-// means "a refill was needed and the bag was already empty", not "the bag hit
-// zero": a bag that cannot cover 25 cells deals what it has and play continues.
+// turns, and the FIRST reason to arm is the one kept. Since 6 August there are
+// only two: 'boardFull' (a player's board is completely full) and 'marketTiles'
+// (market and bag both empty), and the second is a backstop that essentially
+// never fires. Expect 'boardFull' on effectively every game; anything else in
+// this line, at any rate, is worth looking at.
 console.log(`  end reasons: ${JSON.stringify(endReasons)}  unfinished=${unfinished}`);

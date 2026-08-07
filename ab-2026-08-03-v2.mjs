@@ -5,10 +5,16 @@
 //   node ab-2026-08-03-v2.mjs 100 2,3,4 basic
 //
 // ALWAYS RUN BOTH BOTS. simulate.js defaults to `fast`, which sweeps and places
-// at RANDOM; its games clog the personal boards and end on boardFull/boardOverflow,
-// so tile-supply and board-space effects read very differently under it than under
-// `basic`, whose games are ~40% shorter and end on the empty-plate clock. A
-// conclusion that holds under only one of them is a fact about that bot.
+// at RANDOM; its games clog the personal boards, so tile-supply and board-space
+// effects read very differently under it than under `basic`. A conclusion that
+// holds under only one of them is a fact about that bot.
+//
+// 6 AUGUST: this used to say the two bots ended on DIFFERENT conditions - `fast`
+// on a full or overflowing board, `basic` on the empty-plate clock, with `basic`
+// games ~40% shorter. Both of those endings are gone and there is only one clock
+// now, a full board, so both bots end the same way. The reason to run both is
+// unchanged and is if anything sharper: `fast` fills a board faster and with
+// worse tiles, so it reaches that one ending on a different trajectory.
 //
 // WHY IT EXISTS AND WHAT IT CANNOT DO. The two knobs under test are module-level
 // `export const`s with no runtime seam (unlike EXTRA_CLAIM_CUPCAKE_COST, which has

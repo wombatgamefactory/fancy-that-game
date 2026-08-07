@@ -68,13 +68,41 @@ export const INGREDIENTS = ['lemon', 'chocolate', 'caramel', 'strawberry', 'almo
 // been hardcoded into report strings and a bag-skew baseline, which is exactly
 // the kind of thing that silently keeps reporting the previous rule set.
 //
-// WHY IT MATTERS BEYOND SUPPLY. Every pot of tea flushes the whole market back
-// into the bag and redeals 25 cells. Since 4 August a bag that cannot cover the
-// board no longer ends the game on the spot - it deals what it has and play goes
-// on across a thinning market until the NEXT refill is needed (see isTeaDue and
-// endTurn in game.js). The bag size therefore sets how many full laps of the
-// market the table gets before that last thin lap, not a hard stop.
-export const TILE_COPIES = 4;
+// 7 AUGUST: 4 -> 5, back to 125. THE 4 AUGUST REASONING WAS SUPERSEDED TWO DAYS
+// LATER BY A RULE IT COULD NOT HAVE ANTICIPATED. The board-full clock (6 August)
+// made games longer and claims more frequent, and the 3 August game that showed
+// no shortage was played under the plate-pool ending. Measured on the live
+// engine at 3,000 games per count, four players ran 327 turns that began with a
+// pot of tea due and nothing to refill from: the teapot symbols stay uncovered,
+// the trigger stays armed for the rest of the game, and the table plays out on a
+// thinning trolley. 93.2 of the 100 tiles were permanently out of the bag by the
+// end. Two and three players were clean at 0, and both were well tuned on
+// teapot cadence, so THAT CADENCE IS THE THING TO RE-CHECK after this change -
+// a bigger bag means bare cells refill more readily and pots may come slower.
+//
+// WHAT THE BAG SIZE ACTUALLY BUYS, REWRITTEN 6 AUGUST. It used to be described as
+// "how many full laps of the market the table gets before the last thin lap",
+// because a pot of tea that could not be poured ended the game. It no longer
+// ends anything - the pot simply does not arrive - so what the bag size now
+// decides is WHETHER END CONDITION 2 IS REACHABLE AT ALL:
+//
+//   Every board cell permanently absorbs exactly one tile. A claim moves the tile
+//   off the cell to the cake stand or the crumb tray and drops an empty plate on
+//   the same cell, so the cell is spent either way. The table can therefore
+//   absorb 25 x playerCount tiles, plus one more for each plate a player pays 3
+//   cupcakes to take off their board.
+//
+//   That is 50 / 75 / 100 at 2 / 3 / 4 players against a bag of 125 since
+//   7 August. "The market and the bag are both empty" is now STRUCTURALLY
+//   UNREACHABLE AT EVERY PLAYER COUNT, where at 100 tiles four players was a
+//   photo finish that the board fill won. End condition 2 is therefore a written
+//   backstop and nothing else - which is what it already was in practice, having
+//   never fired once in 3,000 simulated games at any count.
+//
+// So moving this number does not lengthen or shorten the game - a full board
+// does that. It moves how thin the market gets on the way, and at 4 players it
+// decides whether the backstop ending is a real possibility or an arithmetic one.
+export const TILE_COPIES = 5;
 
 // Total tiles in the bag at setup. Derived, never asserted separately.
 export const TILE_BAG_SIZE = COLOURS.length * INGREDIENTS.length * TILE_COPIES;
@@ -126,42 +154,37 @@ export const INITIAL_MARKET_CARDS = 3;
 // Hard ceiling on the card row (30 July rule change). The end-of-turn deal
 // (dealEndOfTurnCard) is skipped while the row already holds this many cards.
 export const MAX_MARKET_CARDS = 8;
-// EMPTY PLATE TOKENS per player (3 August rule change: 8 -> 6). Claiming a card
-// plants an empty plate on the board cell the sacrificed tile came from, so a
-// player's pool of plates IS their claim allowance, and the pool running out is
-// the game's clock. The card-count end condition therefore fires at
-// EMPTY_PLATES_PER_PLAYER × playerCount claims (see cardsNeededToEnd).
+// EMPTY PLATES ARE UNLIMITED (6 August).
 //
-// WHY 6. At 8 the pool ended only 12.2 / 5.6 / 0.2% of games at 2/3/4 players -
-// claims per player ran 5.9-6.9 against 8 plates each, so the advertised clock
-// almost never struck and 85.6% of 4-player games ended on an empty bag instead.
-// At 6 the pool becomes the ending in 93.9 / 93.1 / 54.6% of games and takes
-// 4.3 / 5.3 / 1.6 turns off the length, with near-identical pacing at every count
-// (7.88 / 8.15 / 8.02 turns per player).
+// EMPTY_PLATES_PER_PLAYER stood here - a shared pool of 6 per player that was the
+// game's clock: claiming a card plants a plate on the board cell the sacrificed
+// tile came from, so the pool was the table's claim allowance, and running it out
+// ended the game. THE POOL IS DELETED OUTRIGHT, NOT RAISED. It is not a clock and
+// not a resource, no rule anywhere may test it, and CARDS_TO_END_2P (its
+// 2-player derivation) goes with it. The clock is a full board now - see the
+// endGameReason block in game.js for why the swap was made rather than a retune.
 //
-// DO NOT PRE-CORRECT 4 PLAYERS TO 5. It was tested: it drops the worst-off
-// player at 4p to 3.93 claims, below the 4 needed to fill the bottom stand row at
-// all, which locks the trailing player out of the stand's headline scoring
-// option. The 4-player coin flip against 'bagEmpty' is expected to resolve itself
-// as the paid extra tile (EXTRA_TILE_CUPCAKE_COST) lifts claim rates - 4 players
-// needs just one more total claim to cross.
-//
-// PHYSICAL COMPONENT COUNT IS NOT THIS NUMBER x PLAYERS. Since the 4 August
-// ruling the pool is purely a CLOCK: emptying it triggers the ending, and the
-// round that is then finished out may claim on from an UNLIMITED supply of spare
-// plates (see canClaimMore in game.js). So a game can finish having placed more
-// plates than the pool holds, and the box has to cover the overrun.
-//
-// MEASURED over 1,000 basicBot games per count: the overrun runs 0.21 / 0.36 /
-// 0.40 on average and tops out at 1 / 2 / 3 at 2/3/4 players, so 30.4% of
-// 4-player games need at least one spare. The box therefore wants 27 rather than
-// 24. The ceiling is structural rather than empirical - at most playerCount - 1
-// turns follow the trigger and each may claim once - so 24 + (players - 1) is
-// the number to punch, and simulate.js metric 10 reports it every run.
-export const EMPTY_PLATES_PER_PLAYER = 6;
+// WHAT THE BOX ACTUALLY NEEDS is below, and it is a PUNCHBOARD FIGURE ONLY.
+export const EMPTY_PLATES_IN_BOX_PER_PLAYER = 10;
 
-// Cards a 2-player game must see claimed before the card-count end condition
-// fires (6 empty plates × 2 players). This is NOT a deck size — the deck holds
-// all 47 cards left after the market is dealt (see initGameDeck). Every player
-// count derives the same way in createGame (3p = 18, 4p = 24).
-export const CARDS_TO_END_2P = EMPTY_PLATES_PER_PLAYER * 2;
+// ^ TEN PER PLAYER, FORTY IN THE BOX. Not a limit, not a supply, and nothing in
+// the engine may read this to decide anything - it exists so the harness reports
+// against a named number instead of a literal typed into a report string, and so
+// the component list has one place to come from.
+//
+// MEASURED over 3,000 basicBot games under the adopted rule: the most plates any
+// one player placed in a game averaged 7.0 / 7.0 / 7.1 at 2/3/4 players and
+// topped out at 10 at every count. The structural ceiling is one plate per turn
+// per player (one claim per turn, one plate per claim).
+//
+// TEN IS NOT A HARD CEILING, and the report says so rather than asserting a zero
+// it cannot hold: re-measured over 6,000 two-player games, about 0.1% of them
+// want an eleventh. That is fine and needs no component change - plates are
+// unlimited BY RULE, so a table one short in a thousand games simply uses
+// anything to hand. It would only matter if a rule ever tested the supply, and
+// none may.
+//
+// (It was 27 TOTAL under the pool - 24 plus a measured overrun of up to 3 - which
+// is a different quantity entirely: that number was sized off a shared table
+// supply, this one is sized off what a single player physically needs in front of
+// them. Do not compare the two.)

@@ -1,9 +1,12 @@
-import { createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, getValidSweeps, getValidPlacements, calculateFinalScores, getWinningPlayers, STAND_ROW_VALUES, getStartingCupcakes, getTastingMenusEnabled, setTastingMenusEnabled, getStandIngredients, menuDeficit, TASTING_MENU_VP, getTastingMenuCount, TASTING_MENUS } from './src/engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, getValidSweeps, getValidPlacements, calculateFinalScores, getWinningPlayers, STAND_ROW_VALUES, getStartingCupcakes, getTastingMenusEnabled, setTastingMenusEnabled, getStandIngredients, menuDeficit, TASTING_MENU_VP, getTastingMenuCount, TASTING_MENUS, getFlavourEnabled, setFlavourEnabled, getFlavourCount, getFlavourLeaders, isFlavourInPlay, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP,
+  // The cupcake price ladder, imported so metric 8 prints the LIVE prices. It
+  // printed "(2ea)" and "(3ea)" as typed literals until 7 August.
+  MOVE_TILE_CUPCAKE_COST, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, RESERVE_CUPCAKE_COST } from './src/engine/game.js';
 // COLOURS is imported for the bag-skew baseline arithmetic, not for colour logic:
 // the per-colour share and the tiles-per-colour figure are both DERIVED here, so
 // a change to TILE_COPIES or to the colour list moves the report with it. The
 // bag size has twice been hardcoded into a report string in this file's history.
-import { TILE_BAG_SIZE, TILE_COPIES, TILE_COLOUR_SHARE_PCT, COLOURS } from './src/engine/tiles.js';
+import { TILE_BAG_SIZE, TILE_COPIES, TILE_COLOUR_SHARE_PCT, COLOURS, EMPTY_PLATES_IN_BOX_PER_PLAYER } from './src/engine/tiles.js';
 import { createStatsCollector } from './src/engine/statsCollector.js';
 
 // Cupcake tokens the 3 August component list proposes for the box (was 16). The
@@ -84,8 +87,10 @@ function runGame(playerConfigs, botStrategy) {
         break;
       }
       case 'place': {
-        // Board overflow is handled by the engine at the transition into this
-        // phase (checkBoardOverflowOnPlace), so any state seen here is placeable.
+        // A sweep bigger than the board is legal since 6 August: decidePlacements
+        // returns a null for every tile that will not fit, and place() sends those
+        // back into the bag. (This used to say the engine had already resolved an
+        // overflow before the phase was reached, because overflow ended the game.)
         //
         // SPEND 1 CUPCAKE: TAKE 1 EXTRA TILE (3 August) is resolved HERE, before
         // the placements are chosen - it is a sweep-step option, and the tile it
@@ -147,6 +152,11 @@ function runGame(playerConfigs, botStrategy) {
   // stand/crumb breakdown (plate = tiles banked on the cake stand, crumb =
   // tiles sent to the crumb tray). KEPT CUPCAKES NO LONGER SCORE (3 August) -
   // they are reported as a resource and as the tiebreaker, not as VP.
+  // THE FLAVOUR OF THE DAY (metric 14). The majority is a CROSS-PLAYER fact, so it
+  // is resolved once for the game before the per-player rows are built - the same
+  // two-pass shape calculateFinalScores had to adopt, and for the same reason.
+  const flavourLeaders = new Set(getFlavourLeaders(gameState));
+
   const perPlayer = gameState.players.map((p, seat) => {
     let standScore = 0;
     let standTiles = 0;
@@ -184,14 +194,30 @@ function runGame(playerConfigs, botStrategy) {
         }
         return nearest;
       })(),
-      // Card VP by subtraction. Still exact, but the flavour term has to come off
-      // as well: since 4 August the score is stand + crumbs + cards + flavour and
-      // nothing else. (The pantry goals were the term that used to sit here and
-      // were deleted that morning; Today's Speciality replaced them that afternoon,
-      // the Freshness Bonus replaced IT the same evening, and the Tasting Menu
-      // replaced that on 5 August.)
+      // THE FLAVOUR OF THE DAY (6 August), metric 14's raw material. Read off the
+      // FINISHED BOARD rather than logged, because the lane fires no events at all
+      // during play - it is a setup draw and an end-game count.
+      //
+      // BOARD ONLY. If this line ever grows a stand or crumb read, the module has
+      // stopped being what it is.
+      flavourTiles: getFlavourCount(gameState, p),
+      flavourLeader: flavourLeaders.has(p.id),
+      // The DOSE: what the whole module paid this player, both clauses.
+      flavourVp: getFlavourCount(gameState, p) * FLAVOUR_VP_PER_TILE
+        + (flavourLeaders.has(p.id) ? FLAVOUR_MAJORITY_VP : 0),
+      // Card VP by subtraction. Still exact, but every other lane has to come off
+      // it: since 4 August the score is stand + crumbs + cards + menus, and since
+      // 6 August the Flavour as well. (The pantry goals were the term that used to
+      // sit here and were deleted that morning; Today's Speciality replaced them
+      // that afternoon, the Freshness Bonus replaced IT the same evening, and the
+      // Tasting Menu replaced that on 5 August.)
+      //
+      // MISS THE FLAVOUR TERM AND METRIC 10 SILENTLY CREDITS THIS LANE TO THE
+      // CARDS, which is the one reading that would hide the module's whole dose.
       cardVp: p.score - standScore - p.crumbTray.length
-        - ((p.tastingMenus ? p.tastingMenus.length : 0) * TASTING_MENU_VP),
+        - ((p.tastingMenus ? p.tastingMenus.length : 0) * TASTING_MENU_VP)
+        - (getFlavourCount(gameState, p) * FLAVOUR_VP_PER_TILE
+          + (flavourLeaders.has(p.id) ? FLAVOUR_MAJORITY_VP : 0)),
     };
   });
   const winners = getWinningPlayers(gameState);
@@ -200,6 +226,44 @@ function runGame(playerConfigs, botStrategy) {
   // Blowout check (standing D1 watch): the winner-vs-last score gap this game.
   const gameScores = perPlayer.map(p => p.score);
   const scoreSpread = Math.max(...gameScores) - Math.min(...gameScores);
+
+  // --- METRIC 14: the Flavour of the Day, the three readings that are facts
+  // about the whole TABLE rather than about one player -----------------------
+  //
+  // THE LEAD MARGIN is top minus second. It is what the 3 VP bonus was dosed
+  // against: the typical lead is about 2 tiles, so a 3 VP bonus is worth roughly
+  // what the margin is worth, and a margin that drifts upward means the bonus has
+  // become a reward for a race that was already over.
+  const flavourCounts = perPlayer.map(p => p.flavourTiles).sort((a, b) => b - a);
+  const flavourTop = flavourCounts[0] || 0;
+  const flavourLeadMargin = flavourTop > 0 ? flavourTop - (flavourCounts[1] || 0) : null;
+  const flavourTie = flavourTop > 0 && flavourLeaders.size > 1;
+  // WHO TOOK THE MAJORITY, BY FINISHING RANK. Dense rank on the final score, 0 =
+  // won (or shared the win). If the bonus goes overwhelmingly to rank 0 it is
+  // paying the player who was winning anyway, which is the failure mode the
+  // handoff's "what must not get worse" table watches through the score spread.
+  const sortedScores = [...new Set(gameScores)].sort((a, b) => b - a);
+  const flavourLeaderRanks = perPlayer
+    .filter(p => p.flavourLeader)
+    .map(p => sortedScores.indexOf(p.score));
+
+  // DOES THE MODULE DECIDE THE WINNER? The counterfactual: re-rank the table with
+  // the whole lane subtracted and see whether the same players win. This is the
+  // figure the dose was calibrated on - 12.9 / 17.9 / 20.4% at 2/3/4 players
+  // against the Tasting Menu's 12.1 / 22.5 / 26.5% - so it is what a re-dose has
+  // to be argued against.
+  //
+  // The scores are put back before returning: getWinningPlayers reads player.score
+  // and every later metric reads it too, so a counterfactual that forgot to
+  // restore would quietly rewrite the whole report.
+  let flavourDecided = false;
+  if (isFlavourInPlay(gameState)) {
+    const realScores = gameState.players.map(p => p.score);
+    gameState.players.forEach((p, i) => { p.score -= perPlayer[i].flavourVp; });
+    const withoutSeats = getWinningPlayers(gameState).map(w => w.id).join(',');
+    gameState.players.forEach((p, i) => { p.score = realScores[i]; });
+    flavourDecided = withoutSeats !== winnerSeats.join(',');
+  }
 
   // A reserve is "completed" when the reserving player's claimedCards contains
   // the reserved card's id (claim() pushes it there). Since 3 August every
@@ -266,6 +330,13 @@ function runGame(playerConfigs, botStrategy) {
     contestedMenus,
     playersQualifyingForAny,
     menusDealtThisGame: (gameState.tastingMenus || []).length,
+    // Metric 14. flavourOfTheDay is on the state (and on the report) so the run
+    // can check the five come up evenly; the rest are this game's table facts.
+    flavourOfTheDay: gameState.flavourOfTheDay,
+    flavourLeadMargin,
+    flavourTie,
+    flavourLeaderRanks,
+    flavourDecided,
     gameState,
     steps,
     turnsPlayed: gameState.stats.turnsPlayed,
@@ -288,16 +359,19 @@ function runGame(playerConfigs, botStrategy) {
     // Empty plates bought off boards and retired to the box. Read off the state
     // for the same reason as endRowSize - it is a running total, not an event.
     platesReturnedToBox: gameState.platesReturnedToBox,
-    // PLATE OVERRUN - the component question the 4 August ruling opened.
-    // Every claim plants a plate, so total claims IS total plates placed. The
-    // POOL is cardsNeededToEnd, and claiming past it is now legal for the whole
-    // final round ("take extra plates from the unlimited supply"), so a game can
-    // finish having placed more plates than the pool holds. This is the figure
-    // the punchboard has to be sized off - the pool is a clock, not an inventory.
-    // Never negative: the pool emptying is what arms that ending in the first
-    // place, and the other endings simply finish under it.
-    plateOverrun: Math.max(0, gameState.players.reduce((n, p) => n + p.claimedCards.length, 0) - gameState.cardsNeededToEnd),
-    platePool: gameState.cardsNeededToEnd,
+    // PLATES PLACED BY THE HEAVIEST CLAIMER - the number the punchboard is sized
+    // off, and metric 10's replacement for the plate OVERRUN it reported until
+    // 6 August. The overrun was "claims past the shared pool"; the pool is deleted
+    // and plates are unlimited, so the only component question left is how many
+    // one player can need in front of them at once. Every claim plants exactly one
+    // plate, so a player's claim count IS their plate count.
+    maxPlatesOnePlayer: Math.max(...gameState.players.map(p => p.claimedCards.length)),
+    // THE TRIM RULE (6 August): turns on which a sweep did not fit, and the tiles
+    // that went back into the bag because of it. Read off the state - they are
+    // running totals rather than events the collector sees. Baselines from the
+    // adopted rule: about 0.5 turns and 1.0 tiles per game at every player count.
+    trimmedSweeps: gameState.trimmedSweeps,
+    tilesReturnedToBag: gameState.tilesReturnedToBag,
   };
 }
 
@@ -331,10 +405,16 @@ const botStrategy = process.argv[4] || 'fast';
 //
 // This is the one legitimate caller of the setter. Nothing else may touch it: the
 // game always starts from the constant.
+// A fifth argument of `noflavour` does the same for the Flavour of the Day
+// (6 August), which has its own seam for the same reason. The two arms are
+// separate switches on the same argument rather than a combined one: the whole
+// point of an A/B is that exactly one thing differs between the runs.
 const menusOff = process.argv[5] === 'nomenus';
+const flavourOff = process.argv[5] === 'noflavour';
 if (menusOff) setTastingMenusEnabled(false);
+if (flavourOff) setFlavourEnabled(false);
 
-console.log(`Running ${gamesPerConfig} games with ${playerCount} players (${botStrategy} bot)${menusOff ? ', TASTING MENUS OFF (A/B control arm)' : ''}...\n`);
+console.log(`Running ${gamesPerConfig} games with ${playerCount} players (${botStrategy} bot)${menusOff ? ', TASTING MENUS OFF (A/B control arm)' : ''}${flavourOff ? ', FLAVOUR OF THE DAY OFF (A/B control arm)' : ''}...\n`);
 
 const games = [];
 const allPlayerMetrics = [];
@@ -401,12 +481,18 @@ for (const g of games) {
 // The end-of-turn trigger is supposed to make this impossible THROUGH THE BODY OF
 // THE GAME, so a firing there is a bug, not a tuning result.
 //
-// 4 AUGUST: THE FINAL ROUND IS A LEGITIMATE EXCEPTION and must be counted apart,
-// or this line reports the new end rule as a fault. When a pot is due and the bag
-// is already empty the game triggers 'bagEmpty' instead of brewing, nothing
-// refills the market after that, and every remaining turn of the round therefore
-// begins with tea still due. A game ending that way is EXPECTED to show up to
-// playerCount-1 late firings.
+// THE END OF THE GAME IS A LEGITIMATE EXCEPTION and must be counted apart, or
+// this line reports the end rule as a fault. A pot due against an empty bag is a
+// no-op since 6 August - it simply does not happen - so nothing refills the
+// market from that point on and every turn after it begins with tea still due.
+// (Until 6 August the same turns were produced by the 'bagEmpty' ENDING, which
+// stopped refilling for the same reason and then closed the game. The ending is
+// gone; the uncovered late turns it explained are not.)
+//
+// Those turns can now run for longer than one round, because a dry bag no longer
+// ends anything, so this is a "late in the game" split rather than a strict
+// final-round one - the boundary below is kept at the last round because that is
+// still where the great majority of them land.
 //
 // The split is by turn number: turns are 0-based and one sample is taken per turn
 // played, so the final round is the last playerCount turns of the game.
@@ -438,7 +524,7 @@ console.log(`Spread over game:  quarters Q1/Q2/Q3/Q4 = ${quarters.join('/')} (an
 console.log(`Fired by seat:     ${JSON.stringify(bySeat)}; one seat's share of its own game mean=${(100 * meanOf(seatShares)).toFixed(1)}%`);
 console.log(`TRIGGER INVARIANT: ${teaDueAtTurnStart}/${totalTurnStarts} turns began with tea still due`);
 console.log(`  before the final round: ${teaDueEarly} (MUST be 0 - a skipped pot or a flush that failed to cover the symbols)`);
-console.log(`  in the final round:     ${teaDueLate} (expected: a 'bagEmpty' ending stops refilling, so the round plays on uncovered)`);
+console.log(`  in the final round:     ${teaDueLate} (expected: a pot due against an empty bag is a no-op, so the market stops refilling and the last turns play on uncovered)`);
 
 // ---------------------------------------------------------------------------
 // 2. BACKSTOP (EMPTY-BOARD) REFRESHES. Should now be ZERO, not merely rare: an
@@ -562,11 +648,17 @@ const surplusGames = games.filter(g => g.perPlayer.some(pl => pl.cupcakes >= 4))
 console.log(`\n=== 8. CUPCAKE ECONOMY (${nPlayers} player-results) ===\n`);
 console.log(`Influx by source:  start=${influx.start}, refresh pot=${influx.pot}, plates=${influx.plates}, total=${influxTotal}`);
 console.log(`  mean/player:     start=${(influx.start / nPlayers).toFixed(2)}, pot=${(influx.pot / nPlayers).toFixed(2)}, plates=${(influx.plates / nPlayers).toFixed(2)}, total=${(influxTotal / nPlayers).toFixed(2)}`);
-console.log(`Spend by use:      move tile=${spend.moveTile} (1ea), extra tile=${spend.extraTile} (2ea), remove plate=${spend.removePlate} (3ea), reserve=${spend.reserve} (1ea), extra claim=${spend.extraClaim} (disabled)`);
+// THE PRICES ARE READ FROM THE ENGINE, NEVER TYPED. They were hardcoded as
+// "(2ea)" and "(3ea)" until 7 August and went on printing the 3 August ladder
+// under the 7 August one, which is the third time a stale literal has survived a
+// repricing in this project. The divide-by-price line below is derived for the
+// same reason.
+console.log(`Spend by use:      move tile=${spend.moveTile} (${MOVE_TILE_CUPCAKE_COST}ea), extra tile=${spend.extraTile} (${EXTRA_TILE_CUPCAKE_COST}ea), remove plate=${spend.removePlate} (${REMOVE_PLATE_CUPCAKE_COST}ea), reserve=${spend.reserve} (${RESERVE_CUPCAKE_COST}ea), extra claim=${spend.extraClaim} (disabled)`);
+console.log(`  times bought:    move tile=${(spend.moveTile / MOVE_TILE_CUPCAKE_COST).toFixed(0)}, extra tile=${(spend.extraTile / EXTRA_TILE_CUPCAKE_COST).toFixed(0)}, remove plate=${(spend.removePlate / REMOVE_PLATE_CUPCAKE_COST).toFixed(0)}, reserve=${(spend.reserve / RESERVE_CUPCAKE_COST).toFixed(0)}`);
 console.log(`  total spent:     ${spendTotal} = ${pct(spendTotal, influxTotal)} of influx (was 47-51% when hoarding paid 1 VP each)`);
-console.log(`  PRICES ARE CUPCAKES, NOT ACTIONS: divide each figure by the per-use price above to`);
-console.log(`  get how OFTEN it was bought. Removing a plate costs 3, so a small number here is`);
-console.log(`  a rarer action than the same number under move tile.`);
+console.log(`  PRICES ARE CUPCAKES, NOT ACTIONS: the line above divides each figure by its`);
+console.log(`  price, so a spend at ${REMOVE_PLATE_CUPCAKE_COST} showing the same cupcake total as one at 1 is`);
+console.log(`  ${REMOVE_PLATE_CUPCAKE_COST} times the rarer action.`);
 console.log(`  plates returned to the box: ${sumOf(games.map(g => g.platesReturnedToBox || 0))} over ${nGames} games (${(sumOf(games.map(g => g.platesReturnedToBox || 0)) / nGames).toFixed(2)}/game)`);
 console.log(`Kept at game end:  ${keptCupcakes} = ${(keptCupcakes / nPlayers).toFixed(2)}/player - SCORES NOTHING since 3 August, tiebreaker only`);
 console.log(`  games where a player finished BROKE (0 held):   ${brokeGames}/${nGames} (${pct(brokeGames, nGames)})`);
@@ -622,18 +714,29 @@ const totalStandScore = sumOf(allPlayerMetrics.map(m => m.standScore));
 console.log(`\n=== 10. CLAIMS, SCORES AND GAME LENGTH (${nPlayers} player-results) ===\n`);
 console.log(`Claims/player:     mean=${meanOf(claimsPer).toFixed(2)}, min=${minOf(claimsPer)}, max=${maxOf(claimsPer)}`);
 console.log(`  within-game gap: mean=${meanOf(claimGaps).toFixed(2)}, max=${maxOf(claimGaps)} (most claims minus fewest, per game)`);
-// PLATE OVERRUN - how many plates the box needs BEYOND the pool, now that the
-// final round may claim past it from an unlimited supply (4 August ruling). The
-// MAX is the number that sizes the punchboard; the mean only says how routine it
-// is. Reported next to the pool so the two are never confused: the pool is the
-// clock, the pool + overrun is the component count.
-const overruns = games.map(g => g.plateOverrun);
-const platePool = games[0].platePool;
-console.log(`Plate overrun:     mean=${meanOf(overruns).toFixed(2)}, max=${maxOf(overruns)} beyond the ${platePool}-plate pool`);
-console.log(`  games needing >0 spare plates: ${pct(overruns.filter(o => o > 0).length, nGames)}`);
-console.log(`  BOX MUST HOLD ${platePool + maxOf(overruns)} plates at ${playerCount}p (pool ${platePool} + worst overrun ${maxOf(overruns)}).`);
-console.log(`  The pool is a CLOCK, not an inventory - once it empties the ending is armed and the`);
-console.log(`  final round claims on from an unlimited supply, so the box outsizes the pool by design.`);
+// EMPTY PLATES: the component count, and nothing else. 6 AUGUST - this line used
+// to report the plate OVERRUN, claims made past the shared pool. There is no
+// pool: plates are unlimited, nothing tests one, and the only question left is
+// how many a single player can need in front of them at once. Every claim plants
+// exactly one plate, so that is the heaviest claimer's claim count. The MAX sizes
+// the punchboard; the mean only says how routine it is.
+const maxPlates = games.map(g => g.maxPlatesOnePlayer);
+console.log(`Plates, most placed by any one player: mean=${meanOf(maxPlates).toFixed(2)}, max=${maxOf(maxPlates)}`);
+console.log(`  BOX HOLDS ${EMPTY_PLATES_IN_BOX_PER_PLAYER} per player (${EMPTY_PLATES_IN_BOX_PER_PLAYER * playerCount} at ${playerCount}p) - see tiles.js.`);
+console.log(`  games wanting an ${EMPTY_PLATES_IN_BOX_PER_PLAYER + 1}th: ${pct(maxPlates.filter(v => v > EMPTY_PLATES_IN_BOX_PER_PLAYER).length, nGames)} - a THIN TAIL, not a hard zero (about 0.1% of`);
+console.log(`  2-player games). Plates are unlimited by rule, so the box count is a convenience`);
+console.log(`  figure and a table that runs one short simply uses anything to hand. Needs a few`);
+console.log(`  thousand games to read at all - do not conclude anything from a short run.`);
+console.log(`  The ceiling is structural: one claim per turn, one plate per claim, so a player`);
+console.log(`  can never place more plates than they have taken turns.`);
+// THE TRIM RULE (6 August): how often a sweep did not fit, and what it cost.
+// Adopted baselines: 0.53 / 0.51 / 0.47 turns and 0.99 / 1.11 / 1.00 tiles per
+// game at 2/3/4 players. Materially larger means the sweep heuristic has stopped
+// caring about board space; materially smaller means it has started over-caring.
+const trims = games.map(g => g.trimmedSweeps);
+const binned = games.map(g => g.tilesReturnedToBag);
+console.log(`Trimmed sweeps:    ${meanOf(trims).toFixed(2)} turns/game hit the rule, ${meanOf(binned).toFixed(2)} tiles/game went back into the bag`);
+console.log(`  games affected: ${pct(trims.filter(v => v > 0).length, nGames)}  (a swept tile with nowhere to go is returned, not lost - the player keeps their spend and claim)`);
 console.log(`Final score:       mean=${meanOf(scores).toFixed(1)}, min=${minOf(scores)}, max=${maxOf(scores)}`);
 console.log(`Score spread (D1): mean=${meanOf(spreads).toFixed(1)}, min=${minOf(spreads)}, max=${maxOf(spreads)} (ABSOLUTE winner-minus-last, per game)`);
 // The RATIO as well as the gap. Reporting only one of them misleads: the ratio
@@ -647,12 +750,16 @@ const lastAsShare = games.map(g => {
 });
 console.log(`  last as % of winner: mean=${(100 * meanOf(lastAsShare)).toFixed(1)}% (report BOTH - the ratio alone moves with score inflation)`);
 const totalMenuVp = sumOf(allPlayerMetrics.map(m => m.tastingMenuVp));
-console.log(`Score make-up:     stand=${(totalStandScore / nPlayers).toFixed(1)}, cards=${(totalCardVp / nPlayers).toFixed(1)}, crumbs=${(totalCrumbs / nPlayers).toFixed(1)}, menus=${(totalMenuVp / nPlayers).toFixed(1)} VP/player`);
-console.log(`  (THOSE FOUR ARE THE WHOLE SCORE. Cupcakes stopped scoring on 3 August (~3 VP/player) and`);
-console.log(`   the ingredient objectives were deleted on 4 August (~3-6 VP/player). The fourth term is the`);
-console.log(`   flavour module, which has been Today's Speciality, then the Freshness Bonus (9.0 VP/player,`);
-console.log(`   18.5% of score - measured TOO HIGH) and is now the Tasting Menu. TARGET ~4.4 VP/player,`);
-console.log(`   about 9% of score - half the freshness dose. See metric 13.)`);
+const totalFlavourVp = sumOf(allPlayerMetrics.map(m => m.flavourVp));
+console.log(`Score make-up:     stand=${(totalStandScore / nPlayers).toFixed(1)}, cards=${(totalCardVp / nPlayers).toFixed(1)}, crumbs=${(totalCrumbs / nPlayers).toFixed(1)}, menus=${(totalMenuVp / nPlayers).toFixed(1)}, flavour=${(totalFlavourVp / nPlayers).toFixed(1)} VP/player`);
+console.log(`  (THOSE FIVE ARE THE WHOLE SCORE, and they must sum to the mean above - if they do not,`);
+console.log(`   a lane has been added to the engine without being added here, and the card figure is`);
+console.log(`   where the difference hides, because it is derived by subtraction. Cupcakes stopped`);
+console.log(`   scoring on 3 August (~3 VP/player) and the ingredient objectives were deleted on`);
+console.log(`   4 August (~3-6 VP/player). MENUS is the flavour-module slot - Today's Speciality, then`);
+console.log(`   the Freshness Bonus (9.0 VP/player, 18.5% of score - measured TOO HIGH), now the`);
+console.log(`   Tasting Menu, TARGET ~4.4 VP/player. FLAVOUR is the FIFTH lane, added 6 August: the`);
+console.log(`   first one not fed by the claim step. Unsteered baseline 5.18 / 4.59 / 4.32 - see metric 14.)`);
 console.log(`  card:stand VP    = ${totalCardVp}:${totalStandScore} (card share ${pct(totalCardVp, totalCardVp + totalStandScore)})`);
 console.log(`  plate:crumb tiles= ${totalStandTiles}:${totalCrumbs} (crumb share ${pct(totalCrumbs, totalStandTiles + totalCrumbs)})`);
 console.log(`Game length (D3):  turns mean=${meanOf(turnsPerGame).toFixed(1)}, min=${minOf(turnsPerGame)}, max=${maxOf(turnsPerGame)}`);
@@ -662,8 +769,14 @@ console.log(`End reasons:       ${JSON.stringify(endReasonCounts)}`);
 console.log(`  Since 4 August a reason names WHICH CONDITION ARMED THE ENDING, not where play stopped:`);
 console.log(`  the game runs on to the end of the round after it fires. First reason wins, so a game`);
 console.log(`  that arms two in its last round is reported under the one that actually ended it.`);
-console.log(`  'bagEmpty' now means "a refill was needed and the bag was already empty" - a bag that`);
-console.log(`  cannot cover 25 cells deals what it has and play continues across the thinner market.`);
+console.log(`  SINCE 6 AUGUST THERE ARE TWO, and no others:`);
+console.log(`    'boardFull'   - a player's board is completely full. This is the game's clock and it`);
+console.log(`                    is expected to end ESSENTIALLY EVERY GAME (100% of 3,000 measured).`);
+console.log(`    'marketTiles' - market and bag both empty. A backstop: the table can only absorb`);
+console.log(`                    25 x players tiles against a bag of ${TILE_BAG_SIZE}, so at 2 and 3 players it is`);
+console.log(`                    structurally unreachable and at 4 the board fill wins the race.`);
+console.log(`  'cardMarket', 'bagEmpty' and 'boardOverflow' are DELETED. Any of them appearing here`);
+console.log(`  means something is arming an ending the rules no longer have.`);
 
 // ---------------------------------------------------------------------------
 // 11. THE EQUAL-TURNS RULE (4 August). Every player must have had exactly the
@@ -900,5 +1013,107 @@ console.log(`Sweep declarations:   colour ${pct(declarations.colour, declaration
 console.log(`  (43.8 / 43.4 / 44.4% colour with no module; 42.8 / 42.9 / 43.4% under Today's Speciality -`);
 console.log(`   a one-point move, which was the other reading that condemned it. A menu names INGREDIENTS,`);
 console.log(`   so this should swing toward ingredient sweeps if the bot is really steering.)`);
+
+// ---------------------------------------------------------------------------
+// 14. THE FLAVOUR OF THE DAY (6 August). The verification pass for the game's
+//     FOURTH scoring lane, and the first one in its history that is NOT FED BY
+//     THE CLAIM STEP. That is the entire reason it exists: every other lane -
+//     stand rows, card VP, Tasting Menus - fires only when a card is claimed, and
+//     the trailing player is refused the claim on 37.7 / 42.5 / 44.2% of the claim
+//     steps they reach at 2/3/4 players. On those turns they did not score less.
+//     They scored nothing. This lane is fed by sweeping and placing, which nobody
+//     can decline.
+//
+//     THE HEADLINE IS "DECIDES THE WINNER", and it is a calibration against the
+//     game's own accepted module rather than an absolute target:
+//
+//                                              2p      3p      4p
+//       Tasting Menus @5 VP - the benchmark   12.1%   22.5%   26.5%
+//       Crumb tray @1 VP - the "does nothing" 0.8%    0.9%    0.6%
+//       THIS MODULE at 1/tile + 3 - ADOPTED   12.9%   17.9%   20.4%
+//       at 1/tile + 5 - REJECTED              16.6%   21.6%   26.3%
+//
+//     Consistently BELOW the Tasting Menu is the shape being aimed at. At 1+5 it
+//     is a second Tasting Menu, and two ingredient-driven modules each deciding a
+//     quarter of games would leave the colour-pattern puzzle deciding
+//     correspondingly fewer - which is the shape of the 4 August Pantry Goals
+//     failure.
+//
+//     EVERY BASELINE BELOW WAS MEASURED UNSTEERED - scored post-hoc on games
+//     played by a bot that had never heard of the module - so they are all FLOORS.
+//     basicBot now prices the lane at the sweep and claim steps, so a steered run
+//     should read ABOVE them. If it reads at or below the unsteered floor, suspect
+//     the bot terms before the rule.
+//
+//     AND THE WATCH ITEM THAT IS NOT ABOUT THIS MODULE AT ALL: the colour-versus-
+//     ingredient declaration split, printed in metric 13 above. Baseline is 43.8 /
+//     43.4 / 44.4% colour with no ingredient module in play. THE PER-TILE CLAUSE
+//     GIVES EVERY PLAYER A REASON TO CHASE AN INGREDIENT ON EVERY TURN, and colour
+//     is the card puzzle, and the card puzzle is the game. If colour drops more
+//     than a few points below that baseline, the fix is specific and is NOT a
+//     re-dose: drop the per-tile clause and run majority-only at 5 VP, which
+//     motivates only the players in contention and still decides 10.4 / 12.5 /
+//     12.4% of games.
+// ---------------------------------------------------------------------------
+const flavourTilesPer = allPlayerMetrics.map(m => m.flavourTiles);
+const flavourVpPer = allPlayerMetrics.map(m => m.flavourVp);
+const flavourGames = games.filter(g => g.flavourOfTheDay);
+const flavourTies = flavourGames.filter(g => g.flavourTie).length;
+const flavourDecidedCount = flavourGames.filter(g => g.flavourDecided).length;
+const flavourMargins = flavourGames.map(g => g.flavourLeadMargin).filter(m => m !== null);
+// Which ingredient was revealed. All five must come up evenly over a long run -
+// anything else is a bug in the draw, not a design finding.
+const flavourDeal = {};
+for (const g of games) {
+  const f = g.flavourOfTheDay || 'none';
+  flavourDeal[f] = (flavourDeal[f] || 0) + 1;
+}
+// The majority by FINISHING RANK: rank 1 is the winner. A bonus that goes almost
+// entirely to the winner is paying the player who was already ahead.
+const flavourRankCounts = Array(playerCount).fill(0);
+let flavourLeaderTotal = 0;
+for (const g of flavourGames) {
+  for (const rank of g.flavourLeaderRanks) {
+    if (rank >= 0 && rank < flavourRankCounts.length) flavourRankCounts[rank]++;
+    flavourLeaderTotal++;
+  }
+}
+// The distribution of tiles held, not just the mean - a mean of 3.5 built from
+// everybody holding 3 or 4 is a different game from one built from a leader on 8
+// and everybody else on 2.
+const flavourDist = {};
+for (const n of flavourTilesPer) flavourDist[n] = (flavourDist[n] || 0) + 1;
+
+console.log(`\n=== 14. THE FLAVOUR OF THE DAY (${FLAVOUR_VP_PER_TILE} VP per board tile + ${FLAVOUR_MAJORITY_VP} to the most, friendly ties) ===\n`);
+if (!getFlavourEnabled()) {
+  console.log(`MODULE DISABLED for this run (setFlavourEnabled(false)). Everything below reads zero by`);
+  console.log(`construction - this is the A/B control arm, so compare metrics 1-13 against a live run.\n`);
+}
+console.log(`DECIDES THE WINNER: ${pct(flavourDecidedCount, flavourGames.length)} of games - the table finishes differently without this lane`);
+console.log(`  <-- THE headline. Benchmark is the Tasting Menu at 5 VP: 12.1 / 22.5 / 26.5% at 2/3/4p.`);
+console.log(`      This module should sit CONSISTENTLY BELOW it (12.9 / 17.9 / 20.4% unsteered at 1+3).`);
+console.log(`      The "does nothing" floor for scale is the crumb tray at 0.8 / 0.9 / 0.6%.`);
+console.log(`Dose:              ${meanOf(flavourVpPer).toFixed(2)} VP/player from the whole module (both clauses)`);
+console.log(`  <-- unsteered baseline 5.18 / 4.59 / 4.32 at 2/3/4p. A steered bot should read above it.`);
+console.log(`Flavour tiles per player at game end: mean=${meanOf(flavourTilesPer).toFixed(2)}, min=${minOf(flavourTilesPer)}, max=${maxOf(flavourTilesPer)}`);
+console.log(`  <-- unsteered baseline 3.53 / 3.45 / 3.42. BOARD ONLY - the stand and crumb tray do not`);
+console.log(`      count, which is the rule the whole module rests on.`);
+console.log(`  distribution:    ${Object.keys(flavourDist).sort((a, b) => a - b).map(k => `${k}:${flavourDist[k]}`).join('  ')}`);
+console.log(`THE MAJORITY:      tie rate ${pct(flavourTies, flavourGames.length)} of games (unsteered 11.3 / 13.8 / 18.0%)`);
+console.log(`  <-- FRIENDLY TIES ARE THE RULE: everyone tied at the top takes the full ${FLAVOUR_MAJORITY_VP} VP and there is`);
+console.log(`      deliberately no tiebreak. At one game in five a tiebreaker would be a real burden at`);
+console.log(`      gateway weight, which is why this figure is reported rather than designed away.`);
+console.log(`  taken by finishing rank: ${flavourRankCounts.map((n, i) => `${i === 0 ? 'winner' : `#${i + 1}`}=${pct(n, flavourLeaderTotal)}`).join(', ')}`);
+console.log(`  <-- if this is nearly all winner, the bonus is paying whoever was ahead anyway. Read it`);
+console.log(`      beside the winner-minus-last gap in metric 10, which must not worsen by more than 3.`);
+console.log(`Lead margin (top minus second): mean=${flavourMargins.length ? meanOf(flavourMargins).toFixed(2) : 'n/a'} tiles, max=${maxOf(flavourMargins)}`);
+console.log(`  <-- unsteered 2.69 / 2.29 / 2.06. The ${FLAVOUR_MAJORITY_VP} VP bonus was dosed against a ~2 tile lead, so a`);
+console.log(`      margin that drifts up means the bonus is rewarding a race that was already over.`);
+console.log(`Flavour revealed:  ${JSON.stringify(flavourDeal)} (should be even over a long run)`);
+console.log(`  (Zero games ended without a Flavour unless the module is off - it is drawn at setup and`);
+console.log(`   NEVER changes: not on a pot of tea, not on a claim, not ever. That is the whole design.)`);
+console.log(`SEE ALSO metric 13's LAST line - the colour/ingredient declaration split. Baseline is 43.8 /`);
+console.log(`  43.4 / 44.4% colour with no ingredient module. A drop of more than a few points condemns`);
+console.log(`  the PER-TILE clause (run majority-only at 5 VP instead), not the bonus.`);
 
 console.log(`\nCompleted ${gamesPerConfig} games in ${elapsed}ms (${(elapsed / gamesPerConfig).toFixed(1)}ms/game)`);

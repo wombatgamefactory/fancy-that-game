@@ -5,7 +5,7 @@ import { BOARD_SIZE, REWARD_CARDS } from '../engine/tiles.js';
 // them is a hard error rather than a dead name. countBoardIngredient goes with
 // them: it survives in the engine for the bots, but the only thing that ever
 // asked it a question here was the objectives panel.
-import { getPatternMatches, getLegalDestinations, getMoveCost, canBuyExtraTile, canReserveCard, canRemovePlate, canClaimMore, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, EXTRA_TILE_CUPCAKE_COST, RESERVE_CUPCAKE_COST, RESERVE_LIMIT, EMPTY_PLATES_PER_PLAYER, getVisibleTeapotSymbols, getStartingCupcakes, isTastingMenuInPlay, getAvailableMenus, getMenuDeficit, getStandIngredients, satisfiesMenu, TASTING_MENU_VP, TASTING_MENUS } from '../engine/game.js';
+import { getPatternMatches, getLegalDestinations, getMoveCost, canBuyExtraTile, canReserveCard, canRemovePlate, canClaimMore, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, EXTRA_TILE_CUPCAKE_COST, RESERVE_CUPCAKE_COST, RESERVE_LIMIT, getSweepPlacementCount, getVisibleTeapotSymbols, getStartingCupcakes, isTastingMenuInPlay, getAvailableMenus, getMenuDeficit, getMenuIngredients, satisfiesMenu, TASTING_MENU_VP, TASTING_MENUS, isFlavourInPlay, getFlavourCount, getFlavourLeaders, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
 
 // Ingredient names as they appear in copy. The engine's INGREDIENTS are lowercase
 // keys that double as image filenames (images/symbol_<ingredient>.png), and a
@@ -51,10 +51,27 @@ export function showRulesModal() {
       <div class="ft-modal__title">
         <h2>How to Play</h2>
       </div>
+      <!-- REWRITTEN 7 August: STATEMENTS OF THE RULES, and nothing else.
+           What came out, and the test each line now has to pass:
+           - the reasons. "That is the trade, and it is deliberate", "the surplus is
+             the point", "that is the price of the pot" - all design commentary. A
+             player at the table wants to know what happens, not why it was chosen.
+           - the second and third telling. Several rules were stated, then restated
+             as a consequence, then again as advice. Each is said once now.
+           - the flavour quotes at the head of three sections.
+           A LINE EARNS ITS PLACE IF A PLAYER COULD GET THE GAME WRONG WITHOUT IT.
+           That is why the lock-one-ingredient-to-one-row rule keeps its sentence
+           and the empty plate keeps its two, while the pot of tea lost four.
+
+           ONE RULE WAS ALSO WRONG, not merely wordy: the Tasting Menu section said
+           the crumb tray does not count. It has counted since 6 August
+           (MENU_COUNTS_CRUMB_TRAY in game.js) and the copy had never caught up.
+           Every number below is interpolated from the engine rather than typed, so
+           this cannot drift again the next time a constant moves. -->
       <div class="ft-rules">
         <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--goal">
           <div class="ft-rules__section-title">Goal</div>
-          <div class="ft-rules__text">Collect patisserie reward cards by building colour patterns on your board. Each card is worth victory points, and every card you claim lets you move one tile onto your tiered cake stand, where filling a row scores escalating points.</div>
+          <div class="ft-rules__text">Claim patisserie cards by making their colour patterns on your board. Cards score points, and every claim moves one tile onto your cake stand, where filled rows score most.</div>
         </div>
 
         <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--turn">
@@ -62,28 +79,31 @@ export function showRulesModal() {
 
           <div class="ft-rules__step">
             <div class="ft-rules__step-title">1. Sweep</div>
-            <div class="ft-rules__text">Choose a row or column from the market. Declare either a colour or an ingredient symbol. Take all tiles matching your declaration.</div>
-            <div class="ft-rules__text"><strong>Bonus:</strong> If you clear a row/column completely, take 1 extra tile from anywhere on the market.</div>
-            <div class="ft-rules__text"><strong>Buy a tile:</strong> after your sweep resolves you may spend ${EXTRA_TILE_CUPCAKE_COST} cupcake to take 1 more tile from <strong>anywhere</strong> on the market - any colour, any ingredient. Once per turn. Place it with the rest of your swept tiles.</div>
+            <div class="ft-rules__text">Pick a row or column of the market and declare a colour or an ingredient. Take every tile in that line matching your declaration.</div>
+            <div class="ft-rules__text">Clear the whole line and take 1 extra tile from anywhere on the market.</div>
+            <div class="ft-rules__text">You may also spend ${EXTRA_TILE_CUPCAKE_COST} cupcakes for 1 extra tile from anywhere. Once per turn.</div>
           </div>
 
           <div class="ft-rules__step">
             <div class="ft-rules__step-title">2. Place Tiles</div>
-            <div class="ft-rules__text">Place all swept tiles anywhere on your 5×5 board. No adjacency required - tiles can go in any empty cells.</div>
+            <div class="ft-rules__text">Put every swept tile into empty cells of your 5×5 board. Any cells - they need not touch.</div>
+            <div class="ft-rules__text">If they will not all fit, place as many as you can and choose which of the rest go back into the bag.</div>
           </div>
 
           <div class="ft-rules__step">
-            <div class="ft-rules__step-title">3. Spend Cupcakes (Optional)</div>
-            <div class="ft-rules__text"><strong>Move:</strong> spend ${MOVE_TILE_CUPCAKE_COST} cupcake to move one tile from its cell to any other empty cell on your board. At most one move per turn.</div>
-            <div class="ft-rules__text"><strong>Remove a plate:</strong> spend ${REMOVE_PLATE_CUPCAKE_COST} cupcakes to take one empty plate off your board and <strong>return it to the box</strong>. It does not go back into circulation, so this frees the cell but does not buy you another claim. At most one plate per turn.</div>
-            <div class="ft-rules__text"><strong>Reserve:</strong> spend ${RESERVE_CUPCAKE_COST} cupcake to take 1 card from the card market into your personal reserve. Your reserve holds ${RESERVE_LIMIT} card, and <strong>you may not claim a card on the turn you reserved it</strong> - a reserve is a forward commitment. A reserved card is safe from the tea flush, and there is no penalty for never completing one (it simply scores nothing).</div>
+            <div class="ft-rules__step-title">3. Spend Cupcakes (optional)</div>
+            <div class="ft-rules__text"><strong>${MOVE_TILE_CUPCAKE_COST}:</strong> move one of your tiles to an empty cell.</div>
+            <div class="ft-rules__text"><strong>${REMOVE_PLATE_CUPCAKE_COST}:</strong> return one empty plate from your board to the box, freeing that cell.</div>
+            <div class="ft-rules__text"><strong>${RESERVE_CUPCAKE_COST}:</strong> reserve a card from the market. You may hold ${RESERVE_LIMIT}, and you cannot claim it on the turn you reserve it. A reserved card is safe from the tea flush.</div>
+            <div class="ft-rules__text">Each of the three once per turn.</div>
           </div>
 
           <div class="ft-rules__step">
-            <div class="ft-rules__step-title">4. Claim (Optional)</div>
-            <div class="ft-rules__text">If tiles on your board match a card's colour pattern (in any rotation or reflection), you may claim it. <strong>You may claim at most one card per turn</strong> - claiming ends the claim step, even if a second card also matches.</div>
-            <div class="ft-rules__text">When claiming: remove 1 tile from the pattern, then place it on your cake stand or in your crumb tray. Each ingredient can only ever be placed on ONE stand row - the first tile you plate locks that ingredient to that row, and no other row can ever hold it. Once that row is full (or if you choose not to extend it), any further tiles of that ingredient must go to the crumb tray. The crumb tray always accepts any tile and is worth 1 point each.</div>
-            <div class="ft-rules__text"><strong>Empty Plates:</strong> The cell where you removed the tile takes an empty plate token. No new tiles can be placed on it, and it breaks pattern matching. The table starts with ${EMPTY_PLATES_PER_PLAYER} per player, and running out is what <em>triggers</em> the end of the game - it does not stop you serving. During the final round you take extra plates from the box.</div>
+            <div class="ft-rules__step-title">4. Claim (optional)</div>
+            <div class="ft-rules__text">If tiles on your board make a card's colour pattern, in any rotation or reflection, claim it. <strong>One card per turn.</strong></div>
+            <div class="ft-rules__text">Remove 1 tile from the pattern and put it on a cake stand row or in your crumb tray.</div>
+            <div class="ft-rules__text">Each ingredient locks to <strong>one</strong> stand row: the first tile you plate fixes that row, and no other row may ever hold that ingredient. Once the row is full, further tiles of it go to the crumb tray.</div>
+            <div class="ft-rules__text">An empty plate fills the cell the tile came from. Nothing can be placed there again and it breaks patterns. Plates are unlimited.</div>
           </div>
 
           <!-- Step 5 used to be "Check Objectives", the end-of-turn pantry goal
@@ -92,21 +112,18 @@ export function showRulesModal() {
                steps again, which is what the section heading always claimed. -->
           <div class="ft-rules__step">
             <div class="ft-rules__step-title">5. Deal a Card</div>
-            <div class="ft-rules__text">At the end of every turn, <strong>1 new card is dealt to the card market</strong> - whether or not you claimed - up to a maximum of ${MAX_MARKET_CARDS}. Claiming does not refill the gap it left, so the row grows steadily; only a fresh pot of tea cuts it back (see below).</div>
-            <div class="ft-rules__text">The tile market is <strong>never</strong> topped up. Tiles you sweep leave holes that stay open until a fresh pot of tea.</div>
+            <div class="ft-rules__text">1 new card joins the card row, whether or not you claimed, up to ${MAX_MARKET_CARDS}. A claim does not refill the gap it leaves.</div>
+            <div class="ft-rules__text">The tile market is never topped up. Swept tiles leave holes until a fresh pot of tea.</div>
           </div>
         </div>
 
         <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--tea">
           <div class="ft-rules__section-title">🫖 A Fresh Pot of Tea</div>
-          <div class="ft-rules__quote">"${REFRESH_THRESHOLD} teapots showing? Order a fresh pot of tea"</div>
-          <div class="ft-rules__text">A teapot is <strong>showing</strong> when the space it is printed under is empty. At the end of your turn, if ${REFRESH_THRESHOLD} are showing, a fresh pot is brewed instead of dealing a card. It is <strong>not</strong> a choice - it happens automatically:</div>
-          <div class="ft-rules__text">1. Discard the <strong>whole</strong> card row and deal ${INITIAL_MARKET_CARDS} new cards. Cards in a personal reserve are safe.</div>
+          <div class="ft-rules__text">A teapot is showing when the space printed under it is empty. If ${REFRESH_THRESHOLD} are showing at the end of your turn, a pot is brewed automatically instead of dealing a card:</div>
+          <div class="ft-rules__text">1. Discard the whole card row and deal ${INITIAL_MARKET_CARDS} new cards. Reserved cards are safe.</div>
           <div class="ft-rules__text">2. You gain ${TEA_POT_REWARD} cupcake${TEA_POT_REWARD === 1 ? '' : 's'}.</div>
-          <div class="ft-rules__text">3. <strong>Flush the tile market.</strong> Every tile still on the market goes <strong>back into the bag</strong>, the bag is shuffled, and all 25 spaces are dealt afresh.</div>
-          <div class="ft-rules__text"><strong>If the bag cannot fill all 25 spaces, deal out whatever is left and carry on.</strong> A short market is a legal market - it simply has bare spaces from the start, which means more teapots showing, which means the next pot comes round sooner. The last lap of the game is a quick one.</div>
-          <div class="ft-rules__text">Then play passes to the left as usual. You do not get to sweep the fresh board - the player on your left does. That is the price of the pot.</div>
-          <div class="ft-rules__text">Tea is predictable: watch the gauge under the market, and if a card in the row matters to you, reserving it (step 3 of your turn) is how you keep it.</div>
+          <div class="ft-rules__text">3. Every tile left on the market returns to the bag. The bag is shuffled and all 25 spaces are dealt again.</div>
+          <div class="ft-rules__text">If the bag runs short, deal out what is left and carry on. Play then passes to the left as usual.</div>
         </div>
 
         <!-- The PANTRY GOALS section stood here until the morning of 4 August:
@@ -128,16 +145,31 @@ export function showRulesModal() {
              menus are on the table. The card value and the deck size are read off
              the engine rather than typed in. -->
         <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--menus">
-          <div class="ft-rules__section-title">📜 The Tasting Menu</div>
-          <div class="ft-rules__quote">"Order it before somebody else does"</div>
-          <div class="ft-rules__text">There are ${TASTING_MENUS.length} <strong>Tasting Menus</strong>. At setup, deal <strong>one more than the number of players</strong> face up beside the tile market - so 3 in a 2-player game, 4 in a 3-player, 5 in a 4-player. They are public from the first turn, and <strong>they are never replaced</strong>.</div>
-          <div class="ft-rules__text">There is always <strong>one more menu than there are players</strong>, and that is deliberate: none of them is yours by default. It is not a card each - it is a table of cards, and you take what you can reach.</div>
-          <div class="ft-rules__text">Each names either one ingredient at 2 and a second at 1, or three different ingredients at 1 each. <strong>Every menu asks for exactly three tiles</strong> - so they are all the same difficulty, and all worth the same.</div>
-          <div class="ft-rules__text"><strong>The moment your cake stand shows those ingredients, take the card.</strong> It is free and automatic: it costs no action, no cupcake and no part of your turn, and it is not a decision. If you qualify, it is yours.</div>
-          <div class="ft-rules__text"><strong>Only your cake stand counts.</strong> Tiles in your crumb tray are not on the menu, however many of them there are.</div>
-          <div class="ft-rules__text"><strong>Ingredients are not spent.</strong> The same tiles can satisfy more than one menu, and a menu you have already taken keeps sitting on your stand costing you nothing.</div>
-          <div class="ft-rules__text"><strong>One player, once, forever.</strong> First to qualify takes it, and it is out of the game - there is no second copy and it does not come back at the pot of tea. If you can see a menu you are one tile away from, so can everybody else.</div>
-          <div class="ft-rules__text">Each menu you hold is worth <strong>${TASTING_MENU_VP} points</strong> at the end of the game.</div>
+          <div class="ft-rules__section-title">📜 Tasting Menus</div>
+          <div class="ft-rules__text">At setup, deal one more than the number of players face up beside the market, from a deck of ${TASTING_MENUS.length}. They are never replaced.</div>
+          <div class="ft-rules__text">Each asks for three tiles: one ingredient twice and a second once, or three different ingredients.</div>
+          <div class="ft-rules__text">The moment your <strong>cake stand and crumb tray together</strong> show those ingredients, take the card. Free, automatic, and no part of your turn.</div>
+          <div class="ft-rules__text">Ingredients are not spent - the same tiles can satisfy more than one menu.</div>
+          <div class="ft-rules__text">Only one player can take a given menu. First to qualify keeps it, and it never returns.</div>
+          <div class="ft-rules__text"><strong>${TASTING_MENU_VP} points</strong> each at the end of the game.</div>
+        </div>
+
+        <!-- THE FLAVOUR OF THE DAY (6 August). It sits directly after the Tasting
+             Menu because that is where it sits on the table, and because the two
+             have to be told apart in the same breath: both name ingredients, and
+             everything else about them is opposite. A menu reads your CAKE STAND,
+             is a race, and one player takes it. The Flavour reads your PLAYER
+             BOARD, is not a race, and everybody scores it.
+             The board-only line is the one that has to land - a player who assumes
+             their cake stand counts spends the whole game sacrificing tiles they
+             thought they were keeping. STATELESS like its neighbours: this modal
+             opens from the setup screen too, so it cannot name today's ingredient. -->
+        <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--flavour">
+          <div class="ft-rules__section-title">🍋 The Flavour of the Day</div>
+          <div class="ft-rules__text">One ingredient is revealed at setup. It never changes.</div>
+          <div class="ft-rules__text">At the end of the game, score <strong>${FLAVOUR_VP_PER_TILE} point per tile of that ingredient on your player board</strong>.</div>
+          <div class="ft-rules__text">The player with the most scores <strong>${FLAVOUR_MAJORITY_VP} points more</strong>. Everybody tied for the most scores the full ${FLAVOUR_MAJORITY_VP}. There is no tiebreak.</div>
+          <div class="ft-rules__text"><strong>Only your player board counts</strong> - not your cake stand, not your crumb tray. A claim that sacrifices one of these tiles costs you the point.</div>
         </div>
 
         <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--cupcakes">
@@ -147,13 +179,14 @@ export function showRulesModal() {
                gameState to read a player count off. The two figures are still
                derived from the engine's table rather than typed in, so the copy
                cannot drift away from the rule. -->
-          <div class="ft-rules__text">Everyone starts with ${getStartingCupcakes(2)[0]} cupcakes. In a 4-player game the third and fourth players start with ${getStartingCupcakes(4)[3]} instead - a small head start for going last. You gain more when a fresh pot of tea is brewed on your turn, and by plating a tile onto a cupcake plate.</div>
-          <div class="ft-rules__text">Cupcakes buy four things:</div>
-          <div class="ft-rules__text">- <strong>${EXTRA_TILE_CUPCAKE_COST}</strong> take 1 extra tile from anywhere on the market, at the sweep step (once per turn)</div>
-          <div class="ft-rules__text">- <strong>${MOVE_TILE_CUPCAKE_COST}</strong> move one tile on your board</div>
-          <div class="ft-rules__text">- <strong>${REMOVE_PLATE_CUPCAKE_COST}</strong> remove one empty plate from your board, to the box</div>
-          <div class="ft-rules__text">- <strong>${RESERVE_CUPCAKE_COST}</strong> reserve a card from the market</div>
-          <div class="ft-rules__text"><strong>Cupcakes are worth no points at all.</strong> Spend them. They only break a tie on the final score.</div>
+          <!-- THE STARTING TABLE IS PRINTED AS A TABLE, not described. The prose it
+               replaces ("everyone starts with 2; at 4 players the third and fourth
+               start with 3") was WRONG at two players, where the second seat starts
+               with 3 - a drift the interpolation now makes impossible. -->
+          <div class="ft-rules__text">Starting cupcakes, by seat: <strong>2 players</strong> ${getStartingCupcakes(2).join(' / ')}, <strong>3 players</strong> ${getStartingCupcakes(3).join(' / ')}, <strong>4 players</strong> ${getStartingCupcakes(4).join(' / ')}.</div>
+          <div class="ft-rules__text">Gain ${TEA_POT_REWARD} when a pot of tea is brewed on your turn, and 1 for plating a tile onto a cupcake plate.</div>
+          <div class="ft-rules__text">Spend: <strong>${EXTRA_TILE_CUPCAKE_COST}</strong> extra tile · <strong>${MOVE_TILE_CUPCAKE_COST}</strong> move a tile · <strong>${REMOVE_PLATE_CUPCAKE_COST}</strong> remove a plate · <strong>${RESERVE_CUPCAKE_COST}</strong> reserve a card.</div>
+          <div class="ft-rules__text">Cupcakes score no points. They break ties.</div>
         </div>
 
         <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--scoring">
@@ -163,27 +196,28 @@ export function showRulesModal() {
                Today's Speciality took the fourth slot back that afternoon, the
                Freshness Bonus took it off Today's Speciality the same evening, and
                the Tasting Menu took it from the Freshness Bonus on 5 August. -->
-          <div class="ft-rules__text">Your final score adds up four things:</div>
-          <div class="ft-rules__text"><strong>Cake stand:</strong> each row scores by how many plates it fills - the bottom row climbs ${STAND_ROW_VALUES[0].join(' / ')}, and shorter rows have their own (lower) totals printed under the plates.</div>
-          <div class="ft-rules__text"><strong>Crumb tray:</strong> 1 point per tile.</div>
-          <div class="ft-rules__text"><strong>Card VP:</strong> the victory-point value shown on each claimed card.</div>
-          <div class="ft-rules__text"><strong>Tasting Menus:</strong> ${TASTING_MENU_VP} points each.</div>
-          <div class="ft-rules__text"><strong>Tiebreak:</strong> most cupcakes remaining, then most cards claimed, then the victory is shared.</div>
+          <div class="ft-rules__text"><strong>Cake stand:</strong> each row by how many plates it fills. The bottom row climbs ${STAND_ROW_VALUES[0].join(' / ')}; shorter rows print their own totals.</div>
+          <div class="ft-rules__text"><strong>Crumb tray:</strong> 1 per tile.</div>
+          <div class="ft-rules__text"><strong>Cards:</strong> the points printed on each card you claimed.</div>
+          <div class="ft-rules__text"><strong>Tasting Menus:</strong> ${TASTING_MENU_VP} each.</div>
+          <div class="ft-rules__text"><strong>Flavour of the Day:</strong> ${FLAVOUR_VP_PER_TILE} per tile on your player board, and ${FLAVOUR_MAJORITY_VP} more to the player or players with the most.</div>
+          <div class="ft-rules__text"><strong>Cupcakes:</strong> nothing.</div>
+          <div class="ft-rules__text"><strong>Tiebreak:</strong> most cupcakes, then most cards claimed, then the victory is shared.</div>
         </div>
 
-        <!-- REWRITTEN 4 AUGUST. Every line here used to describe its own ending:
-             one stopped play dead, one gave the OTHER players a final turn, one
-             waited for a turn boundary. There is one rule now - the trigger, then
-             finish the round - so the section leads with it and the conditions
-             below are simply a list of what can arm it. -->
+        <!-- REWRITTEN 4 AUGUST, and again on 6 August. Four bullets became two:
+             the empty-plate pool is deleted outright (plates are unlimited), a
+             pot of tea that cannot be poured no longer ends anything, and
+             sweeping more than you can hold is now the placement rule in step 2
+             rather than an ending. The trigger-then-finish-the-round shape is
+             unchanged and still leads the section. -->
         <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--end">
           <div class="ft-rules__section-title">Game Ends When</div>
-          <div class="ft-rules__text"><strong>The end is a trigger, not a stop.</strong> When one of the conditions below fires, play carries on until the turn comes back round to the start player, so <strong>everyone has had exactly the same number of turns</strong>. Then you score.</div>
-          <div class="ft-rules__text">• The table has run out of empty plates - ${EMPTY_PLATES_PER_PLAYER} per player (the counter above the card market tracks it), OR</div>
-          <div class="ft-rules__text">• A player's board is completely full (tiles + empty plates) at the start of their turn, OR</div>
-          <div class="ft-rules__text">• A player sweeps more tiles than their board can hold, OR</div>
-          <div class="ft-rules__text">• <strong>A fresh pot of tea is due and the bag is empty.</strong> An empty bag is not an ending on its own - a short deal is perfectly playable, and play continues over a thinning market. It is the next pot, with nothing left to pour, that triggers the end.</div>
-          <div class="ft-rules__text"><strong>You can still serve during that last round.</strong> If the plates run out, take more from the box - the supply is unlimited once the end has been triggered. The plate pool is the game's clock, not a limit on how many cards get claimed, and nobody loses their last turn to it.</div>
+          <div class="ft-rules__text">Either trigger fires:</div>
+          <div class="ft-rules__text">• <strong>A player's board is full</strong> - all 25 cells hold a tile or an empty plate, or</div>
+          <div class="ft-rules__text">• <strong>No tiles are left</strong> - the market and the bag are both empty.</div>
+          <div class="ft-rules__text">Play then continues until the turn comes back round to the start player, so everyone has had the same number of turns. Then score.</div>
+          <div class="ft-rules__text">Nothing else ends the game. If a pot of tea comes due with an empty bag, the pot simply does not happen and play continues.</div>
         </div>
       </div>
     </div>
@@ -493,19 +527,33 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
         </section>
 
           <div class="ft-centre-meters">
-            <!-- CARDS CLAIMED, its own section. This is the game's clock - the
-                 table's shared supply of empty plates - and it decides when the
-                 game ends, so it gets a heading, a bar and a plain-language line
-                 saying what running out means. -->
+            <!-- FULLEST BOARD, its own section. This is the game's clock and it
+                 decides when the game ends, so it gets a heading, a bar and a
+                 plain-language line saying what filling up means.
+                 IT WAS "CARDS CLAIMED" UNTIL 6 AUGUST, reading total claims
+                 against the table's shared plate pool. That pool is deleted, so
+                 the meter was measuring a clock the game no longer has. The panel
+                 keeps its id and its markup so the layout and the responsive bands
+                 are untouched; only what it counts has changed. -->
             <section class="ft-section ft-section--claims" id="cardProgress">
               <div class="ft-section__head">
-                <span class="ft-section__title">Cards Claimed</span>
-                <span class="ft-section__meta ft-section__meta--figure" id="cardProgressText">0/0</span>
+                <!-- The non-breaking space keeps the dash with the phrase before
+                     it, so the two-line wrap in the narrow rail reads
+                     "End of Game Trigger -" / "Full Board" rather than starting a
+                     line with a dangling dash. -->
+                <span class="ft-section__title">End of Game Trigger&nbsp;- Full Board</span>
+                <span class="ft-section__meta ft-section__meta--figure" id="cardProgressText">0/25</span>
               </div>
               <div class="ft-claim-meter__track">
                 <div id="cardProgressBar" class="ft-claim-meter__bar"></div>
               </div>
-              <p class="ft-section__note">Every claim spends an empty plate. Running out triggers the end - you then finish the round, taking spare plates from the box.</p>
+              <!-- TRIMMED 7 August, to one clause. The head now says what the meter
+                   IS, so the note only has to say what makes it move. What came off:
+                   "you then finish the round" (the rules modal's job, and the phase
+                   bar announces the final round when it actually arrives) and the
+                   two sentences on which cells count, which describe the board
+                   sitting directly below it. -->
+              <p class="ft-section__note">When any player's board is full, the end is triggered.</p>
             </section>
 
             <!-- The fresh-pot affordance is PERSISTENT and sits beside the market
@@ -516,15 +564,36 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
                  and supplies its own section heading. -->
             <div id="teaOption" class="ft-tea-option"></div>
 
+            <!-- THESE TWO PANELS ARE IN THE ORDER A TILE TRAVELS (swapped 7 August).
+                 The Flavour reads your PLAYER BOARD, which is where a swept tile
+                 lands; a Tasting Menu reads your CAKE STAND, which is only ever
+                 reached later, by a claim. So the rail now runs market -> Flavour ->
+                 Menus -> your own board and stand, which is the order in which a
+                 tile is obtained and then used. It was the other way round for a
+                 day, on the weaker reasoning that the older module should sit
+                 higher.
+                 They are also OPPOSITES and have to be told apart: a menu is a race
+                 one player wins outright and takes off the table; the Flavour is
+                 scored by everybody at the end. Adjacency helps with that only
+                 because each panel says plainly where its tiles have to be.
+
+                 THE FLAVOUR OF THE DAY (6 August). The smallest panel on the rail,
+                 and it holds no state at all: the ingredient is revealed at setup
+                 and never changes, so nothing here is ever redrawn with different
+                 content. The live half of the module - each player's count and who
+                 leads - is on the score panels, next to the boards being counted.
+                 updateFlavourOfTheDay fills it. -->
+            <div id="flavourPanel" class="ft-flavour"></div>
+
             <!-- THE TASTING MENUS (5 August), REPLACING the Freshness panel in
                  the same slot rather than sitting beside it.
                  The two modules it replaced were docked here BECAUSE of the tea
                  gauge above - the pot was what reset them, so "how soon is the
                  next pot" and "what is still going" were one question. That reason
                  is gone: a pot of tea does nothing to a Tasting Menu. What keeps
-                 the panel here instead is the tile market directly above it, which
-                 is where the ingredients a menu wants are found, and the player's
-                 own cake stand below, which is the only thing a menu reads.
+                 the panel in this rail is the tile market above it, where the
+                 ingredients a menu wants are found, and the player's own cake stand
+                 below, which is the only thing a menu reads.
                  THIS PANEL IS A DIFFERENT SHAPE from the one it replaces - two to
                  four cards rather than five small tokens - so THE RESPONSIVE BANDS
                  NEED RE-MEASURING now that it has landed. See the responsive
@@ -637,24 +706,22 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
 // instant and obvious ("the plates ran out, we stopped"). It is not survivable
 // now that the trigger and the stop are separated by up to a full round - a
 // player who watched three more turns go by after the last plate was placed
-// deserves to be told which of the five conditions actually closed the game.
+// deserves to be told which condition actually closed the game.
 //
 // Every clause therefore states the TRIGGER, and the shared line underneath
 // states the rule that turned it into a stop. Reasons are the engine's own
 // endGameReason strings; an unknown value falls through to the generic line
 // rather than inventing a story about it.
+//
+// FIVE REASONS BECAME TWO ON 6 AUGUST. 'cardMarket' (the empty-plate pool is
+// spent), 'bagEmpty' (a pot of tea due against an empty bag) and 'boardOverflow'
+// (a sweep bigger than the board) are all deleted from the rules, so their copy
+// goes with them rather than sitting here waiting for a value that can never
+// arrive.
 function endGameReasonText(gameState) {
   const reasons = {
-    // The table's empty plate pool is spent. Note what this does NOT say: claims
-    // did not stop. Since 4 August the pool is purely the clock, and the final
-    // round serves on from an unlimited supply of spare plates.
-    cardMarket: 'The table ran out of empty plates.',
-    // 4 August: this is NOT "the bag hit zero". A short bag deals what it has and
-    // play continues - it is the NEXT pot, with nothing left to pour, that ends it.
-    bagEmpty: 'A fresh pot of tea came due with an empty bag - there were no tiles left to deal.',
-    boardFull: 'A player began their turn with a completely full board.',
-    boardOverflow: 'A player swept more tiles than their board could hold.',
-    marketTiles: 'The tile market and the bag were both empty, so there was nothing left to sweep.',
+    boardFull: 'A player filled their board completely.',
+    marketTiles: 'The last tile left the market and the bag was empty.',
   };
   const reason = reasons[gameState.endGameReason];
   if (!reason) return '';
@@ -663,7 +730,7 @@ function endGameReasonText(gameState) {
 
 export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup, gameStats) {
   const playerResults = gameState.players.map(player => {
-    const breakdown = getScoreBreakdown(player);
+    const breakdown = getScoreBreakdown(player, gameState);
     return { player, breakdown, totalScore: breakdown.total };
   });
 
@@ -691,6 +758,15 @@ export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup
           ${sharedWin ? '' : `<div style="font-size: 12px; color: var(--color-text-secondary); margin-top: var(--spacing-xs);">Ties are broken by cupcakes remaining, then by cards claimed.</div>`}
           ${endReason ? `<div style="font-size: 12px; color: var(--color-text-secondary); margin-top: var(--spacing-sm);">${endReason}</div>` : ''}
           ${isTastingMenuInPlay(gameState) ? `<div style="font-size: 12px; color: var(--color-text-secondary); margin-top: var(--spacing-xs);">Tasting Menus taken: ${gameState.players.map(p => `${p.name} ${p.tastingMenus.length}`).join(', ')} - ${getAvailableMenus(gameState).length} of ${gameState.tastingMenus.length} went unclaimed.</div>` : ''}
+          ${isFlavourInPlay(gameState) ? `<div style="font-size: 12px; color: var(--color-text-secondary); margin-top: var(--spacing-xs);">Flavour of the Day was ${ingredientLabel(gameState.flavourOfTheDay)}: ${gameState.players.map(p => `${p.name} ${getFlavourCount(gameState, p)}`).join(', ')} on their boards${(() => {
+            // A SHARED MAJORITY IS NAMED AS SHARED. Ties are friendly and happen in
+            // 11-18% of games, so this sentence gets said often enough that fudging
+            // it into one name would teach the wrong rule.
+            const leaderNames = getFlavourLeaders(gameState).map(id => gameState.players.find(p => p.id === id).name);
+            if (leaderNames.length === 0) return ' - nobody held any, so the majority went unpaid';
+            if (leaderNames.length === 1) return ` - ${leaderNames[0]} took the ${FLAVOUR_MAJORITY_VP} VP majority`;
+            return ` - ${leaderNames.join(' & ')} tied for the most and each took the full ${FLAVOUR_MAJORITY_VP} VP`;
+          })()}.</div>` : ''}
         </div>
 
         <div class="ft-end-screen__results">
@@ -709,6 +785,11 @@ export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup
                      (setTastingMenusEnabled) simply shows a column of zeroes, which
                      is a truer end screen than one whose shape changes. -->
                 <th title="Tasting Menus - the first player whose cake stand shows the named ingredients takes the card, and nobody else can">Menus</th>
+                <!-- The FLAVOUR OF THE DAY (6 August) is the game's FIFTH scoring
+                     column and the first one not fed by the claim step. Like the
+                     Menus column it is rendered unconditionally, so a game with the
+                     module switched off shows zeroes rather than a different table. -->
+                <th title="Flavour of the Day - 1 VP for every tile of the revealed ingredient on your PLAYER BOARD, and 3 more to the player or players with the most. The cake stand and crumb tray do not count.">Flavour</th>
                 <th title="Cupcakes score nothing since 3 August - they are the first tiebreaker">Cupcakes*</th>
                 <th>Score</th>
               </tr>
@@ -727,6 +808,7 @@ export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup
         <td>${bd.crumbs}</td>
         <td>${bd.cardVP}</td>
         <td>${bd.menus}</td>
+        <td title="${bd.flavourTiles} tile${bd.flavourTiles === 1 ? '' : 's'} on the board${bd.flavourLeading ? `, plus ${FLAVOUR_MAJORITY_VP} for the most` : ''}">${bd.flavour}</td>
         <td>${bd.cupcakes}</td>
         <td class="ft-end-screen__score ${result.totalScore === 0 ? 'zero' : ''}">${result.totalScore}</td>
       </tr>
@@ -884,6 +966,7 @@ export function updateGameDisplay(gameState) {
   updateMarket(gameState);
   updateTeaOption(gameState);
   updateTastingMenus(gameState);
+  updateFlavourOfTheDay(gameState);
   updateCardMarket(gameState);
   // renderObjectives(gameState, currentPlayer) was called here. Deleted 4 August
   // with the pantry goals - there is no objectives panel to redraw.
@@ -1070,15 +1153,19 @@ function updateTeaOption(gameState) {
   // cannot go loud when the pot is due is not a gauge.
   el.className = `ft-section ft-section--tea ft-tea-option ft-tea-option--${state}`;
   el.innerHTML = `
+    <!-- THE TEAPOT RIDES IN THE HEAD, immediately before the count (7 August).
+         It used to sit on its own line below the note, captioned "teapots visible",
+         which was a whole row of panel to say what the figure beside it already
+         said. The icon belongs next to the number it counts; the caption was the
+         line that made it a separate thing. -->
     <div class="ft-section__head">
       <span class="ft-section__title">Fresh Pot of Tea</span>
-      <span class="ft-section__meta ft-section__meta--figure">${shown}/${REFRESH_THRESHOLD}</span>
+      <span class="ft-section__meta ft-section__meta--figure">
+        <img src="images/teapot.png" class="ft-tea-option__icon" alt="teapots visible">
+        ${shown}/${REFRESH_THRESHOLD}
+      </span>
     </div>
     <p class="ft-section__note">When ${REFRESH_THRESHOLD} teapots are visible, the tile market is reset and the cards refreshed.</p>
-    <span class="ft-tea-option__count">
-      <img src="images/teapot.png" class="ft-tea-option__icon" alt="">
-      teapots visible
-    </span>
     ${note ? `<span class="ft-tea-option__note">${note}</span>` : ''}
   `;
 }
@@ -1115,8 +1202,12 @@ function updateTeaOption(gameState) {
 // the player who had committed to that flavour hardest.
 function menuCompletionValue(gameState, player, tile) {
   if (!isTastingMenuInPlay(gameState) || !tile || !tile.ingredient) return 0;
-  if (!getLegalDestinations(player, tile).some(d => d.type === 'row')) return 0;
-  const counts = getStandIngredients(player);
+  // The row-destination guard that stood here until 6 August is DELETED. It
+  // existed because a crumbed tile could not complete a menu, so promising one to
+  // a player whose only legal destination was the crumb tray would have been a
+  // lie. The crumb tray counts now (MENU_COUNTS_CRUMB_TRAY), so every legal
+  // destination can complete a menu and the guard would suppress a true hint.
+  const counts = getMenuIngredients(player);
   counts[tile.ingredient] = (counts[tile.ingredient] || 0) + 1;
   for (const menu of getAvailableMenus(gameState)) {
     if (satisfiesMenu(counts, menu)) return TASTING_MENU_VP;
@@ -1142,8 +1233,9 @@ function updateTastingMenus(gameState) {
   // instant - a menu's distance is personal, so the panel has to name whose
   // reading it is or it is simply wrong for three players out of four.
   const viewer = gameState.players[gameState.currentPlayerIndex];
+  // How many are still on offer. It drives the panel's live/spent state and the
+  // note; it is no longer PRINTED as an N/M figure - see the head below.
   const available = getAvailableMenus(gameState).length;
-  const total = gameState.tastingMenus.length;
   let closest = Infinity;
 
   const cards = gameState.tastingMenus.map(menu => {
@@ -1205,13 +1297,88 @@ function updateTastingMenus(gameState) {
 
   el.className = `ft-section ft-menus ft-menus--${available > 0 ? 'live' : 'spent'}`;
   el.innerHTML = `
+    <!-- NO N/M FIGURE (dropped 7 August). Every other figure on this rail is a
+         PROGRESSION - 5/25 cells filled, 2/4 teapots showing - and reads as "how
+         far along are we". This one was a stock level, and the cards below already
+         show it: a taken menu is struck through and stamped with the name of
+         whoever took it, which says more than the count did and says it in the
+         place a player is already looking. -->
     <div class="ft-section__head">
       <span class="ft-section__title">Tasting Menus <span class="ft-menus__vp">${TASTING_MENU_VP} VP each</span></span>
-      <span class="ft-section__meta ft-section__meta--figure">${available}/${total}</span>
     </div>
     <div class="ft-menus__cards">${cards}</div>
-    <p class="ft-section__note">Have these symbols on your cake stand to claim the reward.</p>
+    <!-- "ANYWHERE" IS THE WHOLE NOTE (7 August). The commonest misreading of this
+         panel at the table is that a card's symbols have to be on ONE ROW of the
+         stand, or in the order printed - neither is true, and a player who
+         believes either will not go for a menu they already half hold. -->
+    <p class="ft-section__note">Have these symbols <strong>anywhere</strong> on your cake stand to claim the reward.</p>
     ${note ? `<span class="ft-menus__note">${note}</span>` : ''}
+  `;
+}
+
+// THE FLAVOUR OF THE DAY (6 August).
+//
+// THE SMALLEST PANEL ON THE RAIL, and deliberately so. It says exactly two things:
+//   1. WHICH INGREDIENT it is, as the symbol rather than as a word. It is public
+//      from turn one and never changes, so this is the one panel on the rail that
+//      is not tracking anything;
+//   2. WHAT IT PAYS - both clauses, in the head, because a player who reads only
+//      the per-tile one has missed the whole contest.
+//
+// WHAT IT USED TO CARRY AND NO LONGER DOES, trimmed 7 August: a row per player
+// with their count and a leader chip, a three-line statement of the rule, and a
+// note calling out an empty or shared lead. All three were REPEATS. Every player's
+// count and their leader chip are on their own score panel, which is next to their
+// board - which is where the tiles being counted are, and where a player looks to
+// read their score anyway. The rule is in the rules modal and on the score panel's
+// own tooltip. The panel was ten lines tall to say what two of them already said.
+//
+// SO WHERE IS THE CONTEST NOW? On the score panels, one per player, which is the
+// honest place for it: the Flavour is a per-player count and this panel is a fact
+// about the table. If the contest ever needs to be readable in ONE place, put it
+// here - but put it here INSTEAD of on the score panels, not as well.
+function updateFlavourOfTheDay(gameState) {
+  const el = document.getElementById('flavourPanel');
+  if (!el) return;
+
+  // The module can be switched off wholesale (setFlavourEnabled), in which case
+  // nothing was drawn and the panel is not a thing that exists.
+  if (!isFlavourInPlay(gameState)) {
+    el.className = 'ft-flavour ft-hidden';
+    el.innerHTML = '';
+    return;
+  }
+
+  const flavour = gameState.flavourOfTheDay;
+
+  el.className = 'ft-section ft-flavour';
+  el.innerHTML = `
+    <div class="ft-section__head">
+      <!-- BOTH CLAUSES IN THE HEADING, and no figure beside it (7 August). The
+           price was split across a title span and a "+3 most" figure, which read as
+           a progression like the two gauges above and is not one - nothing here
+           counts up. Said as one sentence it is also the whole rule of the module
+           bar where the tiles have to be, which the card below says.
+           The non-breaking spaces hold the NAME together so the wrap in the narrow
+           rail falls between the name and its price rather than mid-name. -->
+      <span class="ft-section__title">Flavour&nbsp;of&nbsp;the&nbsp;Day: <span class="ft-flavour__vp">${FLAVOUR_VP_PER_TILE}VP&nbsp;per&nbsp;tile, +${FLAVOUR_MAJORITY_VP}&nbsp;for&nbsp;most</span></span>
+    </div>
+    <!-- SYMBOL LEFT, PLACE RIGHT (7 August). The card used to be the ingredient and
+         nothing else, which answered "what" and left "where" to a tooltip nobody
+         opens - and WHERE is the whole module. Every other scoring lane in the game
+         is fed by the claim step and reads the cake stand; this one reads the
+         PLAYER BOARD, and a player who assumes otherwise spends the game
+         sacrificing tiles they thought they were banking.
+         The negative half is not optional. "On your player board" alone is read as
+         "somewhere in your player area" by anyone who has just learned that Tasting
+         Menus read the stand; naming the stand and ruling it out is what stops it. -->
+    <div class="ft-flavour__card" title="Today's flavour is ${ingredientLabel(flavour)}. Score ${FLAVOUR_VP_PER_TILE} VP for every ${ingredientLabel(flavour)} tile on your PLAYER BOARD at the end, and ${FLAVOUR_MAJORITY_VP} VP more for the most - ties are friendly. Your cake stand and crumb tray do not count. It was revealed at setup and does not change.">
+      <img src="images/symbol_${flavour}.png" class="ft-flavour__symbol" alt="${flavour}">
+      <div class="ft-flavour__where">
+        <span class="ft-flavour__label">${ingredientLabel(flavour)}</span>
+        <span class="ft-flavour__place">tiles on your player board, <strong>not</strong> your cake stand</span>
+      </div>
+    </div>
   `;
 }
 
@@ -1542,11 +1709,11 @@ function updateCardMarket(gameState) {
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   const claimableCardIds = new Set();
 
-  // canClaimMore gates the whole set: with the table's empty-plate supply spent
-  // there is no plate to plant, so nothing is claimable however well it matches.
-  // Since 4 August that gate OPENS again for the final round - the ending is
-  // armed by then and spare plates come from an unlimited supply - so the last
-  // round highlights claimable cards exactly like any other.
+  // canClaimMore is unconditionally true since 6 August - empty plates are
+  // unlimited, so nothing gates the set but the pattern itself. The call is kept
+  // because the engine keeps the function as the hook a future claim limit would
+  // live in, and a UI that stopped asking would be the thing to find and fix if
+  // one ever arrived.
   if (gameState.gamePhase === 'claim' && canClaimMore(gameState)) {
     for (const card of gameState.cardMarket) {
       // A card reserved THIS turn cannot be claimed this turn (3 August) - it is
@@ -1695,6 +1862,28 @@ function updatePlayerBoards(gameState) {
         ? menuCompletionValue(gameState, player, displayTile)
         : 0;
 
+      // THE FLAVOUR OF THE DAY, on EVERY board and at ALL times - unlike the menu
+      // badge above, which speaks only at the claim step and only to the player
+      // whose turn it is. The Flavour is a running count on a board, and a count
+      // you cannot see at a glance is a count nobody plays for; it is also the
+      // game's first reason to look at somebody else's board, which only works if
+      // their tiles are marked too.
+      //
+      // A TINT AND A RING RATHER THAN A BADGE. There can be a dozen of these on one
+      // board and a dozen badges would bury the board under numbers - the tile is
+      // worth 1 VP, and the useful reading is "how many of these do I have", which
+      // is a shape you count rather than a number you read.
+      const isFlavourTile = !isBlockedCell && displayTile
+        && gameState.flavourOfTheDay && displayTile.ingredient === gameState.flavourOfTheDay;
+
+      // AND THE WARNING, at the one moment it costs something: this cell is a
+      // candidate sacrifice and the tile on it is a Flavour tile, so claiming here
+      // spends a point and possibly the lead. It should not be a surprise
+      // discovered at scoring. The menu badge (a gain) and this (a cost) can both
+      // be true of the same cell, which is a genuinely hard choice rather than a
+      // rendering clash - the two marks are deliberately different shapes.
+      const flavourWarning = isFlavourTile && isRemovable;
+
       let tileClass = 'ft-tile board-tile';
       if (isBlockedCell) {
         tileClass += ' ft-tile--blocked';
@@ -1709,6 +1898,8 @@ function updatePlayerBoards(gameState) {
         if (isRemovable) tileClass += ' ft-tile--removable';
         if (isMovableInCupcakeMode) tileClass += ' ft-tile--movable';
         if (menuPayout > 0) tileClass += ' ft-tile--menu';
+        if (isFlavourTile) tileClass += ' ft-tile--flavour';
+        if (flavourWarning) tileClass += ' ft-tile--flavour-risk';
       }
 
       const bgColor = (displayTile && !isBlockedCell) ? `background-color: ${getColourCSS(displayTile.colour)};` : '';
@@ -1718,6 +1909,12 @@ function updatePlayerBoards(gameState) {
       const menuBadge = menuPayout > 0
         ? `<span class="ft-tile__menu" title="Tasting Menu - remove this tile and plate it on your cake stand and you complete a menu, worth ${menuPayout} VP">+${menuPayout}</span>`
         : '';
+      // The cost mark. It carries the MINUS explicitly - this is the only mark on
+      // the board that says a move costs you something, and it has to read as the
+      // opposite of the green +VP badge it may be sitting beside.
+      const flavourBadge = flavourWarning
+        ? `<span class="ft-tile__flavour" title="Flavour of the Day - sacrificing this tile takes it off your board, where it is worth ${FLAVOUR_VP_PER_TILE} VP, and it may cost you the ${FLAVOUR_MAJORITY_VP} VP majority. The cake stand and crumb tray do not count for the Flavour.">-${FLAVOUR_VP_PER_TILE}</span>`
+        : '';
       const draggableAttr = isMovableInCupcakeMode ? 'draggable="true"' : '';
       const boardTileIndexAttr = isMovableInCupcakeMode ? `data-board-tile-index="${idx}"` : '';
       const plateRemoveAttr = isPlateRemovable
@@ -1726,18 +1923,34 @@ function updatePlayerBoards(gameState) {
 
       return `
         <div class="${tileClass}" style="${bgColor}" data-index="${idx}" data-player="${playerIdx}" ${draggableAttr} ${boardTileIndexAttr} ${plateRemoveAttr}>
-          ${imageHtml}${menuBadge}
+          ${imageHtml}${menuBadge}${flavourBadge}
         </div>
       `;
     }).join('');
 
     if (showWorkingArea) {
       workingAreaEl.classList.remove('ft-hidden');
+      // THE TRIM RULE (6 August). Once the tiles still in the tray are exactly the
+      // ones that cannot fit, they ARE the tiles going back into the bag - the
+      // player's choice is made simply by which ones they placed. Say so on the
+      // tiles themselves rather than only in the phase bar: this is the moment the
+      // decision is live, and a tile the player thinks they forgot is a tile they
+      // have actually just given up.
+      const placedSoFar = ui.placementMap ? Object.keys(ui.placementMap).length : 0;
+      const stillToPlace = getSweepPlacementCount(gameState) - placedSoFar;
+      const trayIsTheBag = isCurrentPlayer && player.isHuman && stillToPlace <= 0
+        && gameState.pendingSweepTiles.length > placedSoFar;
       workingAreaEl.innerHTML = gameState.pendingSweepTiles.map((tile, idx) => {
         const isPlaced = ui.placementMap && ui.placementMap[idx] !== undefined;
         const isSelected = ui.selectedTileIndex === idx;
+        const backToBag = trayIsTheBag
+          ? ' working-tile--to-bag'
+          : '';
+        const title = trayIsTheBag
+          ? `${tile.ingredient} - no room on your board, this one goes back into the bag`
+          : tile.ingredient;
         return !isPlaced ? `
-          <div class="ft-tile working-tile${isSelected ? ' working-tile--selected' : ''}" draggable="true" data-tile-index="${idx}" style="background-color: ${getColourCSS(tile.colour)}; cursor: grab; user-select: none; flex-shrink: 0;" title="${tile.ingredient}">
+          <div class="ft-tile working-tile${isSelected ? ' working-tile--selected' : ''}${backToBag}" draggable="true" data-tile-index="${idx}" style="background-color: ${getColourCSS(tile.colour)}; cursor: grab; user-select: none; flex-shrink: 0;" title="${title}">
             <img src="images/symbol_${tile.ingredient}.png" class="ft-tile__icon" style="pointer-events: none;" alt="${tile.ingredient}">
           </div>
         ` : '';
@@ -2154,7 +2367,12 @@ function setupDragAndDrop(gameState) {
 // first tiebreaker instead. The count is still returned so the UI can show it,
 // but it must not be added to `total`, which has to agree with the engine's
 // calculateFinalScores exactly.
-function getScoreBreakdown(player) {
+// IT TAKES THE GAME STATE AS WELL AS THE PLAYER since 6 August. The Flavour of the
+// Day is scored off the board against an ingredient that lives on the state, so a
+// player alone is no longer enough to mirror calculateFinalScores - and mirroring
+// it exactly is this function's whole job. `gameState` is optional so a caller
+// with only a player still gets every other lane rather than throwing.
+function getScoreBreakdown(player, gameState = null) {
   let standTotal = 0;
   for (let i = 0; i < player.stand.length; i++) {
     const row = player.stand[i];
@@ -2168,9 +2386,22 @@ function getScoreBreakdown(player) {
   }
   const cupcakes = player.cupcakes;
   const menus = (player.tastingMenus ? player.tastingMenus.length : 0) * TASTING_MENU_VP;
+
+  // THE FLAVOUR OF THE DAY, split into its two clauses because the panel shows
+  // them separately: a running per-tile total that is true at every moment of the
+  // game, and a majority that is only provisional until the last turn. Both are
+  // read LIVE off the board, so a player watching their own panel sees the count
+  // move the moment they place a tile - and sees it drop the moment a claim
+  // sacrifices one, which is exactly the feedback the module needs.
+  const flavourTiles = (gameState && isFlavourInPlay(gameState)) ? getFlavourCount(gameState, player) : 0;
+  const flavourLeading = (gameState && isFlavourInPlay(gameState))
+    && getFlavourLeaders(gameState).includes(player.id);
+  const flavour = flavourTiles * FLAVOUR_VP_PER_TILE + (flavourLeading ? FLAVOUR_MAJORITY_VP : 0);
+
   return {
     standTotal, crumbs, cardVP, cupcakes, menus,
-    total: standTotal + crumbs + cardVP + menus,
+    flavour, flavourTiles, flavourLeading,
+    total: standTotal + crumbs + cardVP + menus + flavour,
   };
 }
 
@@ -2324,7 +2555,7 @@ function updateStats(gameState) {
     if (!statsEl) return;
 
     const isCurrentPlayer = gameState.currentPlayerIndex === playerIdx;
-    const bd = getScoreBreakdown(p);
+    const bd = getScoreBreakdown(p, gameState);
 
     // The current human is picking a destination for a removed tile when
     // destinationChoices is set — make their own stand's legal spots clickable.
@@ -2364,6 +2595,19 @@ function updateStats(gameState) {
         }).join(' ')} Tasting Menus</span><strong>${bd.menus}</strong></div>`
       : `<div class="ft-score-breakdown__item"><span>📜 Tasting Menus</span><strong>0</strong></div>`;
 
+    // THE FLAVOUR OF THE DAY line, on every panel including an opponent's - the
+    // whole module is a contest and the only way to see where you stand in it is to
+    // see everybody's number. It shows the SYMBOL, the TILE COUNT and, when this
+    // player holds the most, the majority they are currently owed.
+    //
+    // The count is the honest figure to lead with rather than the VP: the tiles are
+    // on the board in front of the player, and "you have four" is what they can
+    // check. The majority chip is marked as provisional in its tooltip because it
+    // is not settled until the game ends.
+    const flavourLine = isFlavourInPlay(gameState)
+      ? `<div class="ft-score-breakdown__item"><span><img src="images/symbol_${gameState.flavourOfTheDay}.png" class="ft-score-breakdown__symbol" alt="${gameState.flavourOfTheDay}" title="Flavour of the Day: ${ingredientLabel(gameState.flavourOfTheDay)}"> Flavour${bd.flavourLeading ? ` <span class="ft-score-breakdown__lead" title="Currently holds the most - worth ${FLAVOUR_MAJORITY_VP} VP at the end, and shared if the lead is level">most +${FLAVOUR_MAJORITY_VP}</span>` : ''} <span class="ft-score-breakdown__sub">${bd.flavourTiles} on board</span></span><strong>${bd.flavour}</strong></div>`
+      : '';
+
     let html = `
       <div class="ft-score-total">Total: ${bd.total}${oppCupcakes}</div>
       <div class="ft-score-breakdown">
@@ -2371,6 +2615,7 @@ function updateStats(gameState) {
         <div class="ft-score-breakdown__item"><span>🍪 Crumbs</span><strong>${bd.crumbs}</strong></div>
         <div class="ft-score-breakdown__item"><span>🍰 Card VP</span><strong>${bd.cardVP}</strong></div>
         ${menuLine}
+        ${flavourLine}
       </div>
       ${destinationMode ? '<div class="ft-stand__prompt">Choose where this tile goes ↓</div>' : ''}
       ${renderStand(p, { interactive: destinationMode, legalRows })}
@@ -2497,14 +2742,19 @@ function updateGameInfo(gameState) {
     marketDisplay.textContent = tilesInMarket;
   }
 
+  // THE FULLEST BOARD - the game's clock since 6 August. Cells used on whichever
+  // board is closest to full, out of 25; at 25 the ending is armed and the round
+  // is played out. This read totalClaimed / cardsNeededToEnd until that day, which
+  // was the deleted empty-plate pool - the meter had stopped tracking anything.
   const cardProgressBar = document.getElementById('cardProgressBar');
   const cardProgressText = document.getElementById('cardProgressText');
   if (cardProgressBar && cardProgressText) {
-    const totalClaimed = gameState.players.reduce((sum, p) => sum + p.claimedCards.length, 0);
-    const needed = gameState.cardsNeededToEnd;
-    const percentage = Math.min((totalClaimed / needed) * 100, 100);
-    cardProgressBar.style.width = percentage + '%';
-    cardProgressText.textContent = `${totalClaimed}/${needed}`;
+    const total = gameState.players[0].board.length;
+    const fullest = Math.max(...gameState.players.map(
+      p => total - p.board.filter(c => c === null).length
+    ));
+    cardProgressBar.style.width = Math.min((fullest / total) * 100, 100) + '%';
+    cardProgressText.textContent = `${fullest}/${total}`;
   }
 }
 
@@ -2562,7 +2812,12 @@ function updatePhaseControls(gameState) {
     `;
   } else if (gameState.gamePhase === 'place') {
     const placementCount = ui.placementMap ? Object.keys(ui.placementMap).length : 0;
-    const allPlaced = placementCount === gameState.pendingSweepTiles.length;
+    // THE TRIM RULE (6 August). "All placed" is not "all swept" any more - it is
+    // as many as the board has room for. getSweepPlacementCount is the engine's
+    // own answer, so the Done button and place() cannot disagree about it.
+    const required = getSweepPlacementCount(gameState);
+    const goingBack = gameState.pendingSweepTiles.length - required;
+    const allPlaced = placementCount === required;
 
     // THE EXTRA-TILE OFFER USED TO BE HERE, and it is the single reason this bar
     // measured 200px during placement: at a 246px-wide column that one sentence
@@ -2571,13 +2826,20 @@ function updatePhaseControls(gameState) {
     //
     // "Placed: n/m" stays, because it is part of the command rather than coaching:
     // it is the readout for the Done button sitting next to it.
+    // The instruction changes when the board cannot take everything, because the
+    // player then has a DECISION rather than a chore: which tiles to keep. The
+    // ones they leave in the tray are the ones that go back into the bag, so the
+    // bar has to say that before they press Done.
+    const placeInstruction = goingBack > 0
+      ? `Not enough room - place ${required}, and the other ${goingBack} go back into the bag`
+      : 'Drag tiles onto your board';
     html = `
       <div class="ft-phase-bar">
-        <div class="ft-phase-bar__instruction">Drag tiles onto your board</div>
-        <div class="ft-phase-bar__status">Placed: <strong>${placementCount}/${gameState.pendingSweepTiles.length}</strong></div>
+        <div class="ft-phase-bar__instruction">${placeInstruction}</div>
+        <div class="ft-phase-bar__status">Placed: <strong>${placementCount}/${required}</strong></div>
         <div class="ft-phase-bar__controls">
           ${undoBtn}
-          <button id="placementDone" class="ft-btn ft-btn--primary ft-btn--small" ${!allPlaced ? 'disabled' : ''}>Done</button>
+          <button id="placementDone" class="ft-btn ft-btn--primary ft-btn--small" ${!allPlaced ? 'disabled' : ''}>${goingBack > 0 ? 'Done - return the rest' : 'Done'}</button>
         </div>
       </div>
     `;
@@ -2723,17 +2985,27 @@ function updatePhaseControls(gameState) {
   }
 }
 
+// THE TRIM RULE (6 August) changes the shape of this array. place() pairs
+// placements[i] with pendingSweepTiles[i] BY INDEX, and a NULL entry means "this
+// tile goes back into the bag" - so the array is always one entry per swept tile
+// and the unplaced ones are nulls rather than gaps. It used to be a dense list of
+// the placed cells only, which was the same thing while every tile had to fit.
+//
+// The player's choice of WHICH tiles to give up is simply the ones they left in
+// the working tray; nothing extra has to be collected here.
 function handlePlacementDone(e) {
   const ui = window._gameUI;
   if (!ui) return;
 
+  const gameState = ui.gameState;
   const placements = [];
-  for (let i = 0; i < ui.gameState.pendingSweepTiles.length; i++) {
-    if (ui.placementMap && ui.placementMap[i] !== undefined) {
-      placements.push(ui.placementMap[i]);
-    }
+  for (let i = 0; i < gameState.pendingSweepTiles.length; i++) {
+    const cell = ui.placementMap ? ui.placementMap[i] : undefined;
+    placements.push(cell === undefined ? null : cell);
   }
-  if (placements.length === ui.gameState.pendingSweepTiles.length) {
+  // As many as the board can take - fewer is illegal, and place() would refuse it.
+  const placed = placements.filter(p => p !== null).length;
+  if (placed === getSweepPlacementCount(gameState)) {
     ui.onPlacementSubmit(placements);
     ui.placementMap = {};
     // The tap selection is scoped to this placement step. Leaving it set would

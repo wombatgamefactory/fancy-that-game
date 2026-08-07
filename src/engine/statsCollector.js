@@ -197,6 +197,13 @@ export function createStatsCollector() {
     // the MAX per game says whether one player can hoover the whole deal.
     tastingMenusByPlayer: {},
 
+    // --- 14. The Flavour of the Day (6 August) ------------------------------
+    // The ONE ingredient revealed at setup, or null when the module is off. There
+    // is nothing else to log: this lane fires no events at all during play - it is
+    // a setup draw and an end-game count - so the rest of metric 14 is read off
+    // the finished boards by the harness.
+    flavourOfTheDay: null,
+
     recordMarketFill() {
       this.marketFillCount = this.marketFillCount + 1;
     },
@@ -212,6 +219,14 @@ export function createStatsCollector() {
     // a run can tell "off" from "never called".
     recordTastingMenuDeal(menuIds) {
       this.tastingMenuDeal = Array.isArray(menuIds) ? [...menuIds] : [];
+    },
+
+    // Which ingredient was revealed as the Flavour of the Day - once per game,
+    // from createGame. Null (the module switched off for an A/B) is recorded as
+    // such rather than skipped, so a run can tell "off" from "never called". Over
+    // a long run the five must come up evenly.
+    recordFlavourDeal(ingredient) {
+      this.flavourOfTheDay = typeof ingredient === 'string' ? ingredient : null;
     },
 
     // One menu taken, which can happen at most once per menu for the whole game.
@@ -464,17 +479,20 @@ export function createStatsCollector() {
       // non-zero count there means a tea round was skipped, or a flush failed to
       // re-cover the symbols.
       //
-      // 4 AUGUST: THE INVARIANT NOW HAS A LEGITIMATE EXCEPTION, and reading it as
-      // a flat "must be 0" would report the new end rule as a bug. When a pot is
-      // due and the bag is already empty the game does NOT brew - it triggers the
-      // 'bagEmpty' ending and play carries on to the end of the round. Nothing
-      // refills the market after that, so the symbols stay uncovered and EVERY
-      // remaining turn of that final round begins with tea still due.
+      // THE INVARIANT HAS A LEGITIMATE EXCEPTION, and reading it as a flat "must
+      // be 0" would report the end rule as a bug. When a pot is due and the bag is
+      // already empty the game does NOT brew - since 6 August the pot simply does
+      // not happen. Nothing refills the market from that point on, so the symbols
+      // stay uncovered and EVERY remaining turn begins with tea still due.
+      // (Until 6 August the same turns were produced by the 'bagEmpty' ENDING,
+      // which stopped refilling for the same reason and then closed the game out
+      // over one round. The ending is deleted; the uncovered late turns are not,
+      // and they can now run for longer than a single round.)
       //
       // That is why the turn numbers are reported alongside the count. A driver
-      // judging the invariant must check WHERE the samples fall: inside the last
-      // round they are the end rule working, anywhere earlier they are the hole
-      // the metric was built to catch. See simulate.js's reading of it.
+      // judging the invariant must check WHERE the samples fall: late in the game
+      // they are the end rule working, earlier they are the hole the metric was
+      // built to catch. See simulate.js's reading of it.
       //
       // It replaces the old refreshLegalTurns / longestUnflushedStreak pair, which
       // measured "was a voluntary refresh available and did anyone take it". Tea
@@ -672,6 +690,13 @@ export function createStatsCollector() {
         // the module is an end-of-game bonus rather than a pressure device and has
         // failed at its stated job - see metric 13's time-to-first-menu line.
         tastingMenuTurns: this.tastingMenusTaken.map(t => t.turn),
+
+        // 14. The Flavour of the Day. ONE STRING, or null when the module is off.
+        // Everything else metric 14 reports is a fact about the FINISHED BOARDS
+        // rather than an event - counts, the majority, the lead margin - so the
+        // harness reads it off the state exactly as it does the contested-menu
+        // figure. This is the only thing the collector can see that it cannot.
+        flavourOfTheDay: this.flavourOfTheDay,
       };
     },
   };
