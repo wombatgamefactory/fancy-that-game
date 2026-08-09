@@ -106,8 +106,10 @@
        worth roughly 110px of vertical space on a phone - the single largest
        piece of screen anything in this build can win back.
 
-       theme_color and background_color are both the cream, so the splash and the
-       system bars match the page instead of flashing white.
+       theme_color is the deep ink #3D2B1F and background_color the wall #E4D7C0
+       (defect 11, plan section 8.10). Both were the cream #FBF5EC, which put a
+       pale system bar over a pale page with no edge between them and gave the
+       splash screen a ground the finished game does not have.
 
        ORIENTATION IS NOW SET, to the portrait GROUP (manifest.json). Ticket 00
        left it out deliberately because locking it was the landscape ticket's
@@ -121,13 +123,20 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Fancy That!">
-  <meta name="theme-color" content="#FBF5EC">
+  <meta name="theme-color" content="#3D2B1F">
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/x-icon" href="https://www.wombatgamefactory.com/favicon.ico">
-  <link rel="icon" type="image/png" sizes="32x32" href="https://www.wombatgamefactory.com/favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="https://www.wombatgamefactory.com/favicon-16x16.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="https://www.wombatgamefactory.com/apple-touch-icon.png">
+  <!-- FAVICONS, LOCAL (stage 2, plan section 8.7). All four used to point at
+       www.wombatgamefactory.com, so the game's own identity depended on a host
+       it is not served from, and tools/layout-check.mjs route-blocked that host
+       precisely so the round trip would not perturb a measurement. The teapot on
+       the accent brown is built from AI Art/teapot_v2_master.png; at 32 and 16
+       it is the cream silhouette, because a cream pot has no form left to read
+       that small. The three remote files are not recoverable from this project
+       and are not needed - nothing else referenced them. -->
+  <link rel="icon" href="images/icons/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="images/icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="images/icons/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="images/icons/apple-touch-icon-180.png">
 
   <!-- Start cookieyes banner -->
   <script id="cookieyes" type="text/javascript" src="https://cdn-cookieyes.com/client_data/b4b72588ac323168ef2bca929b5e5cd9/script.js"></script>
@@ -146,6 +155,97 @@
   <script>function loadScript(a){var b=document.getElementsByTagName("head")[0],c=document.createElement("script");c.type="text/javascript",c.src="https://tracker.metricool.com/resources/be.js",c.onreadystatechange=a,c.onload=a,b.appendChild(c)}loadScript(function(){beTracker.t({hash:"246df0746358adafd3745b08e93dc646"})});</script>
 </head>
 <body>
+
+  <!-- ===== THE ICON SPRITE (stage 2, plan section 8.7) ======================
+       Thirteen icons on a 16 x 16 grid at 1.5 stroke, round cap, round join,
+       fill none, one pixel of clear margin so the live area is 14 x 14, and
+       every stroke centre on the quarter grid so an edge lands on a device
+       pixel boundary at DPR 2 or 3. The stroke scales with the icon: 2.25 at
+       24, 1.5 at 16, 1.13 at 12. Below 12px an icon is not drawn but chosen,
+       and only `cupcake` goes to 10.
+
+       THREE THINGS ABOUT THIS BLOCK ARE LOAD-BEARING.
+
+       1. IT IS IN THE DOCUMENT, not an external file. <use href="icons.svg#x">
+          is a second request and is blocked cross-origin in several browsers.
+          The whole sprite is about 3.5 KB of markup, under 800 bytes gzipped,
+          and zero requests - against 9.0 KB and two requests for the two arrow
+          PNGs it replaces.
+       2. IT IS OUTSIDE #app. board.js re-renders by assigning #app.innerHTML,
+          so a sprite inside it would be destroyed by the first
+          updateGameDisplay and every icon in the game would vanish. Same reason
+          the toast element mounts on document.body.
+       3. IT IS NOT AN ICON FONT. A webfont is a request on the critical path
+          that renders as a box on failure and lands in the text layer where a
+          screen reader can read it aloud as garbage - which is the emoji
+          failure mode in a different wrapper.
+
+       Colour comes from .ft-icon in style.css: --accent-deep #8E5239 by
+       default, currentColor inside any control. Every <use> site carries
+       aria-hidden="true" and the control carries the real label; no icon here
+       is ever the accessible name of anything.
+
+       Three of the thirteen - cake-stand, grid and card - are drawn and NOT yet
+       wired. They are stage 7's rail chips, and drawing them now is what stops
+       that stage inventing a second family. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+    <symbol id="i-close" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5"/>
+    </symbol>
+    <symbol id="i-undo" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5.75 4.25 2.75 7.25l3 3"/>
+      <path d="M2.75 7.25h6.5a3.5 3.5 0 1 1 0 7H6.5"/>
+    </symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2.75 8h10.5"/><path d="M9 4.25 12.75 8 9 11.75"/>
+    </symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M13.25 8H2.75"/><path d="M7 4.25 3.25 8 7 11.75"/>
+    </symbol>
+    <symbol id="i-arrow-down" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 2.75v10.5"/><path d="M4.25 9 8 12.75 11.75 9"/>
+    </symbol>
+    <symbol id="i-book" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 4.5v9"/>
+      <path d="M8 4.5C6.6 3.3 4.6 3 2.5 3.4v8.4c2.1-.4 4.1-.1 5.5 1.2 1.4-1.3 3.4-1.6 5.5-1.2V3.4c-2.1-.4-4.1-.1-5.5 1.1z"/>
+    </symbol>
+    <symbol id="i-person" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13.75a4.5 4.5 0 0 1 9 0"/>
+    </symbol>
+    <symbol id="i-bot" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2.75" y="6.5" width="10.5" height="7" rx="1.75"/>
+      <path d="M8 3.75v2.75"/><path d="M8 2.5h.01"/>
+      <path d="M6 10h.01"/><path d="M10 10h.01"/>
+    </symbol>
+    <symbol id="i-crumb-tray" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2 9.25h12l-1.7 4.25h-8.6z"/>
+      <path d="M5.5 6.6h.01"/><path d="M10.5 6.6h.01"/>
+    </symbol>
+    <symbol id="i-cupcake" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4.9 8.9h6.2l-.9 4.6H5.8z"/>
+      <path d="M7 9.5v3.3M9 9.5v3.3"/>
+      <path d="M4.5 8.9a3.5 3.5 0 0 1 7 0"/>
+    </symbol>
+    <symbol id="i-cake-stand" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5.25 5.6c.5 1.4 4.5 1.4 5 0"/>
+      <path d="M8 6.6v3.1"/>
+      <path d="M2.9 9.7c.7 1.7 9.5 1.7 10.2 0"/>
+      <path d="M8 10.9v2.6"/>
+      <path d="M5.9 13.5h4.2"/>
+    </symbol>
+    <symbol id="i-grid" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2.75" y="2.75" width="4.5" height="4.5" rx="1"/>
+      <rect x="8.75" y="2.75" width="4.5" height="4.5" rx="1"/>
+      <rect x="2.75" y="8.75" width="4.5" height="4.5" rx="1"/>
+      <rect x="8.75" y="8.75" width="4.5" height="4.5" rx="1"/>
+    </symbol>
+    <symbol id="i-card" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3.25" y="2.5" width="9.5" height="11" rx="1.5"/>
+      <path d="M6.25 6h.01"/><path d="M9.75 6h.01"/>
+      <path d="M6.25 9.75h.01"/><path d="M9.75 9.75h.01"/>
+    </symbol>
+  </defs></svg>
+
   <div id="app"></div>
   <script type="module" src="src/ui/main.js"></script>
 </body>

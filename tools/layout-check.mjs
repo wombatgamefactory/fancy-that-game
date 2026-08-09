@@ -98,14 +98,31 @@ const PHASE_WIDTHS = [430, 390, 360, 768, 1024, 1400];
 // effort is judged on, and until 09/08/2026 the harness had no line for it at
 // all - it screenshotted a 3,134px page at 390 and reported nothing.
 //
-// These numbers are a RATCHET, not a target. Each is what the build measured on
-// 09/08/2026 after wayfinder ticket 00 landed, on the 4-player seeded opening
-// position with a human in seat 0. The assertion is height <= budget, so a
-// ticket may lower a number and must never raise one. Lowering the build without
-// lowering the budget here is allowed and simply shows up as slack in the detail.
+// These numbers are a RATCHET, not a target. The assertion is height <= budget,
+// so a ticket may lower a number and must never raise one. Lowering the build
+// without lowering the budget here is allowed and simply shows up as slack in
+// the detail.
 //
 // The ticket's own stated baseline - 3,224 at 390, 2,916 at 430, 2,663 at 768 -
 // was written before ticket 00 and is superseded by these.
+//
+// LOWERED ON 10/08/2026 BY STAGE 2, the first stage to move any of them. Stage 1
+// lowered nothing because nothing fell. The set before stage 2 is on the right
+// of each changed row below; every number here was measured on this harness in
+// the same session, in both the open and the mid position.
+//
+// Where the falls come from, in two pieces:
+//   - THE SEAT MARKER, worth -72 at 360, -48 at 390, -48 at 430 and -24 at 768.
+//     "Player 2 (Bot)" wraps to a second line in a 96px header column; a 12px
+//     person/bot icon does not. This reproduces plan section 8.7's forecast to
+//     the pixel at all four widths.
+//   - THE HOW TO PLAY BUTTON, worth a further -1 everywhere the band-1 title bar
+//     drives the page. Its padding went 7px to 6px so that a 16px `book` icon in
+//     place of a 15px emoji left the button smaller than it was rather than
+//     larger. It is the only reason the M band moves at all.
+// The L and XL bands do not move: at 1400 and above the page is as tall as its
+// tallest COLUMN, and one pixel off the title bar disappears into that column's
+// slack.
 //
 // TARGET_SCREENS is what a phone layout should aim at rather than what it is:
 // two screenfuls of scroll for a turn. Reported as a gap in the detail line, and
@@ -116,9 +133,9 @@ const PAGE_HEIGHT_BUDGET = {
   // The 4-player seeded OPENING position, human in seat 0, boards empty.
   open: {
     2400: 1453, 2181: 1453, 2180: 1546, 1920: 1546, 1700: 1546, 1400: 1546,
-    1399: 1618, 1366: 1618, 1280: 1618, 1150: 1618,
-    1149: 2549, 1024: 2549, 768: 2549,
-    430: 3119, 390: 3134, 360: 3403,
+    1399: 1617, 1366: 1617, 1280: 1617, 1150: 1617,   // was 1618
+    1149: 2524, 1024: 2524, 768: 2524,                // was 2549
+    430: 3070,  390: 3085,  360: 3330,                // was 3119 / 3134 / 3403
   },
   // MID-GAME, after one scripted human turn and the bots' replies. Taller than
   // the opening at every width except XL, because four boards now carry tiles
@@ -127,9 +144,9 @@ const PAGE_HEIGHT_BUDGET = {
   // before 09/08/2026.
   mid: {
     2400: 1453, 2181: 1453, 2180: 1830, 1920: 1830, 1700: 1830, 1400: 1830,
-    1399: 1801, 1366: 1801, 1280: 1801, 1150: 1801,
-    1149: 2732, 1024: 2732, 768: 2732,
-    430: 3484, 390: 3499, 360: 3768,
+    1399: 1800, 1366: 1800, 1280: 1800, 1150: 1800,   // was 1801
+    1149: 2707, 1024: 2707, 768: 2707,                // was 2732
+    430: 3435,  390: 3450,  360: 3695,                // was 3484 / 3499 / 3768
   },
 };
 
@@ -179,13 +196,20 @@ const installSeededRandom = (page, seed = 0x5EED) => page.addInitScript((s) => {
 
 // index.html loads CookieYes, Google Analytics and Metricool. None of them has
 // anything to do with the layout, all three are wall-clock dependent, and the
-// CookieYes banner can inject a fixed-position bar over the page. Blocked, along
-// with the remote favicons. Google FONTS are deliberately NOT blocked: Fraunces
-// and Inter decide text metrics, and blocking them would measure a layout the
-// player never sees.
+// CookieYes banner can inject a fixed-position bar over the page. Blocked.
+// Google FONTS are deliberately NOT blocked: Fraunces and Inter decide text
+// metrics, and blocking them would measure a layout the player never sees.
+//
+// wombatgamefactory.com IS NO LONGER BLOCKED (defect 12, stage 2). It was in
+// this list because index.html's four favicon links pointed at that host, so
+// every run made four cross-origin round trips that had nothing to do with the
+// layout - and blocking them meant the harness had never measured the favicon
+// requests a player actually makes. The icons are local now (images/icons/), the
+// block has stopped being load-bearing, and removing it makes the harness
+// exercise the same request set the shipped page does.
 const blockThirdParty = page => page.route('**/*', route => {
   const url = route.request().url();
-  const blocked = /cookieyes|googletagmanager|google-analytics|metricool|wombatgamefactory\.com/.test(url);
+  const blocked = /cookieyes|googletagmanager|google-analytics|metricool/.test(url);
   return blocked ? route.abort() : route.continue();
 });
 

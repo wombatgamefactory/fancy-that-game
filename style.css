@@ -188,6 +188,66 @@ label {
   margin-bottom: var(--spacing-xs);
 }
 
+/* ======= THE INTERFACE ICON SET (stage 2, plan section 8.7) ================
+   One inline <defs> sprite at the top of <body> in index.html, referenced by
+   <use href="#i-name"> here. Thirteen drawings on a 16 x 16 grid at 1.5 stroke.
+
+   THE INK IS --accent-deep #8E5239, NOT --accent (plan section 17, amendment
+   5). --accent #C17B5C fails the 3:1 non-text bar on five of the nine grounds
+   this build has and clears it by 0.00 to 0.10 on three of the remaining four.
+   That is fine for a 4px seat rule, a 2px ring or a 999px wash, all of which
+   are large areas or long runs. It is not fine for a 1.5px hairline, which is
+   the hardest case there is and the only thing in the whole system drawn at
+   that weight. --accent-deep clears 3:1 on every ground and 4.5:1 on every
+   ground an icon can actually land on. --accent stays a fill, a rail, a ring,
+   a meter or a border - never an ink.
+
+   INSIDE A CONTROL THE ICON IS NOT BROWN. It takes currentColor, so it goes
+   white on a filled primary button (6.15:1 on --accent-deep) and follows every
+   state the label follows - which is why the sweep buttons' arrows need no
+   rule of their own when .is-awaiting recolours the label.
+
+   Sizes are set per site, in width/height attributes where they are fixed and
+   in CSS where they change by band (the sweep arrows, 12 at XL and 16 in the
+   touch band). The stroke scales with the drawing rather than being pinned
+   with vector-effect: 16 and 24 are one drawing at two sizes, not two. */
+.ft-icon {
+  display: inline-block;
+  vertical-align: -0.125em;   /* sits on the text baseline at any size */
+  color: var(--accent-deep);
+  flex: 0 0 auto;
+  pointer-events: none;       /* the control takes the click, never the glyph */
+}
+
+button .ft-icon,
+a .ft-icon {
+  color: currentColor;
+}
+
+/* The word behind an icon that stands in for one. Off screen for sighted
+   players, read normally by assistive technology, and zero page height - it is
+   absolutely positioned out of flow, which is what lets the seat header lose
+   "(Bot)" without losing the fact. */
+.ft-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The seat header's 12px person/bot marker. inline-flex so the icon cannot
+   shift the h2's line box, and the hidden word inside it is out of flow. */
+.ft-seat__marker {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
 /* ======= Landing / Setup Screen ======= */
 
 .ft-landing {
@@ -555,6 +615,21 @@ label {
   font-size: 12px;
 }
 
+/* THE SWEEP ARROWS, 12 AT XL AND 16 IN THE TOUCH BAND (plan section 8.7). They
+   were arrow_down.png at 334x500 and arrow_left.png at 500x334 - two pure-black
+   print-resolution triangles, 9.0 KB and two requests, drawn at 12x12. The size
+   lives here rather than in an attribute because it is the one icon size in the
+   build that changes by band, and the gutters these sit in grow with the band.
+
+   No colour rule and no filter: the arrow takes currentColor, so it is the ink
+   at rest, the accent while .is-awaiting, and white on the filled hover state,
+   for free. The old build needed `filter: brightness(0) invert(1)` on hover to
+   stop a black PNG sinking into the accent fill. */
+.ft-btn--sweep .ft-icon {
+  width: 12px;
+  height: 12px;
+}
+
 .ft-btn--sweep:hover:not(:disabled) {
   background: var(--color-card);
   border-color: var(--color-accent);
@@ -627,13 +702,6 @@ label {
   color: #FFFFFF;
   transform: scale(1.1);
   box-shadow: 0 0 0 3px rgba(193, 123, 92, 0.3), 0 3px 10px rgba(61, 43, 31, 0.3);
-}
-
-/* The arrow glyphs are dark PNGs, so on the filled hover state they would sink
-   into the background. Flatten to black then invert to get a clean white arrow
-   without needing a second image. */
-.ft-btn--sweep.is-awaiting:hover:not(:disabled) img {
-  filter: brightness(0) invert(1);
 }
 
 /* Motion is an accessibility concern and this one repeats forever. Anyone who
@@ -1958,7 +2026,14 @@ label {
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-xs);
-  padding: 7px var(--spacing-md);
+  /* 6px, not the 7 this shipped with. The button was sized around a 15px emoji
+     glyph and the `book` icon is 16, which took the button from 29px to 30 and
+     the whole band-1 title bar with it - measured as +1px of page height at
+     1150, 1280, 1366 and 1399, in both the opening and mid-game positions, and
+     the page-height ratchet only ever permits a number to fall. One pixel off
+     the padding puts the button at 28 and the M band at 1617, below where it
+     started. Nothing else in this bar is taller than it. */
+  padding: 6px var(--spacing-md);
   border: none;
   border-radius: var(--radius-sm);
   background: var(--color-accent-gold);
@@ -1983,11 +2058,10 @@ label {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 
-.ft-btn-howto__icon {
-  font-size: 15px;
-  line-height: 1;
-}
-
+/* The icon here is the `book` <use> site. It used to be a live open-book emoji
+   written as a numeric character reference, which is why ticket 00's grep for
+   Extended_Pictographic could not see it (defect 6). No font-size rule is
+   needed any more - the SVG carries its own 16. */
 .ft-btn-howto__label {
   letter-spacing: 0.02em;
 }
@@ -2414,18 +2488,25 @@ label {
   position: relative;
 }
 
+/* THE ONE CLOSE CONTROL (defect 7, stage 2). Three modals shipped two different
+   glyphs between them - ✕ U+2715 on the rules modal and × U+00D7 on the other
+   two - so the same control was drawn two ways in one build. All three now
+   carry the `close` icon at 16.
+
+   44 x 44, not the old 28 x 28: it is the platform touch minimum and this is
+   the only way out of a modal on a phone. The box grows outward from the same
+   top/right inset, so the title's padding-right grows with it. */
 .ft-modal__close {
   position: absolute;
-  top: var(--spacing-md);
-  right: var(--spacing-md);
+  top: var(--spacing-sm);
+  right: var(--spacing-sm);
   background: transparent;
   border: none;
-  font-size: 20px;
   color: var(--color-text-secondary);
   cursor: pointer;
   padding: 0;
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2440,7 +2521,8 @@ label {
 
 .ft-modal__title {
   margin-bottom: var(--spacing-lg);
-  padding-right: var(--spacing-xl);
+  /* Clears the 44px close target and its 8px inset. */
+  padding-right: 52px;
 }
 
 .ft-modal__section {
@@ -3963,6 +4045,13 @@ select:focus {
     --market-gutter-w: 44px;
     --touch-target: 44px;
   }
+
+  /* The arrow grows with the gutter. 12px in a 44px button is a mark rather
+     than a direction; 16 is the size the drawing was authored at. */
+  .ft-btn--sweep .ft-icon {
+    width: 16px;
+    height: 16px;
+  }
 }
 
 /* --touch-target is 0px at XL and L, so this is inert until the band above
@@ -4068,11 +4157,22 @@ select:focus {
     display: none;
   }
 
+  /* COLUMN GUTTERS ARE ZERO, and that is what pays for the crumb chip's icon
+     (plan section 8.7). The 4px between the five chips existed only because the
+     fifth had no leading graphic to separate it from the fourth. Give every
+     chip a graphic and the alternation of glyph and digits IS the separation,
+     so 16px of gutter buys a 12px tray icon and 2px of margin with 2px left
+     over: the strip comes out narrower than it was.
+     The row gap stays at 2px - it separates wrapped seats, not chips.
+     THE WIDTH BUDGET HERE IS NIL. At 390 the strip has 2px of headroom and two
+     more pixels of chip costs 269px of page height, because the seat drops from
+     two per row to one and a whole seat row appears. Re-measure before adding
+     anything at all to this strip. */
   .ft-seat--opp .ft-stand-mini {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 2px var(--spacing-xs);
+    gap: 2px 0;
     margin-top: var(--spacing-xs);
   }
 
@@ -4110,6 +4210,15 @@ select:focus {
     border: 1px dashed var(--color-border);
     border-radius: 50%;
     opacity: 0.6;
+  }
+
+  /* The fifth chip's marker. It is an INTERFACE icon and the four before it are
+     painted INGREDIENT silhouettes, which is exactly right: the crumb tray is
+     not an ingredient, and the two families are meant to read differently. It
+     keeps --accent-deep rather than following the row's secondary ink, because
+     it is a chip rather than a control. */
+  .ft-stand-mini__tray {
+    margin-right: 2px;
   }
 
   .ft-seat--opp .ft-seat__score-col {

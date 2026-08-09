@@ -37,6 +37,31 @@ function ingredientPhrase(ingredient) {
 }
 
 // ---------------------------------------------------------------------------
+// THE INTERFACE ICONS (stage 2, plan section 8.7)
+// ---------------------------------------------------------------------------
+//
+// One inline <defs> sprite of thirteen drawings, emitted once at the top of
+// <body> in index.html - OUTSIDE #app, because this module re-renders by
+// assigning #app.innerHTML and a sprite inside it would be deleted by the first
+// updateGameDisplay, taking every icon in the game with it. Same reason the
+// toast below mounts on document.body.
+//
+// Every site is aria-hidden and the control keeps a real text label or an
+// aria-label: NO ICON IN THIS SET IS EVER THE ACCESSIBLE NAME OF ANYTHING. The
+// two that stand in for a word - person/bot on a seat header, crumb-tray on the
+// fifth stand chip - are backed by a visually hidden word and by the same fact
+// printed elsewhere on the screen.
+//
+// `size` is omitted only for the sweep arrows, whose 12-at-XL / 16-in-the-touch
+// -band sizing has to come from CSS. Everywhere else the size is fixed and the
+// attribute is the honest place for it.
+function icon(name, size, extraClass = '') {
+  const dims = size ? ` width="${size}" height="${size}"` : '';
+  const cls = extraClass ? `ft-icon ${extraClass}` : 'ft-icon';
+  return `<svg class="${cls}"${dims} aria-hidden="true" focusable="false"><use href="#i-${name}"/></svg>`;
+}
+
+// ---------------------------------------------------------------------------
 // THE TOAST (9 August, ticket 00 / finding 16)
 // ---------------------------------------------------------------------------
 //
@@ -188,7 +213,7 @@ export function showRulesModal() {
   modal.className = 'ft-modal';
   modal.innerHTML = `
     <div class="ft-modal__inner">
-      <button class="ft-modal__close" aria-label="Close rules">✕</button>
+      <button class="ft-modal__close" aria-label="Close rules">${icon('close', 16)}</button>
       <div class="ft-modal__title">
         <h2>How to Play</h2>
       </div>
@@ -413,7 +438,7 @@ export function renderSetupScreen(container, onStart) {
           <div id="playerSetup" class="ft-setup__section"></div>
 
           <div class="ft-play__actions">
-            <button id="rulesButton" class="ft-btn ft-btn--secondary">Rules</button>
+            <button id="rulesButton" class="ft-btn ft-btn--secondary">${icon('book', 16)} Rules</button>
             <button id="startButton" class="ft-btn ft-btn--primary">Start Game</button>
           </div>
         </section>
@@ -533,6 +558,35 @@ export function renderSetupScreen(container, onStart) {
   });
 }
 
+// THE SEAT MARKER: THE ICON ALONE, AT 12, WITH THE WORD DELETED (stage 2, plan
+// section 8.7). It was an emoji pair, then ticket 00's "(Human)" / "(Bot)".
+//
+// THIS IS THE LINE THAT REFUNDS PAGE HEIGHT rather than costing it. An opponent
+// seat's header column is 96px, so any word after "Player n" wraps to a second
+// line at 24px a time; a 12px icon fits on the first line. Measured at -72px at
+// 360, -48 at 390, -48 at 430 and -24 at 768 - before anything else in the phone
+// band is spent.
+//
+// IT DOES NOT BREACH "no icon may be the only carrier of meaning". The engine
+// builds every player's name as "Player 2 (AI Hard)" and prints that full name
+// in the turn heading every single turn, in the "is thinking" line while a bot
+// moves, stamped on any tasting menu a bot has taken, and in the end screen
+// table. The seat header is the FOURTH place the same fact appears. The <svg>
+// also carries a hover title and a visually hidden word for assistive tech.
+//
+// BOTH SEATS ARE MARKED, not just the bots: absence of a mark is not a mark, and
+// a hotseat game with two humans and two bots has to tell four seats apart at a
+// glance. A tint or a border on bot seats was refused - that is colour carrying
+// meaning alone, and it would collide with .ft-panel--active, which is the one
+// seat treatment already in use and already means something else.
+function seatMarker(player) {
+  const isBot = !player?.isHuman;
+  const word = isBot ? 'Bot' : 'Human';
+  return `<span class="ft-seat__marker" title="${word}">`
+    + icon(isBot ? 'bot' : 'person', 12)
+    + `<span class="ft-sr-only">${word}</span></span>`;
+}
+
 // ONE seat, rendered from its index. The four seats were four copy-pasted
 // blocks of near-identical markup until 4 August, and every dimension in them -
 // the grid position, the row direction, the column widths - was an INLINE STYLE.
@@ -559,14 +613,9 @@ function seatHTML(playerIdx, gameState) {
 
   // updateGameDisplay rewrites seat 1's header text when player 1 is a bot (the
   // all-bot demo), so the id has to survive.
-  // THE SEAT MARKER IS PLAIN TEXT (9 August, ticket 00 / finding 07). It used to
-  // be an emoji pair, and the pair was the only thing on screen that said which
-  // seats are bots - so the glyph could not simply be deleted with the rest. The
-  // icon set ticket designs the real marker; until then the word does the job and
-  // is at least unambiguous, which the two emoji were not at 13px.
   const title = isOwnSeat
     ? `<h2 class="ft-panel__title" id="player1Header">Your Board</h2>`
-    : `<h2 class="ft-panel__title">Player ${n} (${player?.isHuman ? 'Human' : 'Bot'})</h2>`;
+    : `<h2 class="ft-panel__title">Player ${n} ${seatMarker(player)}</h2>`;
 
   // The "Swept Tiles" caption names a row of tiles that appears directly above
   // your own board during the one step where you are placing them, which is
@@ -642,7 +691,7 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
             <!-- The rules are the one control in this column, so it is a FILLED
                  button rather than an outline, and it says what it does. -->
             <button id="gameRulesButton" class="ft-btn-howto" title="How to play">
-              <span class="ft-btn-howto__icon">&#128214;</span>
+              ${icon('book', 16)}
               <span class="ft-btn-howto__label">How to Play</span>
             </button>
           </div>
@@ -1097,7 +1146,13 @@ export function updateGameDisplay(gameState) {
   const player1Header = document.getElementById('player1Header');
   if (player1Header) {
     const player1 = gameState.players[0];
-    player1Header.textContent = player1.isHuman ? 'Your Board' : 'Player 1 (Bot)';
+    // innerHTML rather than textContent: seat 1's bot form carries the same 12px
+    // marker every other seat does (the all-bot demo has to read as four bots,
+    // not as three bots and an unmarked one). "Your Board" needs no marker - it
+    // is already the word.
+    player1Header.innerHTML = player1.isHuman
+      ? 'Your Board'
+      : `Player 1 ${seatMarker(player1)}`;
   }
 
   // Update active player indicator
@@ -1583,14 +1638,14 @@ function setupMarketSelectButtons(gameState, enabled) {
 
   marketColButtons.innerHTML = colLabels.map((label, col) => `
     <button class="ft-btn ft-btn--sweep market-col-btn${awaitingClass}" data-col="${col}" ${disabledAttr} style="width: var(--tile-size); height: var(--market-gutter-h); display: flex; align-items: center; justify-content: center; gap: 2px; flex-shrink: 0; padding: 0;">
-      <img src="images/arrow_down.png" style="width: 12px; height: 12px; object-fit: contain;">
+      ${icon('arrow-down')}
       <span style="font-weight: 600;">${label}</span>
     </button>
   `).join('');
 
   marketRowButtons.innerHTML = Array.from({ length: gameState.marketSize }, (_, row) => `
     <button class="ft-btn ft-btn--sweep market-row-btn${awaitingClass}" data-row="${row}" ${disabledAttr} style="width: var(--market-gutter-w); height: var(--tile-size); display: flex; align-items: center; justify-content: center; gap: 2px; flex-shrink: 0; padding: 0;">
-      <img src="images/arrow_left.png" style="width: 12px; height: 12px; object-fit: contain;">
+      ${icon('arrow-left')}
       <span style="font-weight: 600;">${row + 1}</span>
     </button>
   `).join('');
@@ -1692,7 +1747,7 @@ function showSweepOptionsForRow(gameState, row) {
   modal.className = 'ft-modal';
   modal.innerHTML = `
     <div class="ft-modal__inner">
-      <button class="ft-modal__close">×</button>
+      <button class="ft-modal__close" aria-label="Close">${icon('close', 16)}</button>
       ${html}
     </div>
   `;
@@ -1779,7 +1834,7 @@ function showSweepOptionsForCol(gameState, col) {
   modal.className = 'ft-modal';
   modal.innerHTML = `
     <div class="ft-modal__inner">
-      <button class="ft-modal__close">×</button>
+      <button class="ft-modal__close" aria-label="Close">${icon('close', 16)}</button>
       ${html}
     </div>
   `;
@@ -1811,9 +1866,9 @@ function showSweepOptionsForCol(gameState, col) {
 function furtherClaimMessage() {
   const cost = getExtraClaimCupcakeCost();
   if (cost === null) {
-    return `One claim per turn - you have already claimed. ${clickVerb()} "Confirm Turn →" to end your turn.`;
+    return `One claim per turn - you have already claimed. ${clickVerb()} "Confirm Turn" to end your turn.`;
   }
-  return `Another card costs ${cost} cupcake${cost === 1 ? '' : 's'} and you cannot pay. ${clickVerb()} "Confirm Turn →" to end your turn.`;
+  return `Another card costs ${cost} cupcake${cost === 1 ? '' : 's'} and you cannot pay. ${clickVerb()} "Confirm Turn" to end your turn.`;
 }
 
 // True when a human is looking at cards they may no longer claim this turn. The
@@ -2639,12 +2694,19 @@ function renderStand(player, opts = {}) {
       // Cupcake plates (bottom[1], second[1], third[1], top[0]) grant a cupcake
       // when plated onto; mark them on the board whether empty or filled.
       const isCupcakePlate = CUPCAKE_PLATES.some(p => p.rowIndex === rowIndex && p.plateIndex === k);
-      // PLAIN TEXT UNTIL THE ICON SET LANDS (9 August, ticket 00 / finding 07).
-      // This marker is the only thing that says WHICH plates pay a cupcake, so
-      // unlike the decorative glyphs it could not just be deleted. "+1" plus the
-      // tooltip is the interim; the icon set ticket draws the real mark.
+      // "+" AND THE CUPCAKE ICON AT 10 (stage 2, plan section 8.7). This is the
+      // one badge in the build that gets an icon while the two tile badges
+      // (.ft-tile__menu's +N and .ft-tile__flavour's -1) deliberately do not,
+      // and the difference is the unit. Those two are VICTORY points, like every
+      // other number on the screen, so a signed number is already the right
+      // glyph. "+1" here is the one number on the cake stand that is NOT victory
+      // points, sitting directly above a column of numbers that are. The badge
+      // is being disambiguated, not decorated, and the icon is the unit rather
+      // than an ornament in front of it. 10px is the floor for the whole set,
+      // and cupcake is the only drawing asked to go there: its wrapper flutes
+      // are what identify it and they survive.
       const cupcakeMarker = isCupcakePlate
-        ? `<span class="ft-stand__cupcake-plate" title="Cupcake plate - plating here gains 1 cupcake">+1</span>`
+        ? `<span class="ft-stand__cupcake-plate" title="Cupcake plate - plating here gains 1 cupcake">+${icon('cupcake', 10)}</span>`
         : '';
       slots += `
         <div class="ft-stand__slot">
@@ -2740,18 +2802,24 @@ function renderStandSummary(player) {
   return `
     <div class="ft-stand-mini" aria-label="Cake stand summary">
       ${rows}
-      ${/* THE CRUMB CHIP LOST ITS GLYPH AND GAINS NOTHING (9 August, ticket 00 /
-            finding 07), and the reason is measured. A "Crumbs n" text stand-in
-            was tried first and cost 245px of page height at 430: this strip's
-            max-content is what sizes an opponent seat, and 26px of extra label
-            took two seats per row down to one, adding a whole seat row. The bare
-            count and the tooltip are what is left.
+      ${/* THE CRUMB CHIP GETS ITS MARKER BACK, AND IT COSTS NOTHING (stage 2,
+            plan section 8.7). Ticket 00 left this chip with no visible marker at
+            all: four chips read 0/1 0/2 0/3 0/4 and the fifth read 0, told apart
+            only by a tooltip a phone cannot show.
 
-            THAT LEAVES A REAL GAP for the icon set and summary-rail tickets: on
-            a phone there is no hover, so nothing on screen says this fifth chip
-            is the crumb tray rather than a fifth stand row. */ ''}
+            It could not simply be given its label back. A "Crumbs n" text
+            stand-in cost 245px of page height at 430, and this strip's
+            max-content is what sizes an opponent seat: 26px of extra label takes
+            two seats per row down to one and adds a whole seat row.
+
+            What pays for the icon is the strip's column gutters, taken from 4px
+            to 0 in style.css. Four gutters at 4px is 16px, and it existed only
+            because the fifth chip had no leading graphic to separate it from the
+            fourth. 12px of tray plus 2px of margin against 16px of gutter, and
+            the strip comes out narrower than it was. Measured +0px at 360, 390,
+            430 and 768. */ ''}
       <span class="ft-stand-mini__row" title="Crumb tray - 1 point each">
-        <span class="ft-stand-mini__count">${player.crumbTray.length}</span>
+        ${icon('crumb-tray', 12, 'ft-stand-mini__tray')}<span class="ft-stand-mini__count">${player.crumbTray.length}</span>
       </span>
     </div>`;
 }
@@ -2851,7 +2919,7 @@ function updateStats(gameState) {
         ${menuLine}
         ${flavourLine}
       </div>
-      ${destinationMode ? '<div class="ft-stand__prompt">Choose where this tile goes ↓</div>' : ''}
+      ${destinationMode ? `<div class="ft-stand__prompt">Choose where this tile goes ${icon('arrow-down', 16)}</div>` : ''}
       ${renderStand(p, { interactive: destinationMode, legalRows })}
       ${isOpponentSeat ? renderStandSummary(p) : ''}
     `;
@@ -3051,7 +3119,7 @@ function updatePhaseControls(gameState) {
   // panel, beside the buttons that spend them.
   const ui = window._gameUI;
   const canUndo = ui?.canUndo === true;
-  const undoBtn = canUndo ? `<button id="undoBtn" class="ft-btn ft-btn--secondary ft-btn--small">↩ Undo</button>` : '';
+  const undoBtn = canUndo ? `<button id="undoBtn" class="ft-btn ft-btn--secondary ft-btn--small">${icon('undo', 16)} Undo</button>` : '';
   let html = '';
 
   if (gameState.gamePhase === 'sweep' && gameState.bonusTileAvailable) {
@@ -3245,7 +3313,7 @@ function updatePhaseControls(gameState) {
         ${claimUsed}
         <div class="ft-phase-bar__controls">
           ${undoBtn}
-          <button id="confirmTurn" class="ft-btn ft-btn--primary ft-btn--small">Confirm Turn →</button>
+          <button id="confirmTurn" class="ft-btn ft-btn--primary ft-btn--small">Confirm Turn ${icon('arrow-right', 16)}</button>
         </div>
       </div>
     `;
