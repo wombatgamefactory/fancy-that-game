@@ -126,3 +126,10 @@ const updated = existing.replace(BLOCK, block);
 fs.writeFileSync(tilesPath, updated);
 
 console.log(`Spliced ${cards.length} cards into ${tilesPath} (everything else left untouched)`);
+
+// The patterns are also PAINTED INTO THE CARD ART, and this script cannot
+// repaint them. Anyone running it has just moved the data and left the picture
+// behind, which is the exact way cards 25, 26 and 43 spent five days showing a
+// shape the engine was not matching on. Say so here, at the moment it happens.
+console.log('\nThe sprite sheet does NOT follow. If any PATTERN changed, the printed');
+console.log('swatches are now stale - check with:  node tools/check-card-sheet.mjs');

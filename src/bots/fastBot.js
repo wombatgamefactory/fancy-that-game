@@ -1,5 +1,5 @@
 import { getValidSweeps, getValidPlacements, getPatternMatches, canClaimMore } from '../engine/game.js';
-import { decideDestination, decideReserve as basicReserve, decideExtraTile as basicExtraTile, decideMove as basicMove, decideRemovePlate as basicRemovePlate } from './basicBot.js';
+import { decideDestination, decideReserve as basicReserve, decideDealCards as basicDealCards, decideExtraTile as basicExtraTile, decideMove as basicMove, decideRemovePlate as basicRemovePlate } from './basicBot.js';
 
 // decideOrderTea is gone (1 August): tea is no longer a decision, it fires from
 // the engine at the end of any turn that leaves four teapots showing. The tea
@@ -18,9 +18,21 @@ export function decideReserve(gameState) {
 // projects the board forward using basicBot's placement plan, and this bot places
 // at random. So it buys against a better placement than it will actually make and
 // will slightly OVERSTATE how often the tile unlocks a claim. Use the basic bot
-// for the card-lock verification figure.
+// for the card-lock verification figure. (Deleted 8 August with the rule,
+// restored 9 August.)
 export function decideExtraTile(gameState) {
   return basicExtraTile(gameState);
+}
+
+// The paid 2-card deal (8 August). It replaced the extra tile above for a day;
+// since 9 August both are delegated.
+//
+// THE CAVEAT ABOVE DOES NOT APPLY TO THIS ONE, which is worth stating rather than
+// leaving implied: decideDealCards reads the board as it actually is at the spend
+// step - the placements have already happened, by whatever logic - so this
+// delegation is faithful and fast-bot deal counts can be read at face value.
+export function decideDealCards(gameState) {
+  return basicDealCards(gameState);
 }
 
 // THIS WAS MISSING, AND IT SILENTLY BROKE A HEADLINE METRIC (3 August). Every

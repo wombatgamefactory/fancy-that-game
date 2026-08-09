@@ -78,6 +78,11 @@ if (process.argv[2] === '--child') {
           if (m) s = g.moveTile(s, m.fromIndex, m.toIndex);
           const rp = b.decideRemovePlate ? b.decideRemovePlate(s) : null;
           if (rp !== null && rp !== undefined) s = g.removePlate(s, rp);
+          // The paid 2-card deal (8 August). ADDED 9 AUGUST, and it was missing
+          // from this driver for the whole of the day the deal was the ONLY
+          // card-side cure - so any seat figure taken from this harness on
+          // 8 August was measured against a four-spend menu, not the live one.
+          if (b.decideDealCards && b.decideDealCards(s)) s = g.dealCards(s);
           const rc = b.decideReserve ? b.decideReserve(s) : null;
           if (rc !== null && rc !== undefined) s = g.reserveCard(s, rc);
           s = g.skipSpend(s);
@@ -124,7 +129,12 @@ if (process.argv[2] === '--child') {
 const GAMES = parseInt(process.argv[2]) || 3000;
 const COUNTS = (process.argv[3] || '2,3,4').split(',').map(Number);
 
-// Candidate tables per player count. The LIVE row is always first.
+// Candidate tables per player count.
+//
+// THE "<- LIVE" MARKER IS PARSED FROM game.js (fixed 9 August). This block used
+// to claim the live row was always first and marked CELLS[COUNT][0]; it has not
+// been first since the 7 August ladder went in, so the marker pointed at the
+// FLAT table and every reading of this report has been one row out.
 const CELLS = {
   2: [[2, 2], [2, 3], [2, 4]],
   3: [[2, 2, 2], [2, 2, 3], [2, 3, 3], [2, 2, 4], [2, 3, 4]],
@@ -133,6 +143,13 @@ const CELLS = {
 
 const original = fs.readFileSync(GAME, 'utf8');
 if (!TABLE_RE.test(original)) throw new Error('could not find STARTING_CUPCAKES_BY_SEAT in game.js');
+
+// The live table, read out of the file we are about to rewrite, so the "<- LIVE"
+// marker below cannot drift from the engine the way a hardcoded one did.
+const LIVE = {};
+for (const m of original.match(TABLE_RE)[0].matchAll(/^\s*(\d):\s*\[([\d,\s]+)\],/gm)) {
+  LIVE[Number(m[1])] = m[2].split(',').map(s => Number(s.trim())).join('/');
+}
 
 const tableLine = (count, arr) => {
   const rows = { 2: [2, 2], 3: [2, 2, 2], 4: [2, 2, 3, 3] };
@@ -156,7 +173,7 @@ try {
       const r = JSON.parse(execFileSync(process.execPath, [SELF, '--child', String(GAMES), String(COUNT)], {
         encoding: 'utf8', maxBuffer: 1 << 24,
       }));
-      const live = arr.join('/') === CELLS[COUNT][0].join('/') ? '  <- LIVE' : '';
+      const live = arr.join('/') === LIVE[COUNT] ? '  <- LIVE' : '';
       console.log(
         `  ${arr.join('/').padEnd(14)} | ${r.dev.map(d => d.toFixed(1).padStart(7)).join(' | ')} | ${r.worst.toFixed(1).padStart(6)} | ${r.gradient.toFixed(2).padStart(11)} | ${r.ratio.toFixed(1).padStart(5)}${live}`,
       );

@@ -141,10 +141,11 @@ export function createStatsCollector() {
     // plates covered on the stand.
     cupcakeInflux: {},
     // Per-player cupcake spend by use:
-    //   { playerId: { moveTile, removePlate, extraTile, reserve, extraClaim } }
+    //   { playerId: { moveTile, extraTile, removePlate, dealCards, reserve, extraClaim } }
     // moveTile    = relocate a tile on your own board (1)
-    // removePlate = buy an empty plate off your board, to the box (3)
-    // extraTile   = buy 1 extra tile from anywhere at the sweep step (2, was 1)
+    // extraTile   = buy 1 extra market tile at the sweep step (1)
+    // removePlate = buy an empty plate off your board, to the box (2)
+    // dealCards   = pay to deal 2 new cards onto the card row (1)
     // reserve     = pay to take a market card into your personal reserve (1)
     // extraClaim  = the pre-agreed extra-claim variant, which ships disabled and
     //               so normally stays 0.
@@ -157,6 +158,13 @@ export function createStatsCollector() {
     // `movePlate` IS GONE, not renamed: moving a plate was deleted when removing
     // one was introduced, and they are different actions at different prices.
     // A run whose report still shows a movePlate bucket is running old code.
+    //
+    // `extraTile` WENT THE SAME WAY ON 8 AUGUST and CAME BACK ON 9 AUGUST, with
+    // `dealCards` staying. The two buckets are NOT interchangeable and never
+    // were: they buy different things on opposite sides of the game, so a run
+    // comparing one against the other across 8 August is comparing two rules.
+    // Runs from 9 August onward carry both, which is the first time either
+    // bucket has been measured with the other on the menu.
     cupcakeSpend: {},
     // High-water mark of cupcakes held SIMULTANEOUSLY across every player, sampled
     // after each influx (spends only ever lower the total, so the peak is always
@@ -358,13 +366,13 @@ export function createStatsCollector() {
     },
 
     // Spend `amount` cupcakes from `playerId` under `use`
-    // ('moveTile' | 'removePlate' | 'extraTile' | 'reserve' | 'extraClaim').
+    // ('moveTile' | 'extraTile' | 'removePlate' | 'dealCards' | 'reserve' | 'extraClaim').
     recordCupcakeSpend(playerId, use, amount) {
       if (playerId === undefined || playerId === null) return;
       const amt = amount | 0;
       if (amt <= 0) return;
       if (!this.cupcakeSpend[playerId]) {
-        this.cupcakeSpend[playerId] = { moveTile: 0, removePlate: 0, extraTile: 0, reserve: 0, extraClaim: 0 };
+        this.cupcakeSpend[playerId] = { moveTile: 0, extraTile: 0, removePlate: 0, dealCards: 0, reserve: 0, extraClaim: 0 };
       }
       if (this.cupcakeSpend[playerId][use] === undefined) {
         this.cupcakeSpend[playerId][use] = 0;
@@ -558,7 +566,7 @@ export function createStatsCollector() {
         cupcakeInfluxTotals.pot += cupcakeInflux[pid].pot;
         cupcakeInfluxTotals.plates += cupcakeInflux[pid].plates;
       }
-      const SPEND_USES = ['moveTile', 'removePlate', 'extraTile', 'reserve', 'extraClaim'];
+      const SPEND_USES = ['moveTile', 'extraTile', 'removePlate', 'dealCards', 'reserve', 'extraClaim'];
       const cupcakeSpend = {};
       const cupcakeSpendTotals = {};
       for (const use of SPEND_USES) cupcakeSpendTotals[use] = 0;

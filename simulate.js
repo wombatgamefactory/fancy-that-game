@@ -1,7 +1,11 @@
-import { createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, getValidSweeps, getValidPlacements, calculateFinalScores, getWinningPlayers, STAND_ROW_VALUES, getStartingCupcakes, getTastingMenusEnabled, setTastingMenusEnabled, getStandIngredients, menuDeficit, TASTING_MENU_VP, getTastingMenuCount, TASTING_MENUS, getFlavourEnabled, setFlavourEnabled, getFlavourCount, getFlavourLeaders, isFlavourInPlay, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP,
+import { createGame, sweep, takeBonusTile, declineBonusTile, dealCards, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, getValidSweeps, getValidPlacements, calculateFinalScores, getWinningPlayers, STAND_ROW_VALUES, getStartingCupcakes, getTastingMenusEnabled, setTastingMenusEnabled, getStandIngredients, menuDeficit, TASTING_MENU_VP, getTastingMenuCount, TASTING_MENUS, getFlavourEnabled, setFlavourEnabled, getFlavourCount, getFlavourLeaders, isFlavourInPlay, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP,
   // The cupcake price ladder, imported so metric 8 prints the LIVE prices. It
   // printed "(2ea)" and "(3ea)" as typed literals until 7 August.
-  MOVE_TILE_CUPCAKE_COST, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, RESERVE_CUPCAKE_COST } from './src/engine/game.js';
+  MOVE_TILE_CUPCAKE_COST, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, RESERVE_CUPCAKE_COST,
+  // The extra-tile cap and its A/B seam (9 August, second revision).
+  getMaxExtraTilesPerTurn, setMaxExtraTilesPerTurn,
+  // The starting-cupcake table and its seam (9 August, second revision).
+  STARTING_CUPCAKES_BY_SEAT, setStartingCupcakesTable } from './src/engine/game.js';
 // COLOURS is imported for the bag-skew baseline arithmetic, not for colour logic:
 // the per-colour share and the tiles-per-colour figure are both DERIVED here, so
 // a change to TILE_COPIES or to the colour list moves the report with it. The
@@ -13,6 +17,13 @@ import { createStatsCollector } from './src/engine/statsCollector.js';
 // supply watch in metric 8 measures against this - it constrains nothing in play,
 // because the RULES have no cupcake cap.
 const CUPCAKE_TOKENS_IN_BOX = 30;
+
+// HOW MANY EXTRA TILES A TURN ACTUALLY BUYS (9 August, second revision). The
+// statsCollector counts cupcakes spent on tiles; it cannot see how they clumped,
+// and clumping is the entire question the uncapped rule asks. Accumulated across
+// every game of the run, in the driver, because the engine has no per-turn hook
+// to hang it on.
+const extraTileTurns = { turns: 0, buys: 0, most: 0, dist: {} };
 import * as fastBot from './src/bots/fastBot.js';
 import * as basicBot from './src/bots/basicBot.js';
 import * as randomBot from './src/bots/randomBot.js';
@@ -92,13 +103,32 @@ function runGame(playerConfigs, botStrategy) {
         // back into the bag. (This used to say the engine had already resolved an
         // overflow before the phase was reached, because overflow ended the game.)
         //
-        // SPEND 1 CUPCAKE: TAKE 1 EXTRA TILE (3 August) is resolved HERE, before
-        // the placements are chosen - it is a sweep-step option, and the tile it
-        // buys is placed with the rest of the swept tiles, so the placement
-        // decision has to see it.
-        const extraIdx = strategy.decideExtraTile ? strategy.decideExtraTile(gameState) : null;
-        if (extraIdx !== null && extraIdx !== undefined) {
+        // SPEND 1 CUPCAKE: TAKE 1 EXTRA TILE is resolved HERE, before the
+        // placements are chosen - it is a sweep-step option, and the tile it buys
+        // is placed with the rest of the swept tiles, so the placement decision
+        // has to see it. (Deleted 8 August, restored 9 August; the paid 2-card
+        // deal that briefly replaced it is a spend-step action and stays in the
+        // 'spend' case below. Both are on the menu now.)
+        //
+        // A LOOP SINCE 9 AUGUST (second revision), because the rule is now
+        // unlimited purchases at a flat price. The bot is asked again after every
+        // purchase and stops when it answers null - which it does as soon as the
+        // lock clears, the purse empties or the board runs out of room. The
+        // MAX_BUYS guard is a runaway stop, not a rule: the engine's own gates
+        // are what actually end the loop.
+        let boughtThisTurn = 0;
+        const MAX_BUYS = 25;
+        while (boughtThisTurn < MAX_BUYS) {
+          const extraIdx = strategy.decideExtraTile ? strategy.decideExtraTile(gameState) : null;
+          if (extraIdx === null || extraIdx === undefined) break;
           gameState = takeExtraTile(gameState, extraIdx);
+          boughtThisTurn++;
+        }
+        if (boughtThisTurn > 0) {
+          extraTileTurns.turns++;
+          extraTileTurns.buys += boughtThisTurn;
+          extraTileTurns.dist[boughtThisTurn] = (extraTileTurns.dist[boughtThisTurn] || 0) + 1;
+          if (boughtThisTurn > extraTileTurns.most) extraTileTurns.most = boughtThisTurn;
         }
         const placements = strategy.decidePlacements(gameState);
         gameState = place(gameState, placements);
@@ -116,6 +146,12 @@ function runGame(playerConfigs, botStrategy) {
         const plateIndex = strategy.decideRemovePlate ? strategy.decideRemovePlate(gameState) : null;
         if (plateIndex !== null && plateIndex !== undefined) {
           gameState = removePlate(gameState, plateIndex);
+        }
+        // Paid 2-card deal (8 August): 1 cupcake to put CARDS_PER_DEAL new cards
+        // on the row. Resolved BEFORE the reserve and before the claim step,
+        // because both of those may want to act on what it turns up.
+        if (strategy.decideDealCards && strategy.decideDealCards(gameState)) {
+          gameState = dealCards(gameState);
         }
         // Paid reserve (3 August): 1 cupcake to take a market card into the
         // personal reserve. Not claimable this same turn.
@@ -414,7 +450,55 @@ const flavourOff = process.argv[5] === 'noflavour';
 if (menusOff) setTastingMenusEnabled(false);
 if (flavourOff) setFlavourEnabled(false);
 
-console.log(`Running ${gamesPerConfig} games with ${playerCount} players (${botStrategy} bot)${menusOff ? ', TASTING MENUS OFF (A/B control arm)' : ''}${flavourOff ? ', FLAVOUR OF THE DAY OFF (A/B control arm)' : ''}...\n`);
+// THE EXTRA-TILE CAP ARM (9 August, second revision). `maxtiles=1` restores the
+// one-per-turn rule the uncapped one replaced, which is the BASELINE half of any
+// comparison; `maxtiles=unlimited` states the live rule explicitly. Matched
+// anywhere in the argument list rather than positionally, so it composes with
+// the nomenus/noflavour arm above instead of fighting it for argv[5].
+//
+// It also swings the bot: basicBot.decideExtraTile reads the same live value and
+// switches its second-tile reach off under a cap of 1, so both arms play the
+// rule they are being measured under.
+const capArg = process.argv.slice(2).find(a => /^maxtiles=/.test(a));
+const capValue = capArg ? capArg.split('=')[1] : null;
+if (capValue !== null) {
+  setMaxExtraTilesPerTurn(capValue === 'unlimited' ? null : parseInt(capValue, 10));
+}
+const liveCap = getMaxExtraTilesPerTurn();
+
+// THE OPENING-PURSE ARM (9 August, second revision). `startminus=1` shifts EVERY
+// seat down by one cupcake, keeping the stagger's differences intact - which is
+// the point, because the differences are what compensate seat 1 for sweeping a
+// fuller market and the level is what feeds the uncapped extra tile. Floored at
+// 0, so a deeper cut cannot hand anyone a negative purse.
+//
+// Shifting the whole table is NOT the same experiment as flattening it, and this
+// arm deliberately does the former. If the seat ladder needs re-tuning that is a
+// change to the differences and belongs in its own run.
+//
+// `starttable=3,3,4,4` sets THIS player count's opening purse outright, which is
+// what a candidate table has to be tested with - the shift above can only move a
+// table up or down, and the 9 August finding is that the LEVEL is not the knob.
+// The two are exclusive; starttable wins if both are given.
+const tableArg = process.argv.slice(2).find(a => /^starttable=/.test(a));
+const shiftArg = process.argv.slice(2).find(a => /^startminus=/.test(a));
+const startShift = (shiftArg && !tableArg) ? parseInt(shiftArg.split('=')[1], 10) : 0;
+if (tableArg) {
+  const seats = tableArg.split('=')[1].split(',').map(n => parseInt(n, 10));
+  if (seats.length !== playerCount) {
+    throw new Error(`starttable has ${seats.length} seats but the run is ${playerCount} players`);
+  }
+  setStartingCupcakesTable({ ...STARTING_CUPCAKES_BY_SEAT, [playerCount]: seats });
+}
+if (startShift) {
+  const shifted = {};
+  for (const count in STARTING_CUPCAKES_BY_SEAT) {
+    shifted[count] = STARTING_CUPCAKES_BY_SEAT[count].map(n => Math.max(0, n - startShift));
+  }
+  setStartingCupcakesTable(shifted);
+}
+
+console.log(`Running ${gamesPerConfig} games with ${playerCount} players (${botStrategy} bot)${menusOff ? ', TASTING MENUS OFF (A/B control arm)' : ''}${flavourOff ? ', FLAVOUR OF THE DAY OFF (A/B control arm)' : ''}, extra tiles/turn = ${liveCap === null ? 'UNLIMITED' : liveCap}${tableArg ? `, STARTING CUPCAKES ${getStartingCupcakes(playerCount).join('/')} (candidate table)` : ''}${startShift ? `, STARTING CUPCAKES -${startShift} PER SEAT (${getStartingCupcakes(playerCount).join('/')})` : ''}...\n`);
 
 const games = [];
 const allPlayerMetrics = [];
@@ -629,7 +713,7 @@ console.log(`Cards burned by flushes: mean/game=${meanOf(flushBurn).toFixed(2)} 
 //    24 July, so the supply lines MEASURE and enforce nothing.
 // ---------------------------------------------------------------------------
 const influx = { start: 0, pot: 0, plates: 0 };
-const spend = { moveTile: 0, removePlate: 0, extraTile: 0, reserve: 0, extraClaim: 0 };
+const spend = { moveTile: 0, extraTile: 0, removePlate: 0, dealCards: 0, reserve: 0, extraClaim: 0 };
 for (const r of reports) {
   addInto(influx, r.cupcakeInfluxTotals);
   addInto(spend, r.cupcakeSpendTotals);
@@ -653,18 +737,32 @@ console.log(`  mean/player:     start=${(influx.start / nPlayers).toFixed(2)}, p
 // under the 7 August one, which is the third time a stale literal has survived a
 // repricing in this project. The divide-by-price line below is derived for the
 // same reason.
-console.log(`Spend by use:      move tile=${spend.moveTile} (${MOVE_TILE_CUPCAKE_COST}ea), extra tile=${spend.extraTile} (${EXTRA_TILE_CUPCAKE_COST}ea), remove plate=${spend.removePlate} (${REMOVE_PLATE_CUPCAKE_COST}ea), reserve=${spend.reserve} (${RESERVE_CUPCAKE_COST}ea), extra claim=${spend.extraClaim} (disabled)`);
-console.log(`  times bought:    move tile=${(spend.moveTile / MOVE_TILE_CUPCAKE_COST).toFixed(0)}, extra tile=${(spend.extraTile / EXTRA_TILE_CUPCAKE_COST).toFixed(0)}, remove plate=${(spend.removePlate / REMOVE_PLATE_CUPCAKE_COST).toFixed(0)}, reserve=${(spend.reserve / RESERVE_CUPCAKE_COST).toFixed(0)}`);
+console.log(`Spend by use:      move tile=${spend.moveTile} (${MOVE_TILE_CUPCAKE_COST}ea), extra tile=${spend.extraTile} (${EXTRA_TILE_CUPCAKE_COST}ea), deal ${CARDS_PER_DEAL} cards=${spend.dealCards} (${DEAL_CARDS_CUPCAKE_COST}ea), remove plate=${spend.removePlate} (${REMOVE_PLATE_CUPCAKE_COST}ea), reserve=${spend.reserve} (${RESERVE_CUPCAKE_COST}ea), extra claim=${spend.extraClaim} (disabled)`);
+console.log(`  times bought:    move tile=${(spend.moveTile / MOVE_TILE_CUPCAKE_COST).toFixed(0)}, extra tile=${(spend.extraTile / EXTRA_TILE_CUPCAKE_COST).toFixed(0)}, deal cards=${(spend.dealCards / DEAL_CARDS_CUPCAKE_COST).toFixed(0)}, remove plate=${(spend.removePlate / REMOVE_PLATE_CUPCAKE_COST).toFixed(0)}, reserve=${(spend.reserve / RESERVE_CUPCAKE_COST).toFixed(0)}`);
 console.log(`  total spent:     ${spendTotal} = ${pct(spendTotal, influxTotal)} of influx (was 47-51% when hoarding paid 1 VP each)`);
 console.log(`  PRICES ARE CUPCAKES, NOT ACTIONS: the line above divides each figure by its`);
 console.log(`  price, so a spend at ${REMOVE_PLATE_CUPCAKE_COST} showing the same cupcake total as one at 1 is`);
 console.log(`  ${REMOVE_PLATE_CUPCAKE_COST} times the rarer action.`);
 console.log(`  plates returned to the box: ${sumOf(games.map(g => g.platesReturnedToBox || 0))} over ${nGames} games (${(sumOf(games.map(g => g.platesReturnedToBox || 0)) / nGames).toFixed(2)}/game)`);
+// THE UNCAPPED EXTRA TILE, measured as CLUMPING rather than as a total (9 August,
+// second revision). Under the old one-per-turn rule every one of these lines is a
+// tautology - buying turns and tiles bought are the same number and the
+// distribution is all 1s - so a run whose distribution is still all 1s has
+// measured a bot that cannot see a two-tile unlock, not a rule that nobody wants.
+console.log(`EXTRA TILES PER TURN (cap = ${liveCap === null ? 'UNLIMITED' : liveCap}):`);
+console.log(`  turns that bought any: ${extraTileTurns.turns} over ${nGames} games (${(extraTileTurns.turns / nGames).toFixed(2)}/game)`);
+console.log(`  tiles bought/buying turn: ${extraTileTurns.turns ? (extraTileTurns.buys / extraTileTurns.turns).toFixed(2) : '0.00'}, most in one turn=${extraTileTurns.most}`);
+console.log(`  distribution: ${Object.keys(extraTileTurns.dist).sort((a, b) => a - b).map(k => `${k}x${extraTileTurns.dist[k]}`).join(' ') || '(none)'}`);
+console.log(`  multi-buy turns: ${extraTileTurns.turns - (extraTileTurns.dist[1] || 0)} (${pct(extraTileTurns.turns - (extraTileTurns.dist[1] || 0), extraTileTurns.turns || 1)} of buying turns)`);
 console.log(`Kept at game end:  ${keptCupcakes} = ${(keptCupcakes / nPlayers).toFixed(2)}/player - SCORES NOTHING since 3 August, tiebreaker only`);
 console.log(`  games where a player finished BROKE (0 held):   ${brokeGames}/${nGames} (${pct(brokeGames, nGames)})`);
 console.log(`  games where a player finished with 4+ unspent:  ${surplusGames}/${nGames} (${pct(surplusGames, nGames)})`);
 console.log(`SUPPLY WATCH (${CUPCAKE_TOKENS_IN_BOX} tokens proposed for the box; the RULES have no cap):`);
-console.log(`  4p setup alone now places 14 tokens (2+3+4+5) before a single pot is brewed.`);
+// DERIVED, NOT TYPED (9 August, second revision). This line read "4p setup alone
+// now places 14 tokens (2+3+4+5)" as a literal, at every player count, and went on
+// printing the 4-player ladder after the table had changed. That is the same stale
+// literal this file's metric-8 header warns about two screens up.
+console.log(`  ${playerCount}p setup alone places ${getStartingCupcakes(playerCount).reduce((a, v) => a + v, 0)} tokens (${getStartingCupcakes(playerCount).join('+')}) before a single pot is brewed.`);
 console.log(`  peak held simultaneously across all players: mean=${meanOf(peakHeld).toFixed(2)}, max=${maxOf(peakHeld)}`);
 console.log(`  games whose peak exceeded ${CUPCAKE_TOKENS_IN_BOX} tokens: ${gamesOver30}/${nGames} (${pct(gamesOver30, nGames)})`);
 

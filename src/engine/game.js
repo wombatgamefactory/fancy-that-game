@@ -309,28 +309,62 @@ function normaliseTastingMenus(pinned) {
 
 // Cupcake cost of each claim BEYOND the first in a turn (design doc §6).
 //
-// THE ADOPTED RULE IS ONE CLAIM PER TURN, AND THIS SHIPS DISABLED. Do not flip it
-// casually - it is not a tuning knob, it is a whole different game. Values:
-//   null (the shipped default) - extra claims are DISALLOWED. A second claim in a
-//        turn is rejected outright, with the plain-language message the players
-//        actually need to hear (see claim()); a successful claim ends the claim
-//        step exactly as it always has.
-//   a number n - the PRE-AGREED VARIANT: claims beyond the first are permitted and
-//        each costs n cupcakes out of the claiming player's own supply. A claim no
-//        longer closes the claim step, so the player may keep going for as long as
-//        they can pay and find matches.
+// ADOPTED 9 AUGUST 2026 AT 1 CUPCAKE, UNCAPPED. Your first Patisserie Goal of the
+// turn is free, as it always has been; every further one costs 1 cupcake, and you
+// may take as many as you can pay for and still find patterns for. This was the
+// pre-agreed escalation from 28 July §6, carried dormant until now. Values:
+//   a number n - claims beyond the first cost n cupcakes each out of the claiming
+//        player's own supply. A claim no longer closes the claim step, so the
+//        player may keep going for as long as they can pay and find matches.
+//   null - extra claims DISALLOWED, the pre-9-August rule. Kept live as the A/B
+//        control (setExtraClaimCupcakeCost(null)); a second claim is rejected with
+//        a plain-language message and a successful claim ends the claim step.
 //
-// WHY IT EXISTS AT ALL: players persistently assume they may claim more than once,
-// and the design session pre-agreed this as the escalation IF playtests show that
-// frustration is real. It is wired up now, ahead of any decision, purely so
-// simulation can A/B it - one constant flip, no other code change. Adopting it is
-// a design decision, not an implementation one.
-export const EXTRA_CLAIM_CUPCAKE_COST = null;
+// WHY IT WAS ADOPTED, and the measurement behind each clause:
+//
+//   THE MOMENT IS WHAT WAS BOUGHT. A multi-claim turn lands on 8.2 / 8.6 / 8.9% of
+//   turns at 2/3/4 players - about 0.8 per player per game. It is worth roughly
+//   8 VP (the +0.4 claims per player buys +2.6 mean score, because a claim also
+//   plates a stand tile and can trip a Tasting Menu). Rare, big, and memorable,
+//   which is exactly the thing it was added for.
+//
+//   AND PLAYERS EXPECTED IT ANYWAY. The 28 July note recorded that players
+//   persistently assume they may claim more than once. The old rule spent teaching
+//   budget saying no; this one spends a cupcake saying yes.
+//
+//   UNCAPPED RATHER THAN CAPPED AT TWO, which was measured and rejected as a
+//   distinction that buys nothing: capped and uncapped are identical within noise
+//   at every player count (mean 55.8/54.5/53.1 against 56.2/54.3/53.1). THE PRICE
+//   IS THE CAP - turns claiming three or more run 0.3-0.4% of all turns, about one
+//   in 280, because a third card needs two cupcakes AND three live patterns on a
+//   board two tiles have just been torn out of. It also keeps the spend menu
+//   honest: the extra tile went uncapped on 9 August and a per-turn limit here
+//   would have been the odd one out.
+//
+//   PAID ON COMPLETION, NEVER IN ADVANCE - see the charge point in claim(), which
+//   sits after every validation. This is load-bearing, not incidental. Order
+//   matters at the claim step: the tile sacrificed for one card may be the tile a
+//   second card needed, and the stand's one-row-per-ingredient rule means even the
+//   DESTINATION of the first tile can shut the second claim out. Measured over
+//   28,800 claim steps, 61-63% of the turns where a chain exists are
+//   order-dependent, and taking the highest-VP card first - what a table actually
+//   does - loses a card 19-21% of the time. Charging on completion makes that a
+//   missed opportunity nobody notices. Charging up front would turn the same 19%
+//   into a wasted cupcake and a visible, memorable punishment for the obvious
+//   move, which is the wrong shape at this weight. DO NOT "TIDY" THIS INTO THE
+//   SPEND STEP for consistency with the other five.
+//
+//   WHAT IT COSTS EVERYBODY ELSE. More claiming drains the shared card row against
+//   a refill that is one card a turn regardless, so locked turns rise. Full record:
+//   `Balance Analysis\extra-claims-analysis-2026-08-09.md`, raw output in
+//   `ab-extraclaims-2026-08-09.txt`, `ab-secondclaim-spend-2026-08-09.txt` and
+//   `probe-extraclaims-branching-2026-08-09.txt`.
+export const EXTRA_CLAIM_CUPCAKE_COST = 1;
 
-// The LIVE value of the variant flag, plus the seam that lets a simulation or a
-// test harness swing it without editing (and accidentally committing) the shipped
+// The LIVE value of the rule, plus the seam that lets a simulation or a test
+// harness swing it without editing (and accidentally committing) the shipped
 // constant above. Everything in the engine reads getExtraClaimCupcakeCost() rather
-// than the constant, so an A/B run is setExtraClaimCupcakeCost(1) ... run ...
+// than the constant, so an A/B run is setExtraClaimCupcakeCost(null) ... run ...
 // setExtraClaimCupcakeCost(EXTRA_CLAIM_CUPCAKE_COST) to put it back. Production
 // code must never call the setter; the game always starts from the constant.
 let extraClaimCupcakeCost = EXTRA_CLAIM_CUPCAKE_COST;
@@ -384,6 +418,14 @@ export function getVisibleTeapotSymbols(gameState) {
 // table a player spent 47.7% of sweep steps at 4 players (55.9% at 3) unable to
 // afford the 2-cupcake extra tile, which is the only spend that cures a locked
 // claim step. This layout cuts that to 36.6% and 44.3%.
+//
+// 8 AUGUST: THE SPEND THOSE FIGURES ARE DENOMINATED IN WAS DELETED, and on
+// 9 AUGUST IT CAME BACK at the same price of 1, so the figures above are live
+// again - but they were measured on a menu where the extra tile was the only
+// cure for a locked claim step, and there are now two cures at 1 cupcake each.
+// The ARGUMENT is unchanged and is what these positions are for: a player with
+// no cupcakes has nothing to do about a bad turn. Re-measure the layout if the
+// cupcake economy is retuned again. The positions themselves have not moved.
 //
 // WHY THE FIRST PLATE OF EVERY ROW AND NOT SOME OTHER REDISTRIBUTION. Six layouts
 // were measured in ab-cupcakeplates-2026-08-06.mjs, 1,500 games per cell per
@@ -456,10 +498,48 @@ function isCupcakePlate(rowIndex, plateIndex) {
 // was priced out of reach, the plate removal came DOWN because it acquired
 // control of the game's clock on 6 August and nobody could afford to use it.
 //
+// 8 AUGUST: THE EXTRA TILE WAS DELETED AND A CARD-SIDE SPEND REPLACED IT.
+// 9 AUGUST: THE EXTRA TILE IS BACK, AND THE CARD-SIDE SPEND STAYS. Both are on
+// the menu, both cost 1, and this is the first time the game has offered them
+// together. The menu is now FIVE spends:
+//
+//   1  take an extra tile        EXTRA_TILE_CUPCAKE_COST      (restored 9 Aug)
+//      ^ UNCAPPED since 9 Aug (second revision): flat 1 each, repeatable for as
+//        long as the purse and the free cells last. See MAX_EXTRA_TILES_PER_TURN.
+//        It is the only spend on this menu with no per-turn allowance, which is
+//        the whole of the change - the other four are still once-per-turn.
 //   1  move a tile               MOVE_TILE_CUPCAKE_COST
 //   1  reserve a card            RESERVE_CUPCAKE_COST
-//   1  take an extra tile        EXTRA_TILE_CUPCAKE_COST      (2 on 3 Aug, 1 before that)
+//   1  deal 2 new cards          DEAL_CARDS_CUPCAKE_COST      (added 8 Aug)
 //   2  remove an empty plate     REMOVE_PLATE_CUPCAKE_COST    (was 3)
+//
+// WHY BOTH, WHICH THE 8 AUGUST NOTE HERE EXPLICITLY WARNED AGAINST. That warning
+// stands as written - "do not reinstate the extra tile as a second door to the
+// same room without re-measuring both" - and the reinstatement is being made
+// WITH that re-measurement, not in spite of it. What settled it is the 8 August
+// measurement of the replacement itself: the deal fixes a genuinely dead row
+// 30-33% of the time, but a dead row is only 9-13% of locked turns. Six locked
+// turns in ten are a player ONE TILE SHORT of a card already sitting on the row,
+// and no number of fresh cards can touch that. The card-side valve was built for
+// the smaller half of the problem.
+//
+// THE TWO ARE NOT ALTERNATIVES, WHICH IS WHAT THE 8 AUGUST FRAMING GOT WRONG.
+// A locked claim step has two causes - the board does not hold the shape the row
+// is asking for, or the row is not asking for anything the board can make. The
+// extra tile addresses the first (37.9-39.4% of locked turns were cured by it),
+// dealing two fresh cards addresses the second. They are doors into different
+// rooms, and a menu that offers only one of them leaves the other cause with no
+// outlet at all.
+//
+// THEY ALSO SIT AT DIFFERENT STEPS AND CANNOT MERGE. The extra tile is bought at
+// the SWEEP step because it changes what you place; the deal is bought at the
+// SPEND step because the row it changes is read after placement. The teaching
+// cost of that split is real and was the 8 August change's one clean gain - it
+// is being paid again deliberately.
+//
+// WHAT TO WATCH, since having both has never been tested: total cupcake outflow
+// per game, the share of turns with any cupcake at all, and the seat ladder.
+// Two valves at 1 apiece is a cheaper release than the game has ever had.
 //
 // MOVING an empty plate is DELETED. It cost 2 and shuffled the obstruction from
 // one cell to another; removing the plate outright supersedes it, so the two are
@@ -468,27 +548,75 @@ function isCupcakePlate(rowIndex, plateIndex) {
 // Relocate one TILE on your own board. Unchanged price, and now the ONLY thing
 // the move action can relocate - see moveTile and getMoveCost.
 export const MOVE_TILE_CUPCAKE_COST = 1;
-// Take 1 extra tile from ANYWHERE on the market at the sweep step. WAS 1: the
-// load-bearing change of the first 3 August set, where card-locked claim steps
-// ran at 28.5 / 27.6 / 29.2% and one extra tile from anywhere unlocked a claim in
-// 37.9 / 39.0 / 39.4% of them, taking the lock rate to 17.7 / 16.9 / 17.7%.
-// "FROM ANYWHERE" is what produces that figure - restricting it to the swept
-// line does not.
+// Take 1 extra tile from ANYWHERE on the market board, at the sweep step.
 //
-// THE MEASURED FIGURES ABOVE WERE TAKEN AT A PRICE OF 1. Doubling the price does
-// not change how often the tile CURES a lock, but it does change how often the
-// bot can afford to try, so the lock rate is expected to drift back up. That
-// drift is the thing this repricing has to be judged on.
+// PRICE HISTORY, kept because the sign has moved twice. It was 1 from 3 August,
+// went to 2 on the 3rd's second revision, and came back to 1 on 7 August: at 2
+// the lock rate went from 17.7 / 16.9 / 17.7% to about 30% at every count, and a
+// player could not afford the only spend that cures a locked claim step for a
+// large share of the game (47.7% of sweeps at four players before the cupcake
+// plates moved, 36.6% after). DEAN TESTED THE 1-CUPCAKE PRICE WITH HUMANS and
+// reported it plays well, which is the evidence six reviews of simulation could
+// not supply.
 //
-// 7 AUGUST: BACK TO 1, and the drift above is what settled it. The price of 2
-// took the lock rate from 17.7 / 16.9 / 17.7% to about 30% at every count and
-// left a player unable to afford the only spend that cures a locked claim step
-// for a large share of the game - 47.7% of sweeps at four players before the
-// cupcake plates moved, 36.6% after. DEAN HAS ALSO NOW TESTED THE 1-CUPCAKE
-// PRICE WITH HUMANS AND REPORTS IT PLAYS WELL, which is the evidence six reviews
-// of simulation could not supply. The extra tile is the game's release valve and
-// it should be affordable when it is needed.
+// DELETED 8 AUGUST, RESTORED 9 AUGUST AT THE SAME PRICE. Restoring it at 1 keeps
+// the human table test above valid; a restoration at any other price would have
+// thrown that evidence away and needed its own playtest.
 export const EXTRA_TILE_CUPCAKE_COST = 1;
+
+// HOW MANY EXTRA TILES ONE TURN MAY BUY (9 August, second revision).
+//
+// null = UNLIMITED, which is the adopted rule: a player may buy extra tiles for
+// as long as they can pay, at a FLAT EXTRA_TILE_CUPCAKE_COST each. No ladder, no
+// per-turn allowance. The purse and the board's free cells are the only limits,
+// and canBuyExtraTile already enforces the second of those.
+//
+// WHY IT IS A CONSTANT AND NOT JUST A DELETED LINE: this is the third time the
+// extra tile's shape has moved in a week, and the interesting comparison is
+// always "against the previous rule, same seeds". Setting this to 1 restores the
+// one-per-turn rule exactly, so an A/B is one number rather than a revert.
+//
+// WHAT IT DOES NOT CHANGE: the tile is still bought at the sweep step, still
+// costs the same each time, and still cannot be bought without a free cell to
+// put it in beyond the tiles already pending. Buying repeatedly is the ONLY new
+// thing here.
+//
+// NOTE FOR ANYONE MEASURING THIS: a bot that evaluates one tile against one cell
+// cannot see a two-tile unlock and will buy exactly as it did under the cap, so
+// an unchanged simulation result may be bot vision rather than the rule. See
+// basicBot.decideExtraTile, which grew a second-tile reach for exactly this
+// reason and gates it on getMaxExtraTilesPerTurn().
+export const MAX_EXTRA_TILES_PER_TURN = null;
+
+// The LIVE value, plus the test/simulation seam - same pattern as the extra-claim
+// cost above, and for the same reason: an A/B run must be able to swing the rule
+// without editing (and accidentally committing) the shipped constant.
+let maxExtraTilesPerTurn = MAX_EXTRA_TILES_PER_TURN;
+
+export function getMaxExtraTilesPerTurn() {
+  return maxExtraTilesPerTurn;
+}
+
+// Accepts null (unlimited, the adopted rule) or a positive integer allowance.
+export function setMaxExtraTilesPerTurn(n) {
+  if (n !== null && (!Number.isInteger(n) || n < 0)) {
+    throw new Error('maxExtraTilesPerTurn must be null or a non-negative integer');
+  }
+  maxExtraTilesPerTurn = n;
+}
+
+// Deal CARDS_PER_DEAL new Patisserie Goals onto the card row, at the spend step.
+// Priced at 1, the same as the extra tile - so the 8 August change was a change
+// of WHAT a cupcake buys and not of what a cupcake is worth. Since 9 August both
+// are on the menu at that price, which makes them a genuine choice at a locked
+// step rather than a substitution: same cost, different cause addressed.
+export const DEAL_CARDS_CUPCAKE_COST = 1;
+// How many cards that spend deals. TWO, not one, and the number is the whole
+// design: one card is a coin flip on a row you have already failed to match, two
+// is a draw wide enough to be worth a cupcake. It also has to beat the free
+// end-of-turn deal, which already puts one card on the row every turn - paying a
+// cupcake to bring next turn's single card forward would be no decision at all.
+export const CARDS_PER_DEAL = 2;
 // Take 1 card from the card market into your personal reserve, on your own turn.
 export const RESERVE_CUPCAKE_COST = 1;
 // Remove one EMPTY PLATE token from your own board and RETURN IT TO THE BOX.
@@ -579,6 +707,73 @@ export const RESERVE_LIMIT = 1;
 // an extra tile from anywhere - market access, which is the exact currency of the
 // advantage - and the compounding is mild rather than exponential.
 //
+// THAT MECHANISM BROKE ON 8 AUGUST, WHEN THE EXTRA TILE WAS DELETED AND A
+// CUPCAKE BOUGHT CARD-ROW ACCESS INSTEAD - the wrong currency for a harm that is
+// tile-market access (seat 1 sweeps a fuller trolley). Measured over that one
+// day, worst-seat deviation drifted from -0.2 / +2.4 / -4.1 to +2.3 / -5.6 /
+// +2.9.
+//
+// RESTORED 9 AUGUST, so the mechanism above is live again and the ladder's
+// stated reason carries once more. It is NOT thereby re-validated: the menu now
+// offers tile-market access AND card-row access at 1 cupcake each, which is a
+// cheaper release than either measurement was taken against. RE-MEASURE THE SEAT
+// DEVIATIONS with ab-startcupcakes-2026-08-07.mjs before this table is printed.
+//
+// ---------------------------------------------------------------------------
+// THE LADDER IS DELETED (9 August, second revision). THE TABLE IS NOW A SINGLE
+// STEP AT SEAT 1: 2/3, 2/3/3, 2/3/3/3.
+//
+// WHY. Uncapping the extra tile the same day (see MAX_EXTRA_TILES_PER_TURN) made
+// a cupcake worth more, because it converts into market access without a per-turn
+// limit. The ladder was tuned against a capped tile, so it began OVER-paying the
+// later seats and the seat gradient flipped sign:
+//
+//   score gradient first-to-last (positive = seat 1 ahead), 1,500 games
+//     4p   capped +0.89   uncapped -3.32
+//     3p   capped +1.36   uncapped -1.63
+//     2p   capped +0.94   uncapped -0.43
+//
+// THE TWO KNOBS ARE INDEPENDENT, which is the finding worth keeping and the thing
+// this table's history kept getting wrong:
+//
+//   SPREAD (top seat minus bottom seat) sets seat fairness, at about 1.4 VP of
+//     gradient per cupcake of spread - measured at 1.40 / 1.50 / 1.37 across the
+//     three player counts independently. It does not care what LEVEL it sits at.
+//   LEVEL (the total in the table) sets the ECONOMY - tiles bought, and through
+//     them game length, card lock and end-of-game surplus. It barely touches
+//     fairness.
+//
+// So a cupcake of spread now does what three used to, and the ladder's three-step
+// climb at 4p is about two cupcakes too much. One step is the whole correction.
+//
+// THE LEVEL WAS CHOSEN SEPARATELY, and against a richer alternative. 3/4, 3/4/4
+// and 3/4/4/4 fix the gradient just as well - the spread is the same - but spend
+// the extra cupcakes on tiles, and tiles are this game's clock: they ran 0.25-0.28
+// turns per player shorter and put 4+ unspent cupcakes back in 65% of 4p games
+// against 50% here, walking back toward the surplus the uncapping had just cured.
+// The poorer table keeps 56% of the available card-lock relief (23.3% at 4p
+// against the capped game's 26.2%) and is the better game on the other three.
+//
+// MEASURED AT 3,000 GAMES PER CELL, worst seat deviation / gradient:
+//   2 players   2/3      -0.9 / -0.49     3/4       +0.3 / +0.14
+//   3 players   2/3/3    -0.4 / -0.39     3/4/4     -1.7 / +0.22
+//   4 players   2/3/3/3  +2.1 / +0.31     3/4/4/4   -3.2 / +1.15
+//                                          3/4/4/5   +2.3 / -0.49
+// Full record: uncapped-extra-tile-ab-2026-08-09-v3.md, sweep harness
+// ab-startcupcakes-uncapped-2026-08-09.mjs.
+//
+// NOTE THAT 2/3/3 WAS TRIED AND REJECTED ON 7 AUGUST (see the sweep above, where
+// it read -3.3 / +1.3 and was called inconsistent). It is correct NOW because the
+// rule underneath it changed, not because the earlier measurement was wrong. Do
+// not read the two tables against each other.
+//
+// SEAT 2 AT FOUR PLAYERS IS NOT A CUPCAKE PROBLEM. It reads +2.1 to +2.4 in every
+// table measured on 9 August - at 2 starting cupcakes and at 3 and at 4, in a
+// ladder and in a step. Four tables, same bulge, so it is structural and no value
+// in this table will move it. The marginal readings at 4p are all this one seat;
+// investigate it on its own terms rather than reaching for this knob.
+// ---------------------------------------------------------------------------
+//
 // THIS COMPENSATES THE BIAS RATHER THAN REMOVING IT. Seat 1 still sweeps a fuller
 // market every round; the later seats are now paid for it. If the underlying cause
 // is ever fixed at source - the tile market refilling more often than at tea, say -
@@ -593,9 +788,21 @@ export const RESERVE_LIMIT = 1;
 // the difference between two.
 export const STARTING_CUPCAKES_BY_SEAT = {
   2: [2, 3],
-  3: [2, 3, 4],
-  4: [2, 3, 4, 5],
+  3: [2, 3, 3],
+  4: [2, 3, 3, 3],
 };
+
+// THE LIVE TABLE, plus a runtime seam (9 August, second revision). Until now this
+// constant had NO seam, so ab-startcupcakes-2026-08-07.mjs A/B'd it by REWRITING
+// THIS FILE with a regex and running the arm in a child process, restoring the
+// original in a finally block - a harness that leaves the shipped rule corrupted
+// if it is ever interrupted. The seam exists so that stops being necessary; the
+// old harness still works and is untouched.
+//
+// Production code must never call the setter. The game always starts from the
+// constant above, exactly as it does for the tasting menus, the Flavour of the
+// Day and the extra-tile cap.
+let startingCupcakesBySeat = STARTING_CUPCAKES_BY_SEAT;
 
 // The starting cupcakes for a given table size, as an array indexed by seat.
 // Exported so the harnesses and tests can report and assert the live values
@@ -603,7 +810,26 @@ export const STARTING_CUPCAKES_BY_SEAT = {
 // An unlisted player count falls back to the smallest table's opening 2, which is
 // the value every seat-1 in every configuration starts on.
 export function getStartingCupcakes(playerCount) {
-  return STARTING_CUPCAKES_BY_SEAT[playerCount] ?? new Array(playerCount).fill(2);
+  return startingCupcakesBySeat[playerCount] ?? new Array(playerCount).fill(2);
+}
+
+// Test/simulation seam only. Pass a table shaped like STARTING_CUPCAKES_BY_SEAT,
+// or null to restore the shipped one. Every seat's opening must be a non-negative
+// integer - a fractional or negative opening would be a silent nonsense that only
+// showed up as a strange influx total three metrics later.
+export function setStartingCupcakesTable(table) {
+  if (table === null) {
+    startingCupcakesBySeat = STARTING_CUPCAKES_BY_SEAT;
+    return;
+  }
+  for (const count in table) {
+    const seats = table[count];
+    if (!Array.isArray(seats)) throw new Error('starting cupcakes must be an array per player count');
+    for (const n of seats) {
+      if (!Number.isInteger(n) || n < 0) throw new Error('every seat must open on a non-negative integer');
+    }
+  }
+  startingCupcakesBySeat = table;
 }
 
 function startingCupcakesForSeat(seatIndex, playerCount) {
@@ -952,18 +1178,35 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     // If anything ever assigns to this field, that reasoning breaks.
     flavourOfTheDay,
     // --- PER-TURN CUPCAKE ALLOWANCES (3 August) -----------------------------
-    // Four outlets, four allowances. They are INDEPENDENT: buying an extra tile
-    // at the sweep step does not stop you moving a tile at the spend step, nor
-    // removing a plate, nor paying to reserve. What each one forbids is doing
-    // that SAME thing twice. All four reset in advanceToNextTurn alongside
-    // claimsThisTurn.
+    // Five outlets, five allowances. They are INDEPENDENT: paying to deal two
+    // cards does not stop you buying an extra tile, moving a tile, removing a
+    // plate, or paying to reserve. What each one forbids is doing that SAME
+    // thing twice. All five reset in advanceToNextTurn alongside claimsThisTurn.
+    //
+    // THEY DO NOT ALL SIT AT THE SAME STEP, and since 9 August they cannot. The
+    // extra tile is bought at the SWEEP step, because it changes what you place;
+    // every other spend is taken at the SPEND step with the board already in
+    // front of you. For one day (8 August) the extra tile was deleted and the
+    // turn had a single cupcake moment; restoring it gives that back up on
+    // purpose - see the cupcake spend menu block near the top of this file.
     //
     // moveUsedThisTurn covers the TILE move only. It used to cover the
     // empty-plate move too - one allowance at two prices - but plates are no
     // longer movable at all (see moveTile / removePlate), so the two allowances
     // are now genuinely separate things rather than a shared budget.
     moveUsedThisTurn: false,
+    // Extra tiles bought this turn, at the sweep step - see takeExtraTile. A
+    // COUNTER since 9 August (second revision), because the allowance it used to
+    // guard is gone: the rule is now unlimited purchases at a flat price, and
+    // MAX_EXTRA_TILES_PER_TURN is what caps it if a variant ever wants to.
+    extraTilesBoughtThisTurn: 0,
+    // LEGACY MIRROR of the counter above, kept true whenever any extra tile has
+    // been bought this turn. It exists because the UI note and the 9 August rule
+    // test both read it; nothing in the engine gates on it any more. Read the
+    // counter in new code.
     extraTileUsedThisTurn: false,
+    // One paid 2-card deal per turn - see dealCards.
+    cardsDealtThisTurn: false,
     // One empty plate removed to the box per turn - see removePlate.
     plateRemovedThisTurn: false,
     // The card id reserved on THIS turn, or null. A reserve is a forward
@@ -1241,8 +1484,11 @@ export function declineBonusTile(gameState) {
   return gameState;
 }
 
-// SPEND 1 CUPCAKE: TAKE 1 EXTRA TILE (3 August). The load-bearing change of the
-// set - see EXTRA_TILE_CUPCAKE_COST for the measured effect on card lock.
+// SPEND 1 CUPCAKE: TAKE 1 EXTRA TILE (3 August; deleted 8 August, RESTORED
+// 9 August unchanged). The load-bearing change of the 3 August set - see
+// EXTRA_TILE_CUPCAKE_COST for the measured effect on card lock, and the cupcake
+// spend menu block for why it now sits alongside dealCards rather than instead
+// of it.
 //
 // WHEN: at the SWEEP STEP, after the sweep (and any line-clear bonus tile) has
 // resolved but before the swept tiles are placed - i.e. the 'place' phase, with
@@ -1255,15 +1501,18 @@ export function declineBonusTile(gameState) {
 // does not. It is the same operation as the line-clear bonus tile, so it reuses
 // that code path: lift the tile and add it to pendingSweepTiles.
 //
-// ONCE PER TURN, not repeatable, and illegal if you have no legal placement -
-// which here means the board must have room for this tile ON TOP OF everything
-// already pending. Only 0.4-3.8% of card locks are structurally unbuyable this
-// way (board full).
+// AS OFTEN AS YOU CAN PAY (9 August, second revision - was ONCE PER TURN). Each
+// purchase costs the same flat EXTRA_TILE_CUPCAKE_COST; MAX_EXTRA_TILES_PER_TURN
+// is null, so nothing here counts down. Still illegal if you have no legal
+// placement - which here means the board must have room for this tile ON TOP OF
+// everything already pending, and that gate is now what stops a rich player
+// emptying the market into a board that cannot hold it. Only 0.4-3.8% of card
+// locks are structurally unbuyable this way (board full).
 //
 // THAT GATE SURVIVES 6 AUGUST UNCHANGED, and deliberately. The excess of a sweep
 // now goes back into the bag rather than ending the game, so an unplaceable extra
-// tile would no longer be a catastrophe - but it would be a player paying 2
-// cupcakes to put a tile straight back in the bag, which is not a decision worth
+// tile would no longer be a catastrophe - but it would be a player paying a
+// cupcake to put a tile straight back in the bag, which is not a decision worth
 // offering. Refusing it is the honest answer.
 //
 // NOTE: taking the tile CAN uncover a teapot symbol, exactly as a sweep can, so
@@ -1275,7 +1524,10 @@ export function takeExtraTile(gameState, marketIndex) {
   if (gameState.bonusTileAvailable) {
     throw new Error('Resolve the line-clear bonus tile first');
   }
-  if (gameState.extraTileUsedThisTurn) throw new Error('Only one extra tile per turn');
+  const cap = getMaxExtraTilesPerTurn();
+  if (cap !== null && (gameState.extraTilesBoughtThisTurn || 0) >= cap) {
+    throw new Error(`Only ${cap} extra tile${cap === 1 ? '' : 's'} per turn`);
+  }
 
   const player = gameState.players[gameState.currentPlayerIndex];
   if (player.cupcakes < EXTRA_TILE_CUPCAKE_COST) {
@@ -1293,7 +1545,8 @@ export function takeExtraTile(gameState, marketIndex) {
   gameState.pendingSweepTiles.push(gameState.market[marketIndex]);
   gameState.market[marketIndex] = null;
   player.cupcakes -= EXTRA_TILE_CUPCAKE_COST;
-  gameState.extraTileUsedThisTurn = true;
+  gameState.extraTilesBoughtThisTurn = (gameState.extraTilesBoughtThisTurn || 0) + 1;
+  gameState.extraTileUsedThisTurn = true; // legacy mirror - see createGame
   metrics(gameState)?.recordCupcakeSpend(player.id, 'extraTile', EXTRA_TILE_CUPCAKE_COST);
 
   return gameState;
@@ -1304,11 +1557,93 @@ export function takeExtraTile(gameState, marketIndex) {
 // re-implements takeExtraTile's gate and then disagrees with it.
 export function canBuyExtraTile(gameState) {
   if (gameState.gamePhase !== 'place' || gameState.bonusTileAvailable) return false;
-  if (gameState.extraTileUsedThisTurn) return false;
+  const cap = getMaxExtraTilesPerTurn();
+  if (cap !== null && (gameState.extraTilesBoughtThisTurn || 0) >= cap) return false;
   const player = gameState.players[gameState.currentPlayerIndex];
   if (player.cupcakes < EXTRA_TILE_CUPCAKE_COST) return false;
   if (getValidPlacements(player.board).length <= gameState.pendingSweepTiles.length) return false;
   return gameState.market.some(t => t !== null && t !== undefined);
+}
+
+// SPEND 1 CUPCAKE: DEAL 2 NEW CARDS TO THE CARD ROW (8 August). The card-side
+// release valve. It replaced the extra tile for one day; since 9 August it sits
+// beside it, at the same price, for the other cause of a locked claim step.
+//
+// WHEN: at the SPEND STEP, alongside the tile move, the plate removal and the
+// reserve - and BEFORE the claim step, deliberately. THE CARDS IT DEALS ARE
+// CLAIMABLE THIS TURN. That is the whole point: a player who cannot claim buys
+// two more chances at claiming now, not next turn. (Contrast the reserve, which
+// is explicitly forbidden from being claimed on the turn it was taken - a
+// reserve reaches past the row for a card you can already see, this one pays for
+// a card nobody has seen yet.)
+//
+// WHAT: CARDS_PER_DEAL cards off the top of the deck onto the end of the row,
+// face up, exactly as the free end-of-turn deal puts one there. Nothing is
+// discarded and nothing is replaced - the row simply gets longer.
+//
+// ONCE PER TURN, mirroring every other allowance, and gated on:
+//   - the row having room for BOTH cards under MAX_MARKET_CARDS. Not "deal what
+//     fits": a spend that silently pays out one card instead of two is a rule a
+//     table has to remember the edge of, and at 1 cupcake it would be a bad buy
+//     nobody would knowingly make. Either the row has room for the pair or the
+//     action is not offered.
+//   - CARDS_PER_DEAL cards existing between the deck and the discard. drawCard
+//     reshuffles the discard when the deck runs dry, so this only bites at the
+//     very end of a long game.
+//
+// WHY IT IS NOT REDUNDANT WITH THE RESERVE, which is also 1 cupcake and also
+// card-side. The reserve is a commitment to a card you can see and cannot claim
+// yet; this is a draw when nothing on the row is worth committing to. They fail
+// in opposite directions - a reserve is wasted when the row is full of cards you
+// nearly match, this is wasted when it is not.
+//
+// THE CLOCK IS UNAFFECTED, which is worth saying because every other spend on
+// the menu now touches it in some way. Dealing cards puts no tile on anybody's
+// board, so it neither hurries the board-full ending nor pushes it back.
+export function dealCards(gameState) {
+  if (gameState.gamePhase !== 'spend') {
+    throw new Error('Can only deal cards in the spend phase');
+  }
+  if (gameState.cardsDealtThisTurn) {
+    throw new Error('Can only pay to deal cards once per turn');
+  }
+  const player = gameState.players[gameState.currentPlayerIndex];
+  if (player.cupcakes < DEAL_CARDS_CUPCAKE_COST) {
+    throw new Error(`Not enough cupcakes to deal cards (costs ${DEAL_CARDS_CUPCAKE_COST}, you have ${player.cupcakes})`);
+  }
+  if (gameState.cardMarket.length + CARDS_PER_DEAL > MAX_MARKET_CARDS) {
+    throw new Error(`The card row has no room for ${CARDS_PER_DEAL} more cards`);
+  }
+  if (gameState.gameDeck.length + gameState.cardDiscard.length < CARDS_PER_DEAL) {
+    throw new Error('Not enough cards left in the deck and discard');
+  }
+
+  for (let i = 0; i < CARDS_PER_DEAL; i++) {
+    const newCard = drawCard(gameState);
+    // Cannot be null - the deck+discard count was checked above - but a guard
+    // here is cheaper than a row with an undefined in it if that ever changes.
+    if (!newCard) break;
+    gameState.cardMarket.push(newCard);
+    metrics(gameState)?.recordCardMarketEntry(newCard.id, gameState.stats.turnsPlayed);
+  }
+
+  player.cupcakes -= DEAL_CARDS_CUPCAKE_COST;
+  gameState.cardsDealtThisTurn = true;
+  metrics(gameState)?.recordCupcakeSpend(player.id, 'dealCards', DEAL_CARDS_CUPCAKE_COST);
+
+  return gameState;
+}
+
+// True when the active player could legally pay to deal cards right now. The
+// shared predicate for drivers, bots and the UI, so none of the three
+// re-implements dealCards's gate and then disagrees with it.
+export function canDealCards(gameState) {
+  if (gameState.gamePhase !== 'spend') return false;
+  if (gameState.cardsDealtThisTurn) return false;
+  const player = gameState.players[gameState.currentPlayerIndex];
+  if (player.cupcakes < DEAL_CARDS_CUPCAKE_COST) return false;
+  if (gameState.cardMarket.length + CARDS_PER_DEAL > MAX_MARKET_CARDS) return false;
+  return gameState.gameDeck.length + gameState.cardDiscard.length >= CARDS_PER_DEAL;
 }
 
 // Is a fresh pot of tea DUE? Checked at the END of a turn, once the player has
@@ -1777,21 +2112,22 @@ export function claim(gameState, cardId, removedBoardIndex, destination) {
   const player = gameState.players[gameState.currentPlayerIndex];
   const extraClaimCost = getExtraClaimCupcakeCost();
 
-  // ONE CLAIM PER TURN (§6), checked BEFORE the phase gate and deliberately so.
-  // Under the adopted rule a successful claim leaves the turn in the 'refill'
-  // phase, so a second attempt would otherwise trip the phase check and come back
-  // as "Not in claim phase" - true, useless, and the single most common thing
-  // players get wrong about this game. The counter is the rule; the phase gate
-  // below stays as structural defence. These messages are rule EXPLANATIONS and
-  // the UI is expected to surface them to the player as such.
+  // THE PRICE OF A FURTHER CLAIM (§6), checked BEFORE the phase gate and
+  // deliberately so. Under the null (control) rule a successful claim leaves the
+  // turn in the 'refill' phase, so a second attempt would otherwise trip the phase
+  // check and come back as "Not in claim phase" - true, useless, and the single
+  // most common thing players used to get wrong about this game. The counter is
+  // the rule; the phase gate below stays as structural defence. These messages are
+  // rule EXPLANATIONS and the UI is expected to surface them to the player as such.
   if (gameState.claimsThisTurn > 0) {
     if (extraClaimCost === null) {
       throw new Error('Only one claim per turn');
     }
-    // Variant enabled: extra claims are for sale, but only to a player who can
-    // actually pay for this one.
+    // Extra claims are for sale, but only to a player who can pay for THIS one.
+    // Nothing is deducted here - see the charge point at the foot of this function,
+    // which runs only once every validation has passed.
     if (player.cupcakes < extraClaimCost) {
-      throw new Error(`Not enough cupcakes for an extra claim (costs ${extraClaimCost}, you have ${player.cupcakes})`);
+      throw new Error(`Not enough cupcakes for another card (costs ${extraClaimCost}, you have ${player.cupcakes})`);
     }
   }
 
@@ -2081,6 +2417,16 @@ export function canRemovePlate(gameState) {
 // than a second door to the same room. And paying for a reserve means you only
 // take cards you intend to finish - the free version was completed barely a third
 // of the time at 4 players.
+//
+// 8 AUGUST: A SECOND NEIGHBOUR ARRIVED. dealCards sits beside this at the same
+// step, at the same price, on the same side of the game. The distinction that
+// keeps both is in the note on dealCards: a reserve commits to a card you can
+// see, a deal pays for cards nobody has seen. If one of the two turns out never
+// to be bought, it is this pair that collapsed, not the price.
+//
+// 9 AUGUST: the extra tile is back, so this now justifies itself against TWO
+// neighbours. Against the extra tile the paragraph above still holds unchanged;
+// against dealCards it is the seen/unseen split.
 export function reserveCard(gameState, cardId) {
   if (gameState.gamePhase !== 'spend') {
     throw new Error('Can only reserve a card in the spend phase');
@@ -2318,11 +2664,16 @@ function advanceToNextTurn(gameState) {
   // just played, so turns that end the game without rotating still count.
   gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
   // EVERY per-turn allowance resets here, in one place, so they cannot drift
-  // apart: the one-claim-per-turn allowance, the one tile move, the one extra
-  // tile, the one plate removal, and the same-turn reserve lock.
+  // apart: the one-claim-per-turn allowance, the extra-tile count, the one tile
+  // move, the one paid 2-card deal, the one plate removal, and the same-turn
+  // reserve lock. (The extra tile is uncapped since 9 August, so its counter is
+  // a measurement rather than an allowance - it still has to be zeroed here or
+  // a variant that caps it would carry last turn's spend forward.)
   gameState.claimsThisTurn = 0;
   gameState.moveUsedThisTurn = false;
+  gameState.extraTilesBoughtThisTurn = 0;
   gameState.extraTileUsedThisTurn = false;
+  gameState.cardsDealtThisTurn = false;
   gameState.plateRemovedThisTurn = false;
   gameState.reservedCardIdThisTurn = null;
   gameState.gamePhase = 'sweep';

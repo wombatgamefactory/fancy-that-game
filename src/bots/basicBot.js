@@ -1,4 +1,4 @@
-import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getVisibleTeapotSymbols, getMenuIngredients, getAvailableMenus, isTastingMenuInPlay, isFlavourInPlay, getFlavourCount, getMoveCost, canReserveCard, canBuyExtraTile, canRemovePlate, canClaimMore, countBoardIngredient, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, TASTING_MENU_VP, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
+import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getVisibleTeapotSymbols, getMenuIngredients, getAvailableMenus, isTastingMenuInPlay, isFlavourInPlay, getFlavourCount, getMoveCost, canReserveCard, canDealCards, canBuyExtraTile, getMaxExtraTilesPerTurn, canRemovePlate, canClaimMore, countBoardIngredient, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, TASTING_MENU_VP, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
 
 // Approximate value of a completed claim beyond the card's printed VP: the
 // sacrificed tile is banked on the stand or crumb tray. A conservative floor —
@@ -18,8 +18,18 @@ const CLAIM_EXTRA = 2;
 // BOTH USED TO READ gameState.cardsNeededToEnd - the shared empty-plate pool -
 // as `ceil((pool - claimed) / playerCount)`. The pool is deleted, so the estimate
 // is re-denominated in the new clock: FREE CELLS ON THE FASTEST-FILLING BOARD,
-// over the measured tile draw. A player claims at most once per turn, so turns
-// remaining IS claims remaining.
+// over the measured tile draw. Turns remaining stands in for claims remaining.
+//
+// THAT STAND-IN NOW UNDER-COUNTS, and knowingly (9 August). Extra claims went on
+// sale at 1 cupcake each, so a turn can bank more than one card and turns
+// remaining is a FLOOR on claims remaining rather than an equality. Measured, the
+// gap is small - 8.2 / 8.6 / 8.9% of turns claim twice, i.e. about 0.8 per player
+// per game against 8 turns - so the horizon is roughly a tenth of a claim short
+// per turn. Left alone deliberately: the effect is to make the bot very slightly
+// too shy of opening a deep cake-stand row late, which is the safe direction to
+// be wrong in, and correcting it would invalidate every figure measured with
+// setClaimHorizon in probe-fillboard-end-2026-08-06.js. Revisit only if the extra
+// claim is ever repriced downward.
 //
 // 2.5 TILES A TURN is the measured draw (22.3 tiles per player over 8.9 turns,
 // 6 August). It is an estimate feeding a heuristic, not a rule - nothing in the
@@ -88,6 +98,17 @@ function isCupcakePlate(rowIndex, plateIndex) {
 //   card VP plus a banked tile, so 6 is if anything conservative. This is one of
 //   the numbers the "what is a cupcake worth" measurement is meant to settle -
 //   see the metrics note in the handoff.
+//
+//   8 AUGUST: THE JUSTIFICATION ABOVE IS VOID AND 6 IS NOW UNSUPPORTED. The extra
+//   tile is deleted, so the 39% figure the "conservative" claim rested on no
+//   longer describes anything a cupcake can buy. Its replacement, the paid 2-card
+//   deal, lands an immediately claimable card 8-9% of the time and is worth about
+//   0.33 VP at the moment of buying (probe-dealcards-2026-08-08.js). A cupcake is
+//   worth LESS than it was, and this constant is the most likely thing in the file
+//   to be wrong because of it - it makes the bot over-value the pot of tea inside
+//   its sweep scoring. LEFT AT 6 ANYWAY, for one turn of the crank only: moving it
+//   changes sweep selection everywhere and would confound the measurement of the
+//   rule change itself. Re-tune it deliberately, on its own, next.
 const TEA_CUPCAKE_VALUE = 6;
 // TEA_TRIGGER_PRIORITY_VALUE: was 4, for leading the tea round's reserve draft.
 //   THE RESERVE ROUND IS DELETED (3 August), so there is no priority left to
@@ -163,6 +184,27 @@ const RESERVE_MIN_VALUE = 1.5;
 //   taken yet - the handoff's "what is a cupcake worth" metric is what settles
 //   it, and three live design decisions rest on the same unknown.
 const RESERVE_CUPCAKE_VALUE = 2;
+// DEAL_CARDS_MIN_VALUE: the expected-VP bar the paid 2-card deal has to clear,
+//   and the one spend in this file NOT priced at RESERVE_CUPCAKE_VALUE. Why it
+//   has its own number is on decideDealCards; what the number is came out of a
+//   measurement rather than an estimate, which makes it the best-founded constant
+//   in this block.
+//
+//   THE MEASUREMENT, 8 August, arena.js at 1,500 games per cell, an arm that buys
+//   at the bar against basicBot that never buys, win share of decisive games:
+//     bar 0.0 (buy whenever locked)   44.6 / 45.6 / -    at 2 / 3 / 4 players
+//     bar 0.5                         50.0 / 51.7 / 49.7
+//     bar 1.0  <- adopted             50.8 / 51.6 / 50.7
+//   Buying on every locked turn is a clear LOSS - about 2 VP a player - because
+//   at 8-9% immediate hit rate the cupcake is worth more spent elsewhere. Only a
+//   selective buy pays, and only 1.0 is positive at all three counts.
+//
+//   READ THE SIZE OF THAT EFFECT HONESTLY: +0.7 to +1.6 points of win share on
+//   1,500 games is barely outside the noise floor. The finding this constant
+//   really carries is that the spend is close to a NULL OPTION for a good player -
+//   correct occasionally, never decisive. If the action is meant to be a release
+//   valve, it is the rule that needs changing, not this number.
+const DEAL_CARDS_MIN_VALUE = 1.0;
 // RESERVE_FLUSH_RESCUE_VALUE: extra credit for reserving when a pot of tea will
 //   flush the whole card row at the end of this turn. This is the decision the
 //   retained card flush exists to create - the card is gone otherwise, so the
@@ -994,22 +1036,85 @@ export function decideTeaReserve(gameState) {
   return decideReserve(gameState);
 }
 
-// SPEND 1 CUPCAKE: TAKE 1 EXTRA TILE. The highest-value new decision of the
-// 3 August set, and the one the change is load-bearing on.
+// SPEND 1 CUPCAKE: BUY 1 EXTRA TILE AT THE SWEEP STEP (restored 9 August,
+// unchanged from the 3-8 August version).
 //
-// THE TRIGGER CONDITION IS DELIBERATELY NARROW: buy only when we are CARD-LOCKED
-// (nothing claimable from the row or our reserve as things stand) and some tile
-// on the market, dropped into some legal cell, would unlock a claim. That is
-// exactly the population probe-cupcake-spends.js measured - 37.9-39.4% of locked
-// turns are curable this way - so the bot buys where the evidence says the tile
-// pays and nowhere else. Buying to improve an already-claimable turn is a
-// different, unmeasured question and is deliberately left alone.
+// Returns a market index to buy, or null. Buys ONLY when card-locked, and only
+// when a tile of some colour on the market would unlock a claim worth more than
+// the cupcake - a decision under CERTAINTY, which is what separates it from
+// decideDealCards below.
 //
-// Returns a market index to buy, or null. Cards carry COLOUR patterns only, so
-// the search is over the DISTINCT COLOURS on the market rather than all 25 cells;
-// the chosen index is then the best-placed tile of the winning colour, preferring
-// one sitting on a teapot cell (taking it uncovers a symbol, exactly as a sweep
-// would, and can fire our own end-of-turn pot).
+// THE TWO ARE NOT COORDINATED, and that is a known limitation of this bot rather
+// than a design statement. This fires at the sweep step; decideDealCards fires
+// later the same turn at the spend step, and it re-tests lock against the board
+// as it then stands - so a turn this unlocks will not also buy cards. A turn it
+// declines still can. What neither does is compare the two BEFORE spending, so
+// the bot cannot express "the tile is the better buy here". Measured spend
+// counts should be read with that in mind.
+// THE SECOND-TILE REACH (9 August, second revision). Which market COLOUR is
+// worth buying when no single tile unlocks anything, or null.
+//
+// WHY IT HAD TO EXIST. The extra tile became unlimited on 9 August, and the scan
+// in decideExtraTile below evaluates ONE tile against ONE cell: on a board that
+// needs two more tiles it finds nothing, buys nothing, and the simulation reports
+// the uncapped rule as a no-change. That result would be a fact about this bot,
+// not about the rule - probe-uncapped-ab.js (3 August) hit the same wall and
+// bolted a two-tile search onto the driver to get round it. This is that search
+// moved inside the bot, where every driver gets it.
+//
+// IT IS ONE GREEDY STEP, NOT A SEARCH TO DEPTH k. It picks a card that is k tiles
+// short, checks the purse and the board can actually finish the job, and returns
+// a colour that shortens it by one. The driver then calls decideExtraTile again
+// on the new state, where the card is k-1 short - so a three-tile unlock is
+// reached by cascade rather than by looking three deep. That keeps the cost at
+// colours x cells rather than (colours x cells)^k.
+//
+// GATED ON THE LIVE RULE, deliberately: under a cap of 1 it returns null at once,
+// so the BASELINE arm of an A/B behaves exactly as it did before this function
+// existed and cannot waste a cupcake on a first tile it may not follow up.
+function colourTowardMultiTileUnlock(player, projected, spots, candidateCards, marketColours) {
+  const cap = getMaxExtraTilesPerTurn();
+  if (cap !== null && cap < 2) return null;
+  if (player.cupcakes < 2 * EXTRA_TILE_CUPCAKE_COST) return null;
+
+  const affordable = Math.floor(player.cupcakes / EXTRA_TILE_CUPCAKE_COST);
+  const budget = cap === null ? affordable : Math.min(affordable, cap);
+
+  // The card worth chasing: k tiles short, all k payable, all k placeable, and
+  // still ahead of what those cupcakes buy elsewhere. k is priced at the SAME
+  // rate the single-tile branch uses, so the two decisions cannot disagree about
+  // what a cupcake is worth.
+  let target = null;
+  let targetMissing = Infinity;
+  let targetNet = 0;
+  for (const card of candidateCards) {
+    const missing = minMissingForCard(projected, card);
+    // 0 is not locked and 1 is the single-tile branch's business; this is only
+    // ever about the boards that branch is structurally blind to.
+    if (missing < 2 || missing === Infinity) continue;
+    if (missing > budget || missing > spots.length) continue;
+    const net = ((card.vp || 0) + CLAIM_EXTRA) - missing * EXTRA_TILE_CUPCAKE_COST * RESERVE_CUPCAKE_VALUE;
+    if (net > targetNet) {
+      targetNet = net;
+      target = card;
+      targetMissing = missing;
+    }
+  }
+  if (target === null) return null;
+
+  // Any colour on the market that, dropped in any free cell, shortens that card.
+  // Only a strict improvement counts - a wrong colour can invalidate the window
+  // it lands in and push the count the other way.
+  for (const [colour] of marketColours) {
+    for (const cellIndex of spots) {
+      const trial = [...projected];
+      trial[cellIndex] = { colour, ingredient: null };
+      if (minMissingForCard(trial, target) < targetMissing) return colour;
+    }
+  }
+  return null;
+}
+
 export function decideExtraTile(gameState) {
   if (!canBuyExtraTile(gameState)) return null;
   const player = gameState.players[gameState.currentPlayerIndex];
@@ -1018,7 +1123,6 @@ export function decideExtraTile(gameState) {
   // happens before placement, so testing against the bare board would miss every
   // unlock the sweep itself is about to create - and claim double-count them.
   const projected = [...player.board];
-  const freeCells = getValidPlacements(projected);
   const candidateCards = [...gameState.cardMarket, ...player.reservedCards]
     .filter(c => c.id !== gameState.reservedCardIdThisTurn);
 
@@ -1064,7 +1168,14 @@ export function decideExtraTile(gameState) {
       }
     }
   }
-  if (bestColour === null) return null;
+  // No ONE tile unlocks anything. Under the uncapped rule that is not the end of
+  // the question - see colourTowardMultiTileUnlock, which asks whether two or
+  // three of them would. Under a cap of 1 it returns null and nothing changes.
+  if (bestColour === null) {
+    const reach = colourTowardMultiTileUnlock(player, projected, spots, candidateCards, marketColours);
+    if (reach === null) return null;
+    return pickMarketIndexOfColour(gameState, player, marketColours.get(reach));
+  }
   // Worth the cupcakes at all? The unlocked claim must beat what else they buy,
   // priced the same way the reserve decision prices them.
   //
@@ -1072,17 +1183,24 @@ export function decideExtraTile(gameState) {
   // `bestVp < RESERVE_CUPCAKE_VALUE` back when an extra tile cost exactly 1
   // cupcake, so the two happened to coincide. At a price of 2 that form would let
   // the bot pay two cupcakes for a one-cupcake payoff and the price rise would
-  // show up in the report as no behaviour change at all. The price went back to 1
-  // on 7 August, so the two coincide again - KEEP THE MULTIPLICATION ANYWAY, since
-  // that coincidence is exactly what hid the bug the first time.
+  // show up in the report as no behaviour change at all. The price is 1 again, so
+  // the two coincide again - KEEP THE MULTIPLICATION ANYWAY, since that
+  // coincidence is exactly what hid the bug the first time.
   if (bestVp < EXTRA_TILE_CUPCAKE_COST * RESERVE_CUPCAKE_VALUE) return null;
 
-  // Among tiles of the winning colour, prefer one on a teapot cell, then one
-  // whose ingredient we already hold. The ingredient half used to be about the
-  // pantry goals; with those deleted it survives on the concentration argument
-  // alone - a tile whose ingredient we already have is a tile that can extend a
-  // stand row when it is sacrificed, rather than opening a second one.
-  const indices = marketColours.get(bestColour);
+  return pickMarketIndexOfColour(gameState, player, marketColours.get(bestColour));
+}
+
+// WHICH tile of the chosen colour to lift. Prefer one on a teapot cell, then one
+// whose ingredient we already hold. The ingredient half used to be about the
+// pantry goals; with those deleted it survives on the concentration argument
+// alone - a tile whose ingredient we already have is a tile that can extend a
+// stand row when it is sacrificed, rather than opening a second one.
+//
+// Split out of decideExtraTile on 9 August so the second-tile reach picks its
+// tile by the same rule the single-tile branch does.
+function pickMarketIndexOfColour(gameState, player, indices) {
+  if (!indices || indices.length === 0) return null;
   const ingredientHeld = (idx) => {
     const tile = gameState.market[idx];
     return tile ? countBoardIngredient(player.board, tile.ingredient) : 0;
@@ -1097,6 +1215,94 @@ export function decideExtraTile(gameState) {
     }
   }
   return bestIndex;
+}
+
+// SPEND 1 CUPCAKE: DEAL 2 NEW CARDS TO THE ROW (8 August). Written as the
+// replacement for decideExtraTile; since 9 August it runs alongside it.
+//
+// THE TRIGGER CONDITION IS THE SAME SHAPE AS THE OLD ONE'S AND DELIBERATELY
+// NARROW: buy only when we are CARD-LOCKED - nothing on the row and nothing in
+// our reserve is claimable from the board as it now stands. Buying to improve an
+// already-claimable turn is a different, unmeasured question and is left alone,
+// exactly as it was for the extra tile.
+//
+// THE VALUATION IS A DIFFERENT KIND OF ARITHMETIC, though, and this is the part
+// worth reading before tuning it. The extra tile was a decision under CERTAINTY:
+// the bot could see every tile on the market and test each one against its board,
+// so it knew whether the cupcake unlocked a claim before it paid. Two cards off
+// the top of the deck are UNSEEN. There is nothing to search, so the bot has to
+// price a lottery instead:
+//
+//   p        = the share of the 50-card deck whose pattern our board already
+//              satisfies. Computed exactly, over REWARD_CARDS, because the deck
+//              is small and known - this is not an estimate.
+//   P(hit)   = 1 - (1 - p)^CARDS_PER_DEAL, the chance at least one of the two
+//              lands claimable. (Sampling without replacement, treated as with -
+//              the error at 2 of ~47 live cards is under a point.)
+//   payout   = the mean VP of the cards that DO match, plus CLAIM_EXTRA for the
+//              banked sacrifice tile. Averaging over matching cards only is the
+//              point: a board that can only satisfy cheap patterns should price
+//              this lower than one that can satisfy expensive ones.
+//
+// p IS COMPUTED OVER THE WHOLE DECK, not the undealt remainder. The bot does not
+// get to know which cards are already out; using REWARD_CARDS is both cheaper and
+// the honest information set. It slightly overstates p when the cards we match
+// are the ones already sitting unclaimed on the row - which is exactly the state
+// this action is bought in - so if the bot is measured buying too often, that
+// bias is the first place to look.
+//
+// Returns true to buy, or false. There is no index to choose: unlike every other
+// cupcake spend in this file, the player picks nothing.
+export function decideDealCards(gameState) {
+  if (!canDealCards(gameState)) return false;
+  const player = gameState.players[gameState.currentPlayerIndex];
+
+  // The spend step runs AFTER placement, so the board is the real one - no
+  // projection is needed here (the extra tile needed one because it was bought
+  // before the swept tiles landed).
+  const candidateCards = [...gameState.cardMarket, ...player.reservedCards]
+    .filter(c => c.id !== gameState.reservedCardIdThisTurn);
+  for (const card of candidateCards) {
+    if (getPatternMatches(player.board, card.pattern).length > 0) return false; // not locked
+  }
+
+  // A claim also needs a tile to sacrifice, and a locked board with nothing to
+  // give up cannot cash a matching card in even if one turns up.
+  let hasTile = false;
+  for (const cell of player.board) {
+    if (cell && cell.type !== 'blocked') { hasTile = true; break; }
+  }
+  if (!hasTile) return false;
+
+  let matching = 0;
+  let matchingVp = 0;
+  for (const card of REWARD_CARDS) {
+    if (getPatternMatches(player.board, card.pattern).length === 0) continue;
+    matching++;
+    matchingVp += (card.vp || 0);
+  }
+  if (matching === 0) return false; // the board satisfies nothing in the deck
+
+  const p = matching / REWARD_CARDS.length;
+  const pHit = 1 - Math.pow(1 - p, CARDS_PER_DEAL);
+  const payout = (matchingVp / matching) + CLAIM_EXTRA;
+  const value = pHit * payout;
+
+  // Worth the cupcake at all? MULTIPLIED BY THE PRICE - see the note that used to
+  // sit on the extra tile: writing this as a bare comparison worked only because
+  // the price happened to be 1, and hid a real bug for four days.
+  //
+  // THE BAR IS NOT RESERVE_CUPCAKE_VALUE, and that is the one deliberate
+  // exception in this file. Every other spend clears 2 VP, the opportunity cost
+  // of a cupcake - but that figure was DERIVED FROM THE EXTRA TILE ("a cupcake
+  // unlocks a claim 39% of the time, a claim is worth ~5, so ~2"), and the extra
+  // tile no longer exists. Applied here it is circular and, measured, it is
+  // unreachable: probe-dealcards-2026-08-08.js found 0.0% of card-locked spend
+  // steps clear 2.0 VP, so the bot bought this zero times in 20 games and the
+  // action was invisible in every report.
+  //
+  // DEAL_CARDS_MIN_VALUE is measured instead - see the constant.
+  return value >= DEAL_CARDS_CUPCAKE_COST * DEAL_CARDS_MIN_VALUE;
 }
 
 // Market indices ranked best-first as bonus-tile picks. Exported so the MCTS
@@ -1517,12 +1723,30 @@ function destinationValue(player, tile, gameState) {
 //     is normally the one to finish (CLAIM_RESERVE_BONUS) - unless a refresh is
 //     armed right now, in which case the whole row can be discarded before our
 //     next turn and the row card is the one to bank (CLAIM_FLUSH_RISK_BONUS).
+// THIS BOT IS DELIBERATELY BLIND TO THE PRICE OF AN EXTRA CLAIM (9 August). It
+// claims whenever it legally can, and the engine closes the claim step the moment
+// it cannot pay, so it buys every further card it can afford and never declines
+// one. That is a real simplification and it is recorded rather than hidden:
+//
+//   - It is very close to correct play. A claim is worth about 8 VP - the card's
+//     1-5 printed, plus the stand tile it plates, plus any Tasting Menu it trips -
+//     against a 1-cupcake price, so declining is rarely right.
+//   - It means every A/B on the extra claim measures the LIQUIDITY GATE (can the
+//     player pay) and not player judgement (would they). At 1 cupcake the answer
+//     was "yes" 82-84% of the times a further claim was legal.
+//   - It does NOT save up for one. A human who can see a second pattern coming
+//     might hold a cupcake back; this bot spends first and claims with what is
+//     left, so it slightly under-uses the rule.
+//
+// Fix it only WITH a measurement, not as tidying - a priced decideClaim changes
+// what every extra-claim figure in the 9 August analysis means.
 export function decideClaim(gameState) {
   // canClaimMore is unconditionally true since 6 August - empty plates are
   // unlimited and nothing caps claiming. The call stays because the engine keeps
   // the function as the hook a future claim limit would live in, and a bot that
   // stopped asking would be the thing that had to be found and fixed if one ever
-  // arrived. It does NOT mean there is a supply to check.
+  // arrived. It does NOT mean there is a supply to check, and it is NOT where the
+  // cupcake price is enforced - that is claim(), which closes the phase.
   if (!canClaimMore(gameState)) return null;
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 

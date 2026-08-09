@@ -1,11 +1,21 @@
-import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, calculateFinalScores, canClaimMore, getLegalDestinations, countBoardIngredient, STAND_ROW_VALUES, REWARD_CARDS, BOARD_SIZE, getPatternMatches, getPatternWindows, TASTING_MENU_VP, FLAVOUR_VP_PER_TILE } from '../engine/game.js';
-import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacements, decideClaim as greedyClaim, decideMove as greedyMove, decideRemovePlate as greedyRemovePlate, decideReserve as greedyReserve, decideExtraTile as greedyExtraTile, rankSweeps, rankBonusTiles } from './basicBot.js';
+import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, declineBonusTile, dealCards, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, calculateFinalScores, canClaimMore, getLegalDestinations, countBoardIngredient, STAND_ROW_VALUES, REWARD_CARDS, BOARD_SIZE, getPatternMatches, getPatternWindows, TASTING_MENU_VP, FLAVOUR_VP_PER_TILE } from '../engine/game.js';
+import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacements, decideClaim as greedyClaim, decideMove as greedyMove, decideRemovePlate as greedyRemovePlate, decideReserve as greedyReserve, decideDealCards as greedyDealCards, decideExtraTile as greedyExtraTile, rankSweeps, rankBonusTiles } from './basicBot.js';
 
-// The two PAID cupcake decisions (3 August) are delegated to the basicBot
-// heuristics rather than expanded into the MCTS move space. Adding either as a
-// tree action would balloon branching and rollout cost; the shared basicBot core
-// makes it a clean one-function delegation, and the same greedy policy then runs
-// inside the playouts, so search and rollout agree about how cupcakes are spent.
+// The PAID cupcake decisions taken here - the reserve (3 August), the 2-card
+// deal (8 August) and the extra tile (restored 9 August) - are delegated to the
+// basicBot heuristics rather than expanded into the MCTS move space. Adding any
+// of them as a tree action would balloon branching and rollout cost; the shared
+// basicBot core makes it a clean one-function delegation, and the same greedy
+// policy then runs inside the playouts, so search and rollout agree about how
+// cupcakes are spent. The 2-card deal has a SECOND reason to stay out of the
+// tree - it would search with knowledge of the deck order. See the rollout.
+//
+// ONE ASYMMETRY, INHERITED AND LEFT AS IT WAS: the rollout plays the spend-step
+// purchases but has never bought an EXTRA TILE inside a playout - the place
+// branch just places. That was true of this file before 8 August and is
+// unchanged by the restoration. It makes playouts value a cupcake slightly low
+// against a tile-locked board. Fixing it is a search change, to be measured on
+// its own rather than folded into a rule change.
 //
 // decideOrderTea is gone (1 August): tea fires from the engine at the end of any
 // turn that leaves four teapots showing. The tea ROUND is gone too (3 August),
@@ -15,6 +25,10 @@ import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacement
 // it (see symbolTriggerValue in basicBot).
 export function decideReserve(gameState) {
   return greedyReserve(gameState);
+}
+
+export function decideDealCards(gameState) {
+  return greedyDealCards(gameState);
 }
 
 export function decideExtraTile(gameState) {
@@ -630,6 +644,17 @@ function rollout(state, playerIndex) {
         if (mv) moveTile(cloned, mv.fromIndex, mv.toIndex);
         const rp = greedyRemovePlate(cloned);
         if (rp !== null && rp !== undefined) removePlate(cloned, rp);
+        // Paid 2-card deal (8 August). Played in rollouts for the same reason as
+        // the other three: a cupcake spent is a cupcake gone, and a rollout that
+        // never spends over-values a hoard.
+        //
+        // IT IS NOT OFFERED AS A TREE ACTION, deliberately, and that is not just
+        // branching economy. The clone holds the REAL deck in its real order, so a
+        // tree node that dealt two cards would be searching with knowledge of
+        // which two - information no player has. Delegating to the greedy
+        // heuristic keeps the decision blind, because decideDealCards prices the
+        // deck as a distribution and never reads gameDeck.
+        if (greedyDealCards(cloned)) dealCards(cloned);
         const reserveId = greedyReserve(cloned);
         if (reserveId !== null && reserveId !== undefined) reserveCard(cloned, reserveId);
         skipSpend(cloned);

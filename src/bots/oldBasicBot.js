@@ -661,6 +661,10 @@ export function decideClaim(gameState) {
 // This bot predates the cupcake spend menu. It is kept as a fixed BASELINE for
 // arena.js, so its own heuristics are deliberately left alone - but a baseline
 // that simply never spends a cupcake would lose to anything for the wrong reason.
-// The two new paid decisions therefore delegate to the current basicBot, which
-// keeps the comparison about the heuristics this file exists to test.
-export { decideReserve, decideExtraTile } from './basicBot.js';
+// The paid decisions therefore delegate to the current basicBot, which keeps the
+// comparison about the heuristics this file exists to test.
+// decideExtraTile came off this list on 8 August, when the rule it served was
+// deleted, and goes back on it on 9 August with the restoration. decideDealCards
+// stays: it took the extra tile's slot on the menu for a day and now sits beside
+// it, and it was never a rename of it.
+export { decideReserve, decideDealCards, decideExtraTile } from './basicBot.js';

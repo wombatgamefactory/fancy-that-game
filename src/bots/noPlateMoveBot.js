@@ -30,7 +30,7 @@
 // on is missing from this file, so a widening win gap eventually stops meaning
 // anything about plates. Re-snapshot it or delete it once the plate numbers are
 // settled.
-import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleTeapotSymbols, getMoveCost, canReserveCard, canBuyExtraTile, canClaimMore, countBoardIngredient, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE } from '../engine/game.js';
+import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleTeapotSymbols, getMoveCost, canReserveCard, canClaimMore, countBoardIngredient, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE } from '../engine/game.js';
 
 // The claims-remaining horizon, re-denominated in the 6 August clock (a full
 // board) rather than the deleted plate pool. Copied from basicBot deliberately -
@@ -707,98 +707,12 @@ export function decideTeaReserve(gameState) {
   return decideReserve(gameState);
 }
 
-// SPEND 1 CUPCAKE: TAKE 1 EXTRA TILE. The highest-value new decision of the
-// 3 August set, and the one the change is load-bearing on.
-//
-// THE TRIGGER CONDITION IS DELIBERATELY NARROW: buy only when we are CARD-LOCKED
-// (nothing claimable from the row or our reserve as things stand) and some tile
-// on the market, dropped into some legal cell, would unlock a claim. That is
-// exactly the population probe-cupcake-spends.js measured - 37.9-39.4% of locked
-// turns are curable this way - so the bot buys where the evidence says the tile
-// pays and nowhere else. Buying to improve an already-claimable turn is a
-// different, unmeasured question and is deliberately left alone.
-//
-// Returns a market index to buy, or null. Cards carry COLOUR patterns only, so
-// the search is over the DISTINCT COLOURS on the market rather than all 25 cells;
-// the chosen index is then the best-placed tile of the winning colour, preferring
-// one sitting on a teapot cell (taking it uncovers a symbol, exactly as a sweep
-// would, and can fire our own end-of-turn pot).
-export function decideExtraTile(gameState) {
-  if (!canBuyExtraTile(gameState)) return null;
-  const player = gameState.players[gameState.currentPlayerIndex];
-
-  // The board as it WILL BE once this turn's swept tiles are placed. Buying
-  // happens before placement, so testing against the bare board would miss every
-  // unlock the sweep itself is about to create - and claim double-count them.
-  const projected = [...player.board];
-  const freeCells = getValidPlacements(projected);
-  const candidateCards = [...gameState.cardMarket, ...player.reservedCards]
-    .filter(c => c.id !== gameState.reservedCardIdThisTurn);
-
-  // Already claimable once the sweep lands? Then we are not locked and there is
-  // nothing here to buy. Simulate the placements decidePlacements would make.
-  const plan = gameState.pendingSweepTiles.length > 0 ? decidePlacements(gameState) : [];
-  for (let i = 0; i < plan.length; i++) {
-    if (plan[i] === null || plan[i] === undefined) continue;
-    projected[plan[i]] = gameState.pendingSweepTiles[i];
-  }
-  for (const card of candidateCards) {
-    if (getPatternMatches(projected, card.pattern).length > 0) return null; // not locked
-  }
-
-  const spots = getValidPlacements(projected);
-  if (spots.length === 0) return null;
-
-  const marketColours = new Map(); // colour -> market indices holding it
-  for (let i = 0; i < gameState.market.length; i++) {
-    const tile = gameState.market[i];
-    if (!tile) continue;
-    if (!marketColours.has(tile.colour)) marketColours.set(tile.colour, []);
-    marketColours.get(tile.colour).push(i);
-  }
-
-  let bestColour = null;
-  let bestVp = -Infinity;
-  for (const [colour] of marketColours) {
-    for (const cellIndex of spots) {
-      const trial = [...projected];
-      trial[cellIndex] = { colour, ingredient: null };
-      for (const card of candidateCards) {
-        if (getPatternMatches(trial, card.pattern).length === 0) continue;
-        const vp = (card.vp || 0) + CLAIM_EXTRA;
-        if (vp > bestVp) {
-          bestVp = vp;
-          bestColour = colour;
-        }
-      }
-    }
-  }
-  if (bestColour === null) return null;
-  // Worth the cupcake at all? The unlocked claim must beat what else the cupcake
-  // buys, priced the same way the reserve decision prices it.
-  if (bestVp < RESERVE_CUPCAKE_VALUE) return null;
-
-  // Among tiles of the winning colour, prefer one on a teapot cell, then one
-  // whose ingredient we already hold. The ingredient half used to be about the
-  // pantry goals; with those deleted it survives on the concentration argument
-  // alone - a tile whose ingredient we already have is a tile that can extend a
-  // stand row when it is sacrificed, rather than opening a second one.
-  const indices = marketColours.get(bestColour);
-  const ingredientHeld = (idx) => {
-    const tile = gameState.market[idx];
-    return tile ? countBoardIngredient(player.board, tile.ingredient) : 0;
-  };
-  let bestIndex = indices[0];
-  let bestRank = -Infinity;
-  for (const idx of indices) {
-    const rank = (TEAPOT_SYMBOL_CELLS.includes(idx) ? 2 : 0) + Math.min(1, ingredientHeld(idx));
-    if (rank > bestRank) {
-      bestRank = rank;
-      bestIndex = idx;
-    }
-  }
-  return bestIndex;
-}
+// (decideExtraTile stood here. It was cut on 8 August when the rule it served was
+// deleted, and the rule came back on 9 August - but this copy has NOT been
+// restored, and this arm also has no equivalent of the paid 2-card deal. So it is
+// now short two of the five spends on the menu, on top of the staleness the
+// header already declares. Left loadable rather than updated: nothing imports it.
+// Restore both from basicBot before ever running this arm again.)
 
 // Market indices ranked best-first as bonus-tile picks. Exported so the MCTS
 // bot can prune its search to the most promising candidates.

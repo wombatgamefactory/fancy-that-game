@@ -5,7 +5,7 @@ import { BOARD_SIZE, REWARD_CARDS } from '../engine/tiles.js';
 // them is a hard error rather than a dead name. countBoardIngredient goes with
 // them: it survives in the engine for the bots, but the only thing that ever
 // asked it a question here was the objectives panel.
-import { getPatternMatches, getLegalDestinations, getMoveCost, canBuyExtraTile, canReserveCard, canRemovePlate, canClaimMore, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, EXTRA_TILE_CUPCAKE_COST, RESERVE_CUPCAKE_COST, RESERVE_LIMIT, getSweepPlacementCount, getVisibleTeapotSymbols, getStartingCupcakes, isTastingMenuInPlay, getAvailableMenus, getMenuDeficit, getMenuIngredients, satisfiesMenu, TASTING_MENU_VP, TASTING_MENUS, isFlavourInPlay, getFlavourCount, getFlavourLeaders, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
+import { getPatternMatches, getLegalDestinations, getMoveCost, canDealCards, canBuyExtraTile, canReserveCard, canRemovePlate, canClaimMore, getExtraClaimCupcakeCost, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, RESERVE_CUPCAKE_COST, RESERVE_LIMIT, getSweepPlacementCount, getVisibleTeapotSymbols, getStartingCupcakes, isTastingMenuInPlay, getAvailableMenus, getMenuDeficit, getMenuIngredients, satisfiesMenu, TASTING_MENU_VP, TASTING_MENUS, isFlavourInPlay, getFlavourCount, getFlavourLeaders, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
 
 // Ingredient names as they appear in copy. The engine's INGREDIENTS are lowercase
 // keys that double as image filenames (images/symbol_<ingredient>.png), and a
@@ -80,8 +80,8 @@ export function showRulesModal() {
           <div class="ft-rules__step">
             <div class="ft-rules__step-title">1. Sweep</div>
             <div class="ft-rules__text">Pick a row or column of the market and declare a colour or an ingredient. Take every tile in that line matching your declaration.</div>
-            <div class="ft-rules__text">Clear the whole line and take 1 extra tile from anywhere on the market.</div>
-            <div class="ft-rules__text">You may also spend ${EXTRA_TILE_CUPCAKE_COST} cupcakes for 1 extra tile from anywhere. Once per turn.</div>
+            <div class="ft-rules__text">Clear the whole line and take 1 free extra tile from anywhere on the market.</div>
+            <div class="ft-rules__text"><strong>${EXTRA_TILE_CUPCAKE_COST} cupcake:</strong> take 1 extra tile from anywhere on the market. Once per turn, at this step only - it is placed with your swept tiles.</div>
           </div>
 
           <div class="ft-rules__step">
@@ -95,7 +95,8 @@ export function showRulesModal() {
             <div class="ft-rules__text"><strong>${MOVE_TILE_CUPCAKE_COST}:</strong> move one of your tiles to an empty cell.</div>
             <div class="ft-rules__text"><strong>${REMOVE_PLATE_CUPCAKE_COST}:</strong> return one empty plate from your board to the box, freeing that cell.</div>
             <div class="ft-rules__text"><strong>${RESERVE_CUPCAKE_COST}:</strong> reserve a card from the market. You may hold ${RESERVE_LIMIT}, and you cannot claim it on the turn you reserve it. A reserved card is safe from the tea flush.</div>
-            <div class="ft-rules__text">Each of the three once per turn.</div>
+            <div class="ft-rules__text"><strong>${DEAL_CARDS_CUPCAKE_COST}:</strong> deal ${CARDS_PER_DEAL} new cards onto the card row. <strong>You may claim one of them this turn.</strong> Not available if the row has no room for both.</div>
+            <div class="ft-rules__text">Each once per turn - and the extra tile at step 1 is a fifth, independent of these.</div>
           </div>
 
           <div class="ft-rules__step">
@@ -185,7 +186,7 @@ export function showRulesModal() {
                with 3 - a drift the interpolation now makes impossible. -->
           <div class="ft-rules__text">Starting cupcakes, by seat: <strong>2 players</strong> ${getStartingCupcakes(2).join(' / ')}, <strong>3 players</strong> ${getStartingCupcakes(3).join(' / ')}, <strong>4 players</strong> ${getStartingCupcakes(4).join(' / ')}.</div>
           <div class="ft-rules__text">Gain ${TEA_POT_REWARD} when a pot of tea is brewed on your turn, and 1 for plating a tile onto a cupcake plate.</div>
-          <div class="ft-rules__text">Spend: <strong>${EXTRA_TILE_CUPCAKE_COST}</strong> extra tile · <strong>${MOVE_TILE_CUPCAKE_COST}</strong> move a tile · <strong>${REMOVE_PLATE_CUPCAKE_COST}</strong> remove a plate · <strong>${RESERVE_CUPCAKE_COST}</strong> reserve a card.</div>
+          <div class="ft-rules__text">Spend: <strong>${EXTRA_TILE_CUPCAKE_COST}</strong> extra tile <em>(step 1)</em> · <strong>${DEAL_CARDS_CUPCAKE_COST}</strong> deal ${CARDS_PER_DEAL} new cards · <strong>${MOVE_TILE_CUPCAKE_COST}</strong> move a tile · <strong>${REMOVE_PLATE_CUPCAKE_COST}</strong> remove a plate · <strong>${RESERVE_CUPCAKE_COST}</strong> reserve a card.</div>
           <div class="ft-rules__text">Cupcakes score no points. They break ties.</div>
         </div>
 
@@ -457,9 +458,9 @@ function seatHTML(playerIdx, gameState) {
       </div>`;
 }
 
-// `spendHandlers` bundles the three 3-August paid options - the extra tile and
-// the paid reserve, each with a toggle - rather than growing this parameter list
-// by four more positional callbacks.
+// `spendHandlers` bundles the paid options - the extra tile and the reserve, each
+// with a toggle, plus the one-click 2-card deal and the plate removal - rather
+// than growing this parameter list by six more positional callbacks.
 export function renderGameScreen(container, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick, spendHandlers = {}) {
 
   container.innerHTML = `
@@ -665,6 +666,7 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
     onSkipMove,
     onMoveTile,
     onCupcakeClick,
+    onDealCards: spendHandlers.onDealCards,
     onExtraTile: spendHandlers.onExtraTile,
     onExtraTileToggle: spendHandlers.onExtraTileToggle,
     onReserveCard: spendHandlers.onReserveCard,
@@ -686,7 +688,8 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
     cupcakeMode: false,
     // Sweep-step "buy an extra tile" mode: the next market click lifts a tile
     // rather than declaring a sweep. Spend-step "reserve a card" mode: the next
-    // card click reserves rather than claims.
+    // card click reserves rather than claims. (The paid 2-card deal has no mode
+    // of its own - its button deals the cards itself.)
     extraTileMode: false,
     reserveMode: false,
     lastPlayerIndex: -1,
@@ -1007,9 +1010,11 @@ function updateMarket(gameState) {
     : `${symbolCount} - ${REFRESH_THRESHOLD} showing at the end of a turn orders a fresh pot`;
 
   // Two ways a single market tile becomes clickable: the free line-clear bonus
-  // tile, and the PAID extra tile (3 August), which is armed by the player from
-  // the cupcake panel. They look and behave the same because they are the same
-  // operation - lift one tile onto the pile about to be placed.
+  // tile, and the PAID extra tile, which is armed by the player from the cupcake
+  // panel. They look and behave the same because they are the same operation -
+  // lift one tile onto the pile about to be placed. (The paid half was deleted on
+  // 8 August and restored on 9 August, along with the arming state and the
+  // .ft-tile--buyable class.)
   const ui = window._gameUI;
   const buyingTile = ui && ui.extraTileMode && canBuyExtraTile(gameState);
 
@@ -1022,8 +1027,8 @@ function updateMarket(gameState) {
     // A market tile is only ever clickable in two situations: the free
     // line-clear bonus tile, and the paid extra tile. Everywhere else you sweep
     // a whole LINE with the row/column buttons and an individual tile does
-    // nothing. The class carries that fact into CSS so the hover lift can be
-    // limited to the tiles that will actually respond - see .ft-tile--pickable.
+    // nothing. The class carries that fact into CSS so the hover lift is limited
+    // to tiles that will actually respond - see .ft-tile--pickable.
     if (isBonusAvailable || isBuyable) tileClass += ' ft-tile--pickable';
     const showTeapotSymbol = isEmpty && symbolCells.has(idx);
     if (showTeapotSymbol) tileClass += gateArmed ? ' ft-tile--symbol-armed' : ' ft-tile--symbol';
@@ -1614,13 +1619,27 @@ function showSweepOptionsForCol(gameState, col) {
   });
 }
 
-// One claim per turn, in the exact words the player needs. Shared by the market
-// cards, the "on order" reserve card and the tooltip so they cannot drift apart.
-const SECOND_CLAIM_MESSAGE = 'One claim per turn - you have already claimed. Click "Confirm Turn →" to end your turn.';
+// Why a further claim is refused, in the exact words the player needs. Shared by
+// the market cards, the "on order" reserve card and the tooltip so they cannot
+// drift apart.
+//
+// SINCE 9 AUGUST A FURTHER CLAIM IS FOR SALE, NOT FORBIDDEN (§6, 1 cupcake each,
+// uncapped), so the usual reason a human lands in 'refill' with a claim already
+// made is an empty purse - claim() closes the claim step the moment the player
+// cannot pay for another. The old "one claim per turn" wording survives for the
+// A/B control, because the engine can still be swung back to it and a UI that
+// lied about which rule was live would be worse than no message at all.
+function furtherClaimMessage() {
+  const cost = getExtraClaimCupcakeCost();
+  if (cost === null) {
+    return 'One claim per turn - you have already claimed. Click "Confirm Turn →" to end your turn.';
+  }
+  return `Another card costs ${cost} cupcake${cost === 1 ? '' : 's'} and you cannot pay. Click "Confirm Turn →" to end your turn.`;
+}
 
 // True when a human is looking at cards they may no longer claim this turn. The
 // engine's rule is enforced in claim(); this is only about explaining it.
-function isSecondClaimBlocked(gameState) {
+function isFurtherClaimBlocked(gameState) {
   const player = gameState.players[gameState.currentPlayerIndex];
   return gameState.gamePhase === 'refill' && gameState.claimsThisTurn > 0 && player.isHuman;
 }
@@ -1748,21 +1767,24 @@ function updateCardMarket(gameState) {
     });
   }
 
-  // ONE CLAIM PER TURN, SAID OUT LOUD (design doc §6). After a claim the turn
-  // sits in the 'refill' phase and the cards simply stop responding, which reads
-  // as a broken interface to the many players who assume a second claim is
-  // allowed. Wire the whole row to state the rule instead of doing nothing: the
-  // engine rejects the second claim either way, but a silent no-op teaches the
-  // player nothing, and greying the cards out only says "no", never "why".
+  // THE CLOSED CLAIM STEP, SAID OUT LOUD (design doc §6). When the claim step has
+  // closed the turn sits in the 'refill' phase and the cards simply stop
+  // responding, which reads as a broken interface to the many players who assume
+  // another claim is allowed - and since 9 August they are RIGHT that it is
+  // allowed, just not affordable, which makes an unexplained dead row worse than
+  // it ever was. Wire the whole row to state the reason instead of doing nothing:
+  // the engine refuses the claim either way, but a silent no-op teaches the player
+  // nothing, and greying the cards out only says "no", never "why".
   // The message is in-page (the notice line above the row) rather than an
   // alert() - a modal dialog for a rule reminder is far too heavy a hammer, and
   // it is the only place in the game screen that would have used one.
-  if (isSecondClaimBlocked(gameState)) {
+  if (isFurtherClaimBlocked(gameState)) {
     cardMarket.querySelectorAll('.card-market-sprite').forEach(cardEl => {
       cardEl.style.cursor = 'not-allowed';
       cardEl.classList.add('ft-card--claim-used');
-      cardEl.title = SECOND_CLAIM_MESSAGE;
-      cardEl.addEventListener('click', () => showCardRowNotice(SECOND_CLAIM_MESSAGE));
+      const msg = furtherClaimMessage();
+      cardEl.title = msg;
+      cardEl.addEventListener('click', () => showCardRowNotice(msg));
     });
   }
 
@@ -2043,15 +2065,17 @@ function renderOnOrderSlot(gameState, player, playerIdx, boardEl) {
       && getPatternMatches(player.board, card.pattern).length > 0;
     if (isClaimable) {
       cardEl.addEventListener('click', () => showRemovalUI(gameState, card.id));
-    } else if (isCurrentPlayer && isSecondClaimBlocked(gameState)) {
-      // A reserved card is claimed through the SAME one-claim-per-turn budget as
-      // a market card, and it is the card a player is most likely to reach for
-      // second ("but it is mine, surely that one is free"). It must therefore say
-      // the same thing the market cards say rather than sit there inert.
+    } else if (isCurrentPlayer && isFurtherClaimBlocked(gameState)) {
+      // A reserved card is bought on the SAME terms as a market card - the first
+      // claim of the turn free, every further one priced - and it is the card a
+      // player is most likely to reach for second ("but it is mine, surely that
+      // one is free"). It must therefore say the same thing the market cards say
+      // rather than sit there inert.
       cardEl.style.cursor = 'not-allowed';
       cardEl.classList.add('ft-card--claim-used');
-      cardEl.title = SECOND_CLAIM_MESSAGE;
-      cardEl.addEventListener('click', () => showCardRowNotice(SECOND_CLAIM_MESSAGE));
+      const msg = furtherClaimMessage();
+      cardEl.title = msg;
+      cardEl.addEventListener('click', () => showCardRowNotice(msg));
     }
   });
 }
@@ -2635,6 +2659,7 @@ function updateStats(gameState) {
     const cupcakeClass = ui.cupcakeMode ? 'ft-cupcake-supply--active' : '';
     // The other two paid options, so a player can see the whole menu in one place
     // rather than discovering them phase by phase.
+    const canDeal = isCurrentPlayer && canDealCards(gameState);
     const canBuyTile = isCurrentPlayer && canBuyExtraTile(gameState);
     const canReserve = isCurrentPlayer && canReserveCard(gameState);
 
@@ -2652,9 +2677,31 @@ function updateStats(gameState) {
     // itself, and "click the tile" is the wrong verb on the touch devices this
     // whole plan exists to support. The plural is derived from the constant so
     // the two cannot drift if the price ever changes - it read "2 cupcake".
+    //
+    // 8 AUGUST: this note used to explain the extra tile and its second click
+    // ("then choose the tile you want"). The new spend has no second click at
+    // all, so what the sentence has to carry instead is the ONE thing a player
+    // cannot see - that the new cards are live for this turn's claim.
+    const dealCardsNote = canDeal
+      ? `<span class="ft-cupcake-note ft-cupcake-note--offer">🧁 Nothing on the row you can make? Spend ${DEAL_CARDS_CUPCAKE_COST} cupcake${DEAL_CARDS_CUPCAKE_COST === 1 ? '' : 's'} for ${CARDS_PER_DEAL} new cards - and you may claim one of them this turn.</span>`
+      : (gameState.cardsDealtThisTurn ? `<span class="ft-cupcake-note">Cards dealt this turn</span>` : '');
+    // 9 AUGUST: the extra tile is back, so the panel again carries a note whose
+    // action lives at a DIFFERENT STEP from the buttons under it. The two are
+    // never live at the same moment - canBuyExtraTile is sweep-step only,
+    // canDealCards is spend-step only - so at most one offer note ever shows.
+    //
+    // 9 AUGUST (second revision): the tile is UNCAPPED, so the offer no longer
+    // says ONE and the spent-note counts instead of announcing an allowance. The
+    // note stays live between purchases - a player who has bought two and can
+    // still afford a third needs to be told both things at once, so the count
+    // rides along with the offer rather than replacing it.
+    const extraTilesBought = gameState.extraTilesBoughtThisTurn || 0;
+    const boughtSoFar = extraTilesBought > 0
+      ? ` You have bought ${extraTilesBought} this turn.`
+      : '';
     const extraTileNote = canBuyTile
-      ? `<span class="ft-cupcake-note ft-cupcake-note--offer">🧁 You may spend ${EXTRA_TILE_CUPCAKE_COST} cupcake${EXTRA_TILE_CUPCAKE_COST === 1 ? '' : 's'} for ONE more tile from anywhere on the market - then choose the tile you want.</span>`
-      : (gameState.extraTileUsedThisTurn ? `<span class="ft-cupcake-note">Extra tile bought this turn</span>` : '');
+      ? `<span class="ft-cupcake-note ft-cupcake-note--offer">🧁 You may spend ${EXTRA_TILE_CUPCAKE_COST} cupcake${EXTRA_TILE_CUPCAKE_COST === 1 ? '' : 's'} for another tile from anywhere on the market - then choose the tile you want. Buy as many as you can pay for.${boughtSoFar}</span>`
+      : (extraTilesBought > 0 ? `<span class="ft-cupcake-note">${extraTilesBought} extra tile${extraTilesBought === 1 ? '' : 's'} bought this turn</span>` : '');
     const reserveNote = canReserve
       ? `<span class="ft-cupcake-note">A reserved card is safe from the tea flush - but you cannot claim it until your next turn.</span>`
       : (p.reservedCards.length >= RESERVE_LIMIT ? `<span class="ft-cupcake-note">Your reserve is full (${RESERVE_LIMIT} card).</span>` : '');
@@ -2679,10 +2726,16 @@ function updateStats(gameState) {
           <div class="ft-cupcake-spends">
             <button class="ft-cupcake-spend-btn ${ui.extraTileMode ? 'ft-cupcake-spend-btn--active' : ''}"
                     id="buyExtraTileBtn" ${canBuyTile ? '' : 'disabled'}
-                    title="At the sweep step only, once per turn: take any one tile from the market and place it with your swept tiles">
+                    title="At the sweep step only, as often as you can pay: take any one tile from the market and place it with your swept tiles">
               +1 tile from the market (${EXTRA_TILE_CUPCAKE_COST}🧁)
             </button>
             ${extraTileNote}
+            <button class="ft-cupcake-spend-btn"
+                    id="dealCardsBtn" ${canDeal ? '' : 'disabled'}
+                    title="At the spend step, once per turn: deal ${CARDS_PER_DEAL} new cards onto the card row. You may claim one of them this turn.">
+              +${CARDS_PER_DEAL} new cards (${DEAL_CARDS_CUPCAKE_COST}🧁)
+            </button>
+            ${dealCardsNote}
             <button class="ft-cupcake-spend-btn ${ui.reserveMode ? 'ft-cupcake-spend-btn--active' : ''}"
                     id="reserveCardBtn" ${canReserve ? '' : 'disabled'}
                     title="Take one card from the market into your reserve. You may not claim it this turn, and your reserve holds ${RESERVE_LIMIT} card.">
@@ -2717,9 +2770,17 @@ function updateStats(gameState) {
       });
     }
 
+    // The extra tile ARMS the market and waits for a second click (onExtraTile),
+    // which is why it needs a toggle at all.
     if (canBuyTile && ui.onExtraTileToggle) {
       const btn = statsEl.querySelector('#buyExtraTileBtn');
       if (btn) btn.addEventListener('click', () => ui.onExtraTileToggle());
+    }
+    // No toggle and no armed mode: unlike the other spend buttons here, this one
+    // IS the action - there is nothing for the player to pick afterwards.
+    if (canDeal && ui.onDealCards) {
+      const btn = statsEl.querySelector('#dealCardsBtn');
+      if (btn) btn.addEventListener('click', () => ui.onDealCards());
     }
     if (canReserve && ui.onReserveToggle) {
       const btn = statsEl.querySelector('#reserveCardBtn');
@@ -2918,9 +2979,26 @@ function updatePhaseControls(gameState) {
           </div>
         `;
       } else {
+        // THE PRICE HAS TO BE ON THE BUTTON, NOT IN THE BOOK (§6, 9 August). A
+        // player who has already claimed is being offered something the game has
+        // spent every previous version refusing them, so the phase bar must say
+        // both that a further card is available AND what it costs - a bar that
+        // still reads "Click a card to claim it" would be read as the first claim
+        // repeating itself, and the cupcake would come as a surprise.
+        const extraCost = getExtraClaimCupcakeCost();
+        const isFurther = gameState.claimsThisTurn > 0 && extraCost !== null;
+        const instruction = isFurther
+          ? `Click another card to claim it - ${extraCost} cupcake${extraCost === 1 ? '' : 's'}`
+          : 'Click a card to claim it';
+        // Their first claim was free; this names what the next one costs against
+        // what they hold, which is the comparison the decision actually needs.
+        const status = isFurther
+          ? `<div class="ft-phase-bar__status">You have ${currentPlayer.cupcakes} cupcake${currentPlayer.cupcakes === 1 ? '' : 's'} - or skip and end your turn</div>`
+          : '';
         html = `
           <div class="ft-phase-bar">
-            <div class="ft-phase-bar__instruction">Click a card to claim it</div>
+            <div class="ft-phase-bar__instruction">${instruction}</div>
+            ${status}
             <div class="ft-phase-bar__controls">
               ${undoBtn}
               <button id="skipClaim" class="ft-btn ft-btn--secondary ft-btn--small">Skip Claim</button>
@@ -2930,12 +3008,20 @@ function updatePhaseControls(gameState) {
       }
     }
   } else if (gameState.gamePhase === 'refill') {
-    // State the one-claim-per-turn rule (§6) on the turn where it actually binds,
-    // so a player looking for a second claim reads the rule rather than concluding
-    // the cards have stopped working. Clicking a card says the same thing (see
-    // updateCardMarket).
+    // Say WHY the claim step has closed, on the turn where it actually binds, so a
+    // player looking for another card reads the rule rather than concluding the
+    // cards have stopped working. Clicking a card says the same thing (see
+    // updateCardMarket, which shares furtherClaimMessage with this).
+    //
+    // Reaching 'refill' with a claim already made means one of two things, and
+    // since 9 August it is almost always the second: the control rule is live and
+    // allows only one claim, or the player cannot afford another card.
     const claimUsed = gameState.claimsThisTurn > 0
-      ? `<div class="ft-phase-bar__status">You have claimed this turn - only one claim per turn</div>`
+      ? `<div class="ft-phase-bar__status">${
+          getExtraClaimCupcakeCost() === null
+            ? 'You have claimed this turn - only one claim per turn'
+            : 'No cupcakes left for another card'
+        }</div>`
       : '';
     html = `
       <div class="ft-phase-bar">

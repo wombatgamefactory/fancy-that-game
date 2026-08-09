@@ -39,11 +39,13 @@ node src/engine/game.js
 - **Players**: 2–4
 - **Turn Structure**:
   1. **SWEEP**: Declare a colour or an ingredient and take every matching tile from
-     one market row or column (optionally paying 2 cupcakes for 1 extra tile from
-     anywhere on the market before you place)
+     one market row or column (clear the line and take 1 free extra tile from
+     anywhere). You may also **spend 1 cupcake for 1 extra tile from anywhere** at
+     this step
   2. **PLACE**: Position tiles on your 5×5 personal board
   3. **SPEND**: Optionally spend cupcakes (move a tile, reserve a card, remove an
-     empty plate)
+     empty plate, or **deal 2 new cards onto the card row** - and you may claim one
+     of them this same turn)
   4. **CLAIM**: Earn a card by completing its colour pattern on your board. If the
      tile you remove carries **your own Speciality ingredient**, also score
      whatever the teapot is standing on
@@ -82,7 +84,27 @@ src/bots/
   randomBot.js  – Baseline random move selection
 
 index.html, style.css – Browser entry point
+
+tools/
+  layout-check.mjs      – Responsive layout regression suite
+  check-card-sheet.mjs  – Card art vs card data freshness check
 ```
+
+### Changing a card pattern
+
+Patterns live in **three** places and only two of them are linked:
+
+1. `reward_cards.csv` – the source of truth Dean edits.
+2. `src/engine/tiles.js` – what the engine matches on. Run
+   `node generateCardsFromCSV.js` to splice the CSV in.
+3. **The card art** – the swatches are painted into the sprite sheet, and
+   nothing regenerates them. Re-export the sheet to a new versioned filename,
+   repoint `.card-market-sprite` in `style.css` and bump its `?v=` query.
+
+Miss step 3 and the game awards a card for a shape that is not the one printed
+on it. Verify with `node tools/check-card-sheet.mjs`, which reads the swatches
+back out of the sheet and diffs them against the engine (`--dump` writes crops
+of any card that disagrees).
 
 ## Current Status
 

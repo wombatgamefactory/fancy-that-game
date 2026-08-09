@@ -1057,8 +1057,17 @@ label {
 
    All the renderer emits now is the card's ADDRESS on the sheet - a column and
    a row - and the geometry is done in percentages, which are independent of the
-   rendered size. reward_card_layout.png is a TTS-style 10x7 sheet (7501 x 7277);
+   rendered size. reward-cards-v5.png is a TTS-style 10x7 sheet (7501 x 7277);
    cards 1-50 fill the first five rows and the last two are blank.
+
+   THE SHEET IS DATA AND IT GOES STALE. The pattern swatches are painted into
+   the art, so a card whose pattern is edited in reward_cards.csv keeps showing
+   its old colours until the sheet is re-exported - the engine matches on the
+   new pattern while the player reads the old one off the card. That is exactly
+   what happened to cards 25, 26 and 43 between 21 July and 9 August, and it is
+   why the filename carries a version: re-export to a NEW name and repoint this
+   rule, so the previous sheet stays around to diff against. Bump the ?v= query
+   too, or browsers keep the cached image.
 
    The percentages: with the image scaled to 1000% x 700%, it is exactly 10
    cards wide and 7 tall, so a background-position of x% slides it across
@@ -1071,14 +1080,17 @@ label {
    2px border for 5px - the art would visibly jump the moment a card became
    claimable.
 
-   Cards are also containers, so the VP badge can size itself in cqw and stay
-   glued to the printed laurel wreath as the card grows or shrinks. */
+   Cards are also containers, so the VP badge can size itself in cqw and hold
+   its place at the foot of the card as the card grows or shrinks. (Up to v5 it
+   sat on top of a laurel wreath printed into the art, which is where its size
+   came from; the v5 export drops the wreath, so the badge now stands alone on
+   the cream.) */
 .card-market-sprite {
   container-type: size;
   position: relative;
   height: var(--card-height);
   aspect-ratio: 0.72155;
-  background-image: url('images/reward_card_layout.png?v=3');
+  background-image: url('images/reward-cards-v5.png?v=5');
   background-repeat: no-repeat;
   background-size: 1000% 700%;
   background-position: calc(var(--sprite-col) / 9 * 100%)
@@ -1086,11 +1098,15 @@ label {
   background-origin: border-box;
 }
 
-/* Overlays the VP number printed on the card art (bottom-center, inside a
-   laurel wreath ~18% of card width, centered ~8.6% up from the bottom edge).
-   Sized to the wreath ring so the laurel frames the badge without spilling
-   into the pattern tiles above. Drawn programmatically so the displayed value
-   always matches the data even if the image is stale. */
+/* The card's VP, drawn bottom-center over the art rather than read off it, so
+   the displayed value always matches the data even when the sheet is stale -
+   which, as the note on .card-market-sprite says, it periodically is.
+
+   The 18.5cqw width is inherited from the sheets up to v4, where it was fitted
+   to a laurel wreath printed at that size so the laurel framed the badge
+   without spilling into the pattern tiles above. v5 drops the wreath; the size
+   is kept because it still reads well against the empty cream, but it is now a
+   free choice rather than a measurement of something. */
 .ft-card__vp {
   position: absolute;
   bottom: 2%;
@@ -1960,11 +1976,13 @@ label {
    src/ui/board.js for what the markup used to be. */
 
 /* ---------------------------------------------------------------------------
-   THE PAID CUPCAKE SPENDS (3 August). Two buttons in the cupcake panel that ARM
-   a mode; the actual target is then clicked on the market (extra tile) or the
-   card row (reserve). They are disabled rather than hidden when unavailable, so
-   the menu is always legible - a player needs to know the option exists on the
-   turn they cannot use it, not only on the turn they can.
+   THE PAID CUPCAKE SPENDS (3 August). Three buttons in the cupcake panel, and
+   they do not all behave alike. The extra tile (restored 9 August) and the
+   reserve ARM a mode, and the target is then clicked on the market or the card
+   row; the 2-card deal (8 August) fires on the click itself, because the player
+   picks nothing. They are disabled rather than hidden when unavailable, so the
+   menu is always legible - a player needs to know the option exists on the turn
+   they cannot use it, not only on the turn they can.
    --------------------------------------------------------------------------- */
 .ft-cupcake-spends {
   display: flex;
@@ -2049,7 +2067,7 @@ label {
 
 /* A market tile that the armed extra-tile purchase can lift. Deliberately the
    same visual language as the free line-clear bonus tile, because it is the same
-   operation at a price. */
+   operation at a price. (Deleted 8 August with the rule, restored 9 August.) */
 .ft-tile--buyable {
   outline: 2px solid var(--color-accent-gold, #C9A227);
   outline-offset: -2px;

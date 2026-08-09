@@ -427,6 +427,11 @@ check('6b: a claim and a turn rotation do not touch it', () => {
   const { s } = claimState({ tileIngredient: 'lemon', flavour: 'lemon' });
   claim(s, 1, 0, { type: 'row', rowIndex: 0 });
   eq(s.flavourOfTheDay, 'lemon', 'unchanged by the claim');
+  // A claim no longer ends the claim step (9 August: further cards are for sale
+  // at 1 cupcake, so the phase stays open while the player can pay). Close it the
+  // way a real turn does before rotating - this used to fall through to 'refill'
+  // on its own.
+  if (s.gamePhase === 'claim') skipClaim(s);
   refill(s);
   eq(s.flavourOfTheDay, 'lemon', 'and unchanged by the rotation that follows it');
 });

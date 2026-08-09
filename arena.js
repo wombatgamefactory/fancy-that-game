@@ -6,7 +6,7 @@
 //
 // Usage: node arena.js <games> <playerCount> <modA> <modB>
 //   where modA/modB are module names under src/bots/ (without .js).
-import { createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, calculateFinalScores, getWinningPlayers } from './src/engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, dealCards, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, calculateFinalScores, getWinningPlayers } from './src/engine/game.js';
 
 const games = parseInt(process.argv[2]) || 100;
 const playerCount = parseInt(process.argv[3]) || 2;
@@ -39,10 +39,16 @@ function runGame(strategies) {
         break;
       }
       case 'place': {
-        // 3 August: the extra tile is bought before placements are chosen - it is
-        // placed with the swept tiles.
-        const extra = strategy.decideExtraTile ? strategy.decideExtraTile(gameState) : null;
-        if (extra !== null && extra !== undefined) gameState = takeExtraTile(gameState, extra);
+        // The extra tile is bought here, before placements are chosen (deleted
+        // 8 August, restored 9 August). The paid 2-card deal is a spend-step
+        // action and stays below; both are on the menu.
+        // A LOOP SINCE 9 AUGUST (second revision) - the tile is uncapped, so ask
+        // again after each purchase and let the engine's gates end it.
+        for (let n = 0; n < 25; n++) {
+          const ex = strategy.decideExtraTile ? strategy.decideExtraTile(gameState) : null;
+          if (ex === null || ex === undefined) break;
+          gameState = takeExtraTile(gameState, ex);
+        }
         gameState = place(gameState, strategy.decidePlacements(gameState));
         break;
       }
@@ -51,6 +57,8 @@ function runGame(strategies) {
         if (mv) gameState = moveTile(gameState, mv.fromIndex, mv.toIndex);
         const rp = strategy.decideRemovePlate ? strategy.decideRemovePlate(gameState) : null;
         if (rp !== null && rp !== undefined) gameState = removePlate(gameState, rp);
+        // 8 August: 1 cupcake, 2 new cards on the row, claimable this same turn.
+        if (strategy.decideDealCards && strategy.decideDealCards(gameState)) gameState = dealCards(gameState);
         const rc = strategy.decideReserve ? strategy.decideReserve(gameState) : null;
         if (rc !== null && rc !== undefined) gameState = reserveCard(gameState, rc);
         gameState = skipSpend(gameState);

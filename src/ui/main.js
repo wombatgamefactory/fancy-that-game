@@ -1,4 +1,4 @@
-import { createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, canBuyExtraTile, place, claim, skipClaim, skipSpend, refill, moveTile, removePlate, canRemovePlate, getMoveCost, reserveCard, canReserveCard, canClaimMore, getValidSweeps, getValidPlacements, getPatternMatches, getWinningPlayers, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, dealCards, canDealCards, takeExtraTile, canBuyExtraTile, place, claim, skipClaim, skipSpend, refill, moveTile, removePlate, canRemovePlate, getMoveCost, reserveCard, canReserveCard, canClaimMore, getValidSweeps, getValidPlacements, getPatternMatches, getWinningPlayers, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
 import { createStatsCollector } from '../engine/statsCollector.js';
 import { renderSetupScreen, renderGameScreen, updateGameDisplay, setThinkingState, setThinkingProgress, renderEndScreen } from './board.js';
 import * as basicBot from '../bots/basicBot.js';
@@ -85,6 +85,7 @@ function onGameStart(playerConfigs) {
   renderGameScreen(app, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick, {
     onExtraTile,
     onExtraTileToggle,
+    onDealCards,
     onReserveCard,
     onRemovePlate,
     onReserveToggle,
@@ -211,9 +212,14 @@ function onCupcakeClick() {
   }
 }
 
-// SPEND 1 CUPCAKE: TAKE 1 EXTRA TILE (3 August). Offered at the sweep step, once
-// the sweep has resolved and before the swept tiles are placed - the bought tile
-// joins them, so the placement UI must see it. Reuses the bonus-tile click path.
+// SPEND 1 CUPCAKE: TAKE 1 EXTRA TILE (3 August; deleted 8 August, restored
+// 9 August). Offered at the sweep step, once the sweep has resolved and before
+// the swept tiles are placed - the bought tile joins them, so the placement UI
+// must see it. Reuses the bonus-tile click path.
+//
+// TWO CLICKS, unlike the deal below: the button ARMS the market, then the player
+// picks the tile. extraTileMode is that armed state and board.js clears it the
+// moment the purchase stops being legal.
 function onExtraTile(marketIndex) {
   if (!canBuyExtraTile(gameState)) return;
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
@@ -232,6 +238,25 @@ function onExtraTileToggle() {
   if (!canBuyExtraTile(gameState)) return;
   window._gameUI.extraTileMode = !window._gameUI.extraTileMode;
   updateDisplay();
+}
+
+// SPEND 1 CUPCAKE: DEAL 2 NEW CARDS (8 August). Sits at the spend step, one step
+// after the extra tile above.
+//
+// IT NEEDS NO MODE AND NO SECOND CLICK, which is the whole difference between
+// the two buttons: the player chooses nothing here, so the button IS the action.
+// No armed market, no highlighted targets, nothing to cancel out of.
+function onDealCards() {
+  if (!canDealCards(gameState)) return;
+  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  if (!currentPlayer.isHuman) return;
+  try {
+    pushUndoSnapshot();
+    dealCards(gameState);
+    updateDisplay();
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 // SPEND 1 CUPCAKE: RESERVE A CARD (3 August). Offered at the spend step on the
@@ -371,12 +396,21 @@ async function autoPlayGame() {
           // reached, because an overflow ended the game.)
           setThinkingState(currentPlayer.name, true);
           updateDisplay();
-          // Buy an extra tile FIRST (3 August): it is a sweep-step option and the
-          // tile it buys is placed with the swept tiles, so the placement decision
-          // has to see it.
-          const extraIndex = bot.decideExtraTile ? bot.decideExtraTile(gameState) : null;
-          if (extraIndex !== null && extraIndex !== undefined) {
+          // Buy an extra tile FIRST: it is a sweep-step option and the tile it
+          // buys is placed with the swept tiles, so the placement decision has to
+          // see it. (Deleted 8 August, restored 9 August; the paid 2-card deal is
+          // a spend-step action and is taken in the 'spend' branch below.)
+          //
+          // A LOOP SINCE 9 AUGUST (second revision): the extra tile is uncapped,
+          // so the bot is asked again after each purchase and stops when it
+          // answers null. The engine's purse and free-cell gates are what end it;
+          // the counter here is a runaway stop only.
+          let botExtraTiles = 0;
+          while (botExtraTiles < 25) {
+            const extraIndex = bot.decideExtraTile ? bot.decideExtraTile(gameState) : null;
+            if (extraIndex === null || extraIndex === undefined) break;
             takeExtraTile(gameState, extraIndex);
+            botExtraTiles++;
           }
           const placements = await bot.decidePlacements(gameState, currentPlayer.aiDifficulty);
           setThinkingState(currentPlayer.name, false);
@@ -395,6 +429,12 @@ async function autoPlayGame() {
           const plateIndex = bot.decideRemovePlate ? await bot.decideRemovePlate(gameState, currentPlayer.aiDifficulty) : null;
           if (plateIndex !== null && plateIndex !== undefined) {
             removePlate(gameState, plateIndex);
+          }
+          // Paid 2-card deal (8 August): 1 cupcake for 2 new cards on the row,
+          // resolved before the reserve and before the claim step so both can act
+          // on what it turns up.
+          if (bot.decideDealCards && bot.decideDealCards(gameState)) {
+            dealCards(gameState);
           }
           // Paid reserve: 1 cupcake for a market card, not claimable this turn.
           const reserveId = bot.decideReserve ? bot.decideReserve(gameState) : null;
