@@ -19,6 +19,26 @@
   <meta name="twitter:description" content="A spot of strategy with your afternoon tea. Play the free online version of Fancy That!">
   <meta name="twitter:image" content="https://www.wombatgamefactory.com/images/fancy-that_logo_graph.jpg">
 
+  <!-- Web app manifest. An INSTALLED game drops the browser chrome, which is
+       worth roughly 110px of vertical space on a phone - the single largest
+       piece of screen anything in this build can win back.
+
+       theme_color and background_color are both the cream, so the splash and the
+       system bars match the page instead of flashing white.
+
+       ORIENTATION IS DELIBERATELY ABSENT. Locking it is a design decision that
+       belongs to the landscape ticket, and setting it here would quietly make
+       that decision by default. -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- iOS ignores the manifest's display mode and reads these two instead.
+       "black-translucent" would push the page under the status bar; "default"
+       keeps the cream page starting below it, which is what the layout expects. -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Fancy That!">
+  <meta name="theme-color" content="#FBF5EC">
+
   <!-- Favicon -->
   <link rel="icon" type="image/x-icon" href="https://www.wombatgamefactory.com/favicon.ico">
   <link rel="icon" type="image/png" sizes="32x32" href="https://www.wombatgamefactory.com/favicon-32x32.png">
@@ -42,6 +62,17 @@
   <script>function loadScript(a){var b=document.getElementsByTagName("head")[0],c=document.createElement("script");c.type="text/javascript",c.src="https://tracker.metricool.com/resources/be.js",c.onreadystatechange=a,c.onload=a,b.appendChild(c)}loadScript(function(){beTracker.t({hash:"246df0746358adafd3745b08e93dc646"})});</script>
 
   <link rel="preload" as="image" href="images/landing/hero.jpg">
+  <!-- The goal-card sprite sheet. It is referenced only from a background-image
+       in style.css, so the browser does not learn it exists until it has parsed
+       the stylesheet, matched the rule and laid out a card - by which time the
+       card row has already settled and the art pops in on top of it.
+
+       The ?v=6 must match .card-market-sprite's exactly or this preloads a
+       SECOND copy of the sheet rather than the one the page will use.
+
+       The 11MB that used to be the real problem here is gone: ticket 17
+       re-exported the sheet to web scale as WebP and it is now 521KB. -->
+  <link rel="preload" as="image" href="images/reward-cards-v6.webp?v=6">
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>

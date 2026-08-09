@@ -8,8 +8,14 @@ import { BOARD_SIZE, REWARD_CARDS } from '../engine/tiles.js';
 import { getPatternMatches, getLegalDestinations, getMoveCost, canDealCards, canBuyExtraTile, canReserveCard, canRemovePlate, canClaimMore, getExtraClaimCupcakeCost, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, RESERVE_CUPCAKE_COST, RESERVE_LIMIT, getSweepPlacementCount, getVisibleTeapotSymbols, getStartingCupcakes, isTastingMenuInPlay, getAvailableMenus, getMenuDeficit, getMenuIngredients, satisfiesMenu, TASTING_MENU_VP, TASTING_MENUS, isFlavourInPlay, getFlavourCount, getFlavourLeaders, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
 
 // Ingredient names as they appear in copy. The engine's INGREDIENTS are lowercase
-// keys that double as image filenames (images/symbol_<ingredient>.png), and a
+// keys that double as image filenames (images/symbol-<ingredient>-v2.png), and a
 // sentence should not be the place that discovers that.
+//
+// The -v2 files are the web-scale export (ticket 17, 9 August): 88px on the long
+// side, which is 2x .ft-flavour__symbol at 44px, the largest box any of these is
+// ever drawn in. The v1 files were 794 to 1200px and 531KB combined; these are
+// 4.6KB. The originals stay in images/ under their old symbol_<ingredient>.png
+// names, unreferenced, so the two can be compared.
 const INGREDIENT_LABELS = {
   lemon: 'Lemon',
   chocolate: 'Chocolate',
@@ -28,6 +34,89 @@ function ingredientLabel(ingredient) {
 function ingredientPhrase(ingredient) {
   const word = ingredientLabel(ingredient).toLowerCase();
   return `${/^[aeiou]/.test(word) ? 'an' : 'a'} ${word}`;
+}
+
+// ---------------------------------------------------------------------------
+// THE TOAST (9 August, ticket 00 / finding 16)
+// ---------------------------------------------------------------------------
+//
+// Every engine refusal used to arrive as an alert(). Three things were wrong
+// with that and only the third is cosmetic:
+//   - it BLOCKS. A modal dialog stops the page and the player's turn until it is
+//     dismissed, for a message that is a sentence long.
+//   - on iOS it is prefixed "wombatgamefactory.github.io says:", which reads as
+//     a browser security warning rather than as the game talking.
+//   - it is OS chrome in the middle of a hand-drawn tea room.
+//
+// The strings are unchanged - only the transport is. This is deliberately the
+// plainest thing that works, on the existing tokens; the typography ticket may
+// restyle it later.
+//
+// TWO ERRORS IN QUICK SUCCESSION MUST NOT STACK INTO A WALL, which is why there
+// is exactly ONE toast element for the whole page and a second message REPLACES
+// the first rather than queueing behind it. A player who taps a forbidden thing
+// four times gets one line, not four; the repeat is still visible because the
+// entrance animation is restarted by hand (the same reflow trick as the card-row
+// notice above).
+//
+// It mounts on document.body, NOT inside #app: the game re-renders by assigning
+// #app.innerHTML, which would delete a toast mid-message.
+const TOAST_MS = 3000;
+let toastEl = null;
+let toastTimer = null;
+
+function hideToast() {
+  if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+  if (toastEl) toastEl.classList.add('ft-hidden');
+}
+
+export function showToast(message) {
+  const text = typeof message === 'string' ? message.trim() : '';
+  if (!text) return;
+
+  if (!toastEl) {
+    toastEl = document.createElement('div');
+    toastEl.className = 'ft-toast ft-hidden';
+    // role="alert" rather than "status": these are refusals, and a player who
+    // cannot see the screen needs to hear one at the moment it happens.
+    toastEl.setAttribute('role', 'alert');
+    // Dismissible by tap, per the ticket. The whole toast is the target, so it
+    // is far larger than the 44px floor and needs no close control of its own.
+    toastEl.addEventListener('click', hideToast);
+    document.body.appendChild(toastEl);
+  }
+
+  toastEl.textContent = text;
+  toastEl.classList.remove('ft-hidden');
+  toastEl.classList.remove('ft-toast--flash');
+  void toastEl.offsetWidth; // force a reflow so a repeat message re-animates
+  toastEl.classList.add('ft-toast--flash');
+
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, TOAST_MS);
+}
+
+// IS THIS A FINGER OR A MOUSE? `(hover: none)` is the only honest test - it asks
+// the PRIMARY pointer whether it can hover, which a touchscreen cannot and a
+// trackpad or mouse can. Width is not a proxy for it (a narrow desktop window is
+// still a mouse) and neither is a touch-events check (hybrid laptops report both).
+//
+// Queried live rather than cached, because the answer changes: a tablet with a
+// keyboard case attached flips it mid-session, and every caller here runs inside
+// a re-render, so a live read costs nothing and never goes stale.
+function isTouchInput() {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(hover: none)').matches;
+}
+
+// "1 cupcake" / "2 cupcakes". The three paid spends used to print their price as
+// a bare number followed by the cupcake emoji; with the emoji gone (9 August,
+// ticket 00 / finding 07) the price has to say what it is in words, and the
+// plural has to be derived because every one of these prices is a tuning
+// constant that has already changed more than once.
+function cupcakePrice(n) {
+  return `${n} cupcake${n === 1 ? '' : 's'}`;
 }
 
 const DIFFICULTY_LABELS = {
@@ -119,7 +208,7 @@ export function showRulesModal() {
         </div>
 
         <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--tea">
-          <div class="ft-rules__section-title">🫖 A Fresh Pot of Tea</div>
+          <div class="ft-rules__section-title">A Fresh Pot of Tea</div>
           <div class="ft-rules__text">A teapot is showing when the space printed under it is empty. If ${REFRESH_THRESHOLD} are showing at the end of your turn, a pot is brewed automatically instead of dealing a card:</div>
           <div class="ft-rules__text">1. Discard the whole card row and deal ${INITIAL_MARKET_CARDS} new cards. Reserved cards are safe.</div>
           <div class="ft-rules__text">2. You gain ${TEA_POT_REWARD} cupcake${TEA_POT_REWARD === 1 ? '' : 's'}.</div>
@@ -146,7 +235,7 @@ export function showRulesModal() {
              menus are on the table. The card value and the deck size are read off
              the engine rather than typed in. -->
         <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--menus">
-          <div class="ft-rules__section-title">📜 Tasting Menus</div>
+          <div class="ft-rules__section-title">Tasting Menus</div>
           <div class="ft-rules__text">At setup, deal one more than the number of players face up beside the market, from a deck of ${TASTING_MENUS.length}. They are never replaced.</div>
           <div class="ft-rules__text">Each asks for three tiles: one ingredient twice and a second once, or three different ingredients.</div>
           <div class="ft-rules__text">The moment your <strong>cake stand and crumb tray together</strong> show those ingredients, take the card. Free, automatic, and no part of your turn.</div>
@@ -166,7 +255,7 @@ export function showRulesModal() {
              thought they were keeping. STATELESS like its neighbours: this modal
              opens from the setup screen too, so it cannot name today's ingredient. -->
         <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--flavour">
-          <div class="ft-rules__section-title">🍋 The Flavour of the Day</div>
+          <div class="ft-rules__section-title">The Flavour of the Day</div>
           <div class="ft-rules__text">One ingredient is revealed at setup. It never changes.</div>
           <div class="ft-rules__text">At the end of the game, score <strong>${FLAVOUR_VP_PER_TILE} point per tile of that ingredient on your player board</strong>.</div>
           <div class="ft-rules__text">The player with the most scores <strong>${FLAVOUR_MAJORITY_VP} points more</strong>. Everybody tied for the most scores the full ${FLAVOUR_MAJORITY_VP}. There is no tiebreak.</div>
@@ -272,7 +361,7 @@ export function renderSetupScreen(container, onStart) {
           <div id="playerSetup" class="ft-setup__section"></div>
 
           <div class="ft-play__actions">
-            <button id="rulesButton" class="ft-btn ft-btn--secondary">📖 Rules</button>
+            <button id="rulesButton" class="ft-btn ft-btn--secondary">Rules</button>
             <button id="startButton" class="ft-btn ft-btn--primary">Start Game</button>
           </div>
         </section>
@@ -418,9 +507,14 @@ function seatHTML(playerIdx, gameState) {
 
   // updateGameDisplay rewrites seat 1's header text when player 1 is a bot (the
   // all-bot demo), so the id has to survive.
+  // THE SEAT MARKER IS PLAIN TEXT (9 August, ticket 00 / finding 07). It used to
+  // be an emoji pair, and the pair was the only thing on screen that said which
+  // seats are bots - so the glyph could not simply be deleted with the rest. The
+  // icon set ticket designs the real marker; until then the word does the job and
+  // is at least unambiguous, which the two emoji were not at 13px.
   const title = isOwnSeat
-    ? `<h2 class="ft-panel__title" id="player1Header">🎮 Your Board</h2>`
-    : `<h2 class="ft-panel__title">${player?.isHuman ? '🧑' : '🤖'} Player ${n}</h2>`;
+    ? `<h2 class="ft-panel__title" id="player1Header">Your Board</h2>`
+    : `<h2 class="ft-panel__title">Player ${n} (${player?.isHuman ? 'Human' : 'Bot'})</h2>`;
 
   // The "Swept Tiles" caption names a row of tiles that appears directly above
   // your own board during the one step where you are placing them, which is
@@ -894,7 +988,7 @@ export function setThinkingState(playerName, isThinking) {
   if (!element) return;
 
   if (isThinking) {
-    element.textContent = `🤔 ${playerName} is thinking…`;
+    element.textContent = `${playerName} is thinking…`;
     if (containerElement) containerElement.style.display = 'block';
   } else {
     if (containerElement) containerElement.style.display = 'none';
@@ -910,11 +1004,11 @@ export function setThinkingProgress(playerName, progress) {
   if (!textElement || !containerElement || !progressBar) return;
 
   if (progress !== null && progress !== undefined && progress > 0) {
-    textElement.textContent = `🤔 ${playerName} is thinking… (${progress}%)`;
+    textElement.textContent = `${playerName} is thinking… (${progress}%)`;
     containerElement.style.display = 'block';
     progressBar.style.width = `${progress}%`;
   } else {
-    textElement.textContent = `🤔 ${playerName} is thinking…`;
+    textElement.textContent = `${playerName} is thinking…`;
     containerElement.style.display = 'block';
     progressBar.style.width = '0%';
   }
@@ -951,7 +1045,7 @@ export function updateGameDisplay(gameState) {
   const player1Header = document.getElementById('player1Header');
   if (player1Header) {
     const player1 = gameState.players[0];
-    player1Header.textContent = player1.isHuman ? '🎮 Your Board' : '🤖 Player 1';
+    player1Header.textContent = player1.isHuman ? 'Your Board' : 'Player 1 (Bot)';
   }
 
   // Update active player indicator
@@ -1035,7 +1129,7 @@ function updateMarket(gameState) {
 
     return `
       <div class="${tileClass} market-tile" data-index="${idx}" style="${isEmpty && !showTeapotSymbol ? 'opacity: 0.3;' : ''} ${(isBonusAvailable || isBuyable) ? 'cursor: pointer;' : ''} background-color: ${tile ? getColourCSS(tile.colour) : 'white'};">
-        ${tile ? `<img src="images/symbol_${tile.ingredient}.png" class="ft-tile__icon" alt="${tile.ingredient}">` : ''}
+        ${tile ? `<img src="images/symbol-${tile.ingredient}-v2.png" class="ft-tile__icon" alt="${tile.ingredient}">` : ''}
         ${showTeapotSymbol ? `<img src="images/teapot.png" class="ft-market-teapot-symbol${gateArmed ? ' ft-market-teapot-symbol--armed' : ''}" alt="teapot symbol" title="${symbolTitle}">` : ''}
       </div>
     `;
@@ -1258,7 +1352,7 @@ function updateTastingMenus(gameState) {
     const needs = Object.entries(menu.need).sort((a, b) => b[1] - a[1]);
     const chips = needs.map(([ingredient, need]) => `
       <span class="ft-menu__need" title="${need} x ${ingredientLabel(ingredient)}">
-        <img src="images/symbol_${ingredient}.png" class="ft-menu__symbol" alt="${ingredient}">
+        <img src="images/symbol-${ingredient}-v2.png" class="ft-menu__symbol" alt="${ingredient}">
         ${need > 1 ? `<span class="ft-menu__count">${need}</span>` : ''}
       </span>`).join('');
 
@@ -1378,7 +1472,7 @@ function updateFlavourOfTheDay(gameState) {
          "somewhere in your player area" by anyone who has just learned that Tasting
          Menus read the stand; naming the stand and ruling it out is what stops it. -->
     <div class="ft-flavour__card" title="Today's flavour is ${ingredientLabel(flavour)}. Score ${FLAVOUR_VP_PER_TILE} VP for every ${ingredientLabel(flavour)} tile on your PLAYER BOARD at the end, and ${FLAVOUR_MAJORITY_VP} VP more for the most - ties are friendly. Your cake stand and crumb tray do not count. It was revealed at setup and does not change.">
-      <img src="images/symbol_${flavour}.png" class="ft-flavour__symbol" alt="${flavour}">
+      <img src="images/symbol-${flavour}-v2.png" class="ft-flavour__symbol" alt="${flavour}">
       <div class="ft-flavour__where">
         <span class="ft-flavour__label">${ingredientLabel(flavour)}</span>
         <span class="ft-flavour__place">tiles on your player board, <strong>not</strong> your cake stand</span>
@@ -1498,7 +1592,7 @@ function showSweepOptionsForRow(gameState, row) {
     const count = tiles.filter(t => t && t.ingredient === ing).length;
     html += `
       <button class="ft-modal__option sweep-option-btn" data-row="${row}" data-col="-1" data-type="symbol" data-val="${ing}">
-        <img src="images/symbol_${ing}.png" class="ft-modal__option-icon" alt="${ing}">
+        <img src="images/symbol-${ing}-v2.png" class="ft-modal__option-icon" alt="${ing}">
         <span style="font-size: 11px; color: var(--color-text-secondary);">(${count})</span>
       </button>
     `;
@@ -1585,7 +1679,7 @@ function showSweepOptionsForCol(gameState, col) {
     const count = tiles.filter(t => t && t.ingredient === ing).length;
     html += `
       <button class="ft-modal__option sweep-option-btn" data-row="-1" data-col="${col}" data-type="symbol" data-val="${ing}">
-        <img src="images/symbol_${ing}.png" class="ft-modal__option-icon" alt="${ing}">
+        <img src="images/symbol-${ing}-v2.png" class="ft-modal__option-icon" alt="${ing}">
         <span style="font-size: 11px; color: var(--color-text-secondary);">(${count})</span>
       </button>
     `;
@@ -1927,7 +2021,7 @@ function updatePlayerBoards(gameState) {
       const bgColor = (displayTile && !isBlockedCell) ? `background-color: ${getColourCSS(displayTile.colour)};` : '';
       const imageHtml = isBlockedCell
         ? `<img src="images/empty_plate.png" class="ft-tile__icon" alt="blocked">`
-        : (displayTile ? `<img src="images/symbol_${displayTile.ingredient}.png" class="ft-tile__icon" alt="${displayTile.ingredient}">` : '');
+        : (displayTile ? `<img src="images/symbol-${displayTile.ingredient}-v2.png" class="ft-tile__icon" alt="${displayTile.ingredient}">` : '');
       const menuBadge = menuPayout > 0
         ? `<span class="ft-tile__menu" title="Tasting Menu - remove this tile and plate it on your cake stand and you complete a menu, worth ${menuPayout} VP">+${menuPayout}</span>`
         : '';
@@ -1973,7 +2067,7 @@ function updatePlayerBoards(gameState) {
           : tile.ingredient;
         return !isPlaced ? `
           <div class="ft-tile working-tile${isSelected ? ' working-tile--selected' : ''}${backToBag}" draggable="true" data-tile-index="${idx}" style="background-color: ${getColourCSS(tile.colour)}; cursor: grab; user-select: none; flex-shrink: 0;" title="${title}">
-            <img src="images/symbol_${tile.ingredient}.png" class="ft-tile__icon" style="pointer-events: none;" alt="${tile.ingredient}">
+            <img src="images/symbol-${tile.ingredient}-v2.png" class="ft-tile__icon" style="pointer-events: none;" alt="${tile.ingredient}">
           </div>
         ` : '';
       }).join('');
@@ -2047,12 +2141,11 @@ function renderOnOrderSlot(gameState, player, playerIdx, boardEl) {
     return cardSpriteHTML(card, 150, {
       extraClass: isClaimable ? 'ft-card--claimable' : '',
       clickable: isClaimable,
-      badge: true,
     });
   }).join('');
 
   slotEl.innerHTML = `
-    <div class="ft-on-order__label">🫖 On order${count > 1 ? ` (${count})` : ''}</div>
+    <div class="ft-on-order__label">On order${count > 1 ? ` (${count})` : ''}</div>
     <div class="ft-on-order__cards">${cardsHTML}</div>
   `;
 
@@ -2456,13 +2549,17 @@ function renderStand(player, opts = {}) {
       const tile = row.tiles[k];
       const filled = k < row.tiles.length;
       const plate = tile
-        ? `<div class="ft-stand__plate ft-stand__plate--filled" style="background-color: ${getColourCSS(tile.colour)};"><img src="images/symbol_${tile.ingredient}.png" class="ft-stand__symbol" alt="${tile.ingredient}"></div>`
+        ? `<div class="ft-stand__plate ft-stand__plate--filled" style="background-color: ${getColourCSS(tile.colour)};"><img src="images/symbol-${tile.ingredient}-v2.png" class="ft-stand__symbol" alt="${tile.ingredient}"></div>`
         : `<div class="ft-stand__plate ft-stand__plate--empty"></div>`;
       // Cupcake plates (bottom[1], second[1], third[1], top[0]) grant a cupcake
       // when plated onto; mark them on the board whether empty or filled.
       const isCupcakePlate = CUPCAKE_PLATES.some(p => p.rowIndex === rowIndex && p.plateIndex === k);
+      // PLAIN TEXT UNTIL THE ICON SET LANDS (9 August, ticket 00 / finding 07).
+      // This marker is the only thing that says WHICH plates pay a cupcake, so
+      // unlike the decorative glyphs it could not just be deleted. "+1" plus the
+      // tooltip is the interim; the icon set ticket draws the real mark.
       const cupcakeMarker = isCupcakePlate
-        ? `<span class="ft-stand__cupcake-plate" title="Cupcake plate - plating here gains a cupcake">🧁</span>`
+        ? `<span class="ft-stand__cupcake-plate" title="Cupcake plate - plating here gains 1 cupcake">+1</span>`
         : '';
       slots += `
         <div class="ft-stand__slot">
@@ -2472,7 +2569,7 @@ function renderStand(player, opts = {}) {
     }
 
     const marker = row.ingredient
-      ? `<img src="images/symbol_${row.ingredient}.png" class="ft-stand__lock" alt="${row.ingredient}" title="Row locked to ${row.ingredient}">`
+      ? `<img src="images/symbol-${row.ingredient}-v2.png" class="ft-stand__lock" alt="${row.ingredient}" title="Row locked to ${row.ingredient}">`
       : `<div class="ft-stand__lock ft-stand__lock--empty" title="Row not yet locked"></div>`;
 
     // NAMING THE COMPONENT. The rules, the Tasting Menus and the cards all say
@@ -2494,7 +2591,6 @@ function renderStand(player, opts = {}) {
   // The crumb tray is always a legal destination during a claim.
   const crumbHtml = `
     <div class="ft-stand__crumbs ${interactive ? 'ft-stand__crumbs--legal' : ''}" ${interactive ? 'data-dest-crumb="1"' : ''}>
-      <span class="ft-stand__crumbs-icon">🍪</span>
       <span>Crumb tray: <strong>${player.crumbTray.length}</strong></span>
       <span class="ft-stand__crumbs-note">1 pt each</span>
     </div>`;
@@ -2527,7 +2623,7 @@ function renderStandSummary(player) {
     const row = player.stand[rowIndex];
     const full = row.tiles.length >= row.capacity;
     const marker = row.ingredient
-      ? `<img src="images/symbol_${row.ingredient}.png" class="ft-stand-mini__lock" alt="${row.ingredient}">`
+      ? `<img src="images/symbol-${row.ingredient}-v2.png" class="ft-stand-mini__lock" alt="${row.ingredient}">`
       : `<span class="ft-stand-mini__lock ft-stand-mini__lock--empty"></span>`;
     const title = row.ingredient
       ? `Locked to ${row.ingredient} - ${row.tiles.length} of ${row.capacity} plated`
@@ -2540,8 +2636,18 @@ function renderStandSummary(player) {
   return `
     <div class="ft-stand-mini" aria-label="Cake stand summary">
       ${rows}
+      ${/* THE CRUMB CHIP LOST ITS GLYPH AND GAINS NOTHING (9 August, ticket 00 /
+            finding 07), and the reason is measured. A "Crumbs n" text stand-in
+            was tried first and cost 245px of page height at 430: this strip's
+            max-content is what sizes an opponent seat, and 26px of extra label
+            took two seats per row down to one, adding a whole seat row. The bare
+            count and the tooltip are what is left.
+
+            THAT LEAVES A REAL GAP for the icon set and summary-rail tickets: on
+            a phone there is no hover, so nothing on screen says this fifth chip
+            is the crumb tray rather than a fifth stand row. */ ''}
       <span class="ft-stand-mini__row" title="Crumb tray - 1 point each">
-        <span class="ft-stand-mini__lock">🍪</span><span class="ft-stand-mini__count">${player.crumbTray.length}</span>
+        <span class="ft-stand-mini__count">${player.crumbTray.length}</span>
       </span>
     </div>`;
 }
@@ -2599,7 +2705,7 @@ function updateStats(gameState) {
     // already there.
     const isOpponentSeat = playerIdx !== 0;
     const oppCupcakes = isOpponentSeat
-      ? `<span class="ft-score-total__cupcakes" title="Cupcakes held - they score nothing but break ties">🧁 ${bd.cupcakes}</span>`
+      ? `<span class="ft-score-total__cupcakes" title="Cupcakes held - they score nothing but break ties">Cupcakes ${bd.cupcakes}</span>`
       : '';
 
     // The Tasting Menu line appears ALWAYS, including on 0. A player who has not
@@ -2615,9 +2721,9 @@ function updateStats(gameState) {
           const menu = TASTING_MENUS.find(m => m.id === id);
           if (!menu) return '';
           return Object.entries(menu.need).map(([ing, need]) =>
-            `<img src="images/symbol_${ing}.png" class="ft-score-breakdown__symbol" alt="${ing}" title="${need} x ${ingredientLabel(ing)}">`).join('');
+            `<img src="images/symbol-${ing}-v2.png" class="ft-score-breakdown__symbol" alt="${ing}" title="${need} x ${ingredientLabel(ing)}">`).join('');
         }).join(' ')} Tasting Menus</span><strong>${bd.menus}</strong></div>`
-      : `<div class="ft-score-breakdown__item"><span>📜 Tasting Menus</span><strong>0</strong></div>`;
+      : `<div class="ft-score-breakdown__item"><span>Tasting Menus</span><strong>0</strong></div>`;
 
     // THE FLAVOUR OF THE DAY line, on every panel including an opponent's - the
     // whole module is a contest and the only way to see where you stand in it is to
@@ -2629,15 +2735,15 @@ function updateStats(gameState) {
     // check. The majority chip is marked as provisional in its tooltip because it
     // is not settled until the game ends.
     const flavourLine = isFlavourInPlay(gameState)
-      ? `<div class="ft-score-breakdown__item"><span><img src="images/symbol_${gameState.flavourOfTheDay}.png" class="ft-score-breakdown__symbol" alt="${gameState.flavourOfTheDay}" title="Flavour of the Day: ${ingredientLabel(gameState.flavourOfTheDay)}"> Flavour${bd.flavourLeading ? ` <span class="ft-score-breakdown__lead" title="Currently holds the most - worth ${FLAVOUR_MAJORITY_VP} VP at the end, and shared if the lead is level">most +${FLAVOUR_MAJORITY_VP}</span>` : ''} <span class="ft-score-breakdown__sub">${bd.flavourTiles} on board</span></span><strong>${bd.flavour}</strong></div>`
+      ? `<div class="ft-score-breakdown__item"><span><img src="images/symbol-${gameState.flavourOfTheDay}-v2.png" class="ft-score-breakdown__symbol" alt="${gameState.flavourOfTheDay}" title="Flavour of the Day: ${ingredientLabel(gameState.flavourOfTheDay)}"> Flavour${bd.flavourLeading ? ` <span class="ft-score-breakdown__lead" title="Currently holds the most - worth ${FLAVOUR_MAJORITY_VP} VP at the end, and shared if the lead is level">most +${FLAVOUR_MAJORITY_VP}</span>` : ''} <span class="ft-score-breakdown__sub">${bd.flavourTiles} on board</span></span><strong>${bd.flavour}</strong></div>`
       : '';
 
     let html = `
       <div class="ft-score-total">Total: ${bd.total}${oppCupcakes}</div>
       <div class="ft-score-breakdown">
-        <div class="ft-score-breakdown__item"><span>🎂 Cake stand</span><strong>${bd.standTotal}</strong></div>
-        <div class="ft-score-breakdown__item"><span>🍪 Crumbs</span><strong>${bd.crumbs}</strong></div>
-        <div class="ft-score-breakdown__item"><span>🍰 Card VP</span><strong>${bd.cardVP}</strong></div>
+        <div class="ft-score-breakdown__item"><span>Cake stand</span><strong>${bd.standTotal}</strong></div>
+        <div class="ft-score-breakdown__item"><span>Crumbs</span><strong>${bd.crumbs}</strong></div>
+        <div class="ft-score-breakdown__item"><span>Card VP</span><strong>${bd.cardVP}</strong></div>
         ${menuLine}
         ${flavourLine}
       </div>
@@ -2683,7 +2789,7 @@ function updateStats(gameState) {
     // all, so what the sentence has to carry instead is the ONE thing a player
     // cannot see - that the new cards are live for this turn's claim.
     const dealCardsNote = canDeal
-      ? `<span class="ft-cupcake-note ft-cupcake-note--offer">🧁 Nothing on the row you can make? Spend ${DEAL_CARDS_CUPCAKE_COST} cupcake${DEAL_CARDS_CUPCAKE_COST === 1 ? '' : 's'} for ${CARDS_PER_DEAL} new cards - and you may claim one of them this turn.</span>`
+      ? `<span class="ft-cupcake-note ft-cupcake-note--offer">Nothing on the row you can make? Spend ${DEAL_CARDS_CUPCAKE_COST} cupcake${DEAL_CARDS_CUPCAKE_COST === 1 ? '' : 's'} for ${CARDS_PER_DEAL} new cards - and you may claim one of them this turn.</span>`
       : (gameState.cardsDealtThisTurn ? `<span class="ft-cupcake-note">Cards dealt this turn</span>` : '');
     // 9 AUGUST: the extra tile is back, so the panel again carries a note whose
     // action lives at a DIFFERENT STEP from the buttons under it. The two are
@@ -2700,7 +2806,7 @@ function updateStats(gameState) {
       ? ` You have bought ${extraTilesBought} this turn.`
       : '';
     const extraTileNote = canBuyTile
-      ? `<span class="ft-cupcake-note ft-cupcake-note--offer">🧁 You may spend ${EXTRA_TILE_CUPCAKE_COST} cupcake${EXTRA_TILE_CUPCAKE_COST === 1 ? '' : 's'} for another tile from anywhere on the market - then choose the tile you want. Buy as many as you can pay for.${boughtSoFar}</span>`
+      ? `<span class="ft-cupcake-note ft-cupcake-note--offer">You may spend ${EXTRA_TILE_CUPCAKE_COST} cupcake${EXTRA_TILE_CUPCAKE_COST === 1 ? '' : 's'} for another tile from anywhere on the market - then choose the tile you want. Buy as many as you can pay for.${boughtSoFar}</span>`
       : (extraTilesBought > 0 ? `<span class="ft-cupcake-note">${extraTilesBought} extra tile${extraTilesBought === 1 ? '' : 's'} bought this turn</span>` : '');
     const reserveNote = canReserve
       ? `<span class="ft-cupcake-note">A reserved card is safe from the tea flush - but you cannot claim it until your next turn.</span>`
@@ -2709,7 +2815,7 @@ function updateStats(gameState) {
     html += `
       <div class="ft-cupcake-supply ${cupcakeClass}" id="cupcakeSupply${playerIdx + 1}">
         <div class="ft-cupcake-header">
-          <span class="ft-cupcake-label">🧁 Cupcakes</span>
+          <span class="ft-cupcake-label">Cupcakes</span>
           <span class="ft-cupcake-help-text">Click to move a tile (${MOVE_TILE_CUPCAKE_COST}) or remove an empty plate (${REMOVE_PLATE_CUPCAKE_COST})</span>
         </div>
         <div class="ft-cupcake-icons">
@@ -2727,19 +2833,19 @@ function updateStats(gameState) {
             <button class="ft-cupcake-spend-btn ${ui.extraTileMode ? 'ft-cupcake-spend-btn--active' : ''}"
                     id="buyExtraTileBtn" ${canBuyTile ? '' : 'disabled'}
                     title="At the sweep step only, as often as you can pay: take any one tile from the market and place it with your swept tiles">
-              +1 tile from the market (${EXTRA_TILE_CUPCAKE_COST}🧁)
+              +1 tile from the market (${cupcakePrice(EXTRA_TILE_CUPCAKE_COST)})
             </button>
             ${extraTileNote}
             <button class="ft-cupcake-spend-btn"
                     id="dealCardsBtn" ${canDeal ? '' : 'disabled'}
                     title="At the spend step, once per turn: deal ${CARDS_PER_DEAL} new cards onto the card row. You may claim one of them this turn.">
-              +${CARDS_PER_DEAL} new cards (${DEAL_CARDS_CUPCAKE_COST}🧁)
+              +${CARDS_PER_DEAL} new cards (${cupcakePrice(DEAL_CARDS_CUPCAKE_COST)})
             </button>
             ${dealCardsNote}
             <button class="ft-cupcake-spend-btn ${ui.reserveMode ? 'ft-cupcake-spend-btn--active' : ''}"
                     id="reserveCardBtn" ${canReserve ? '' : 'disabled'}
                     title="Take one card from the market into your reserve. You may not claim it this turn, and your reserve holds ${RESERVE_LIMIT} card.">
-              Reserve a card (${RESERVE_CUPCAKE_COST}🧁)
+              Reserve a card (${cupcakePrice(RESERVE_CUPCAKE_COST)})
             </button>
             ${reserveNote}
           </div>` : ''}
@@ -2891,9 +2997,15 @@ function updatePhaseControls(gameState) {
     // player then has a DECISION rather than a chore: which tiles to keep. The
     // ones they leave in the tray are the ones that go back into the bag, so the
     // bar has to say that before they press Done.
+    //
+    // 9 AUGUST (ticket 00 / finding 05): the verb branches on the input. "Drag"
+    // named a gesture that does not exist on a touch device - HTML5 drag-and-drop
+    // never fires there - while the tap path has been implemented in this file
+    // since Phase B and was the only thing that worked. A player was being told
+    // to do the one thing they could not do.
     const placeInstruction = goingBack > 0
       ? `Not enough room - place ${required}, and the other ${goingBack} go back into the bag`
-      : 'Drag tiles onto your board';
+      : (isTouchInput() ? 'Tap a tile, then tap a space' : 'Drag tiles onto your board');
     html = `
       <div class="ft-phase-bar">
         <div class="ft-phase-bar__instruction">${placeInstruction}</div>
@@ -3108,13 +3220,13 @@ function showRemovalUI(gameState, cardId) {
     || player.reservedCards.find(c => c.id === cardId)
     || null;
   if (!card) {
-    alert('Card not found');
+    showToast('Card not found');
     return;
   }
   const matches = getPatternMatches(player.board, card.pattern);
 
   if (matches.length === 0) {
-    alert('Pattern not found');
+    showToast('Pattern not found');
     return;
   }
 
@@ -3175,7 +3287,9 @@ function rotatePattern(pattern, turns) {
 // `height` is normally left alone, so the card takes --card-height and follows
 // the responsive bands. Pass a value only where a card is deliberately a fixed
 // size regardless of band, as the reserve slot is.
-function cardSpriteHTML(card, height = null, { extraClass = '', clickable = false, badge = false } = {}) {
+// `badge` is gone with the teapot glyph it drew - see the note where the badge
+// used to be emitted.
+function cardSpriteHTML(card, height = null, { extraClass = '', clickable = false } = {}) {
   const CARDS_PER_ROW = 10;
   const col = (card.id - 1) % CARDS_PER_ROW;
   const row = Math.floor((card.id - 1) / CARDS_PER_ROW);
@@ -3190,7 +3304,10 @@ function cardSpriteHTML(card, height = null, { extraClass = '', clickable = fals
   return `
     <div data-card-id="${card.id}" class="card-market-sprite ft-card ${extraClass}" style="${style}">
       <div class="ft-card__vp" title="${card.vp} victory point${card.vp === 1 ? '' : 's'}">${card.vp}</div>
-      ${badge ? '<div class="ft-card__teacup" title="On order - not yet served">🫖</div>' : ''}
+      ${/* The teapot badge is DELETED rather than replaced (9 August, ticket 00 /
+            finding 07). It only ever appeared inside the reserve slot, which
+            carries an "On order" label directly above it, so the glyph was the
+            second telling and nothing is lost with it gone. */ ''}
     </div>
   `;
 }
@@ -3224,7 +3341,7 @@ export function renderGameEnd(container, data) {
     .sort((a, b) => b.score - a.score)
     .map((p, idx) => `
       <tr class="ft-stats__player-row ${idx === 0 ? 'ft-stats__player-row--winner' : ''}">
-        <td class="ft-stats__player-name">${idx === 0 ? '🏆 ' : ''}${p.name}</td>
+        <td class="ft-stats__player-name">${p.name}</td>
         <td class="ft-stats__player-score">${p.score} pts</td>
         <td class="ft-stats__player-detail">${p.cardsWon} cards</td>
         <td class="ft-stats__player-detail">${p.crumbs ?? 0} crumbs</td>
@@ -3237,7 +3354,7 @@ export function renderGameEnd(container, data) {
       <div class="ft-game-end__container">
         <div class="ft-game-end__header">
           <h1>Game Over!</h1>
-          <p class="ft-game-end__winner">🎉 ${winner.name} wins with ${winner.score} points!</p>
+          <p class="ft-game-end__winner">${winner.name} wins with ${winner.score} points!</p>
         </div>
 
         <div class="ft-game-end__section">

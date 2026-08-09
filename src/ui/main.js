@@ -1,9 +1,13 @@
 import { createGame, sweep, takeBonusTile, declineBonusTile, dealCards, canDealCards, takeExtraTile, canBuyExtraTile, place, claim, skipClaim, skipSpend, refill, moveTile, removePlate, canRemovePlate, getMoveCost, reserveCard, canReserveCard, canClaimMore, getValidSweeps, getValidPlacements, getPatternMatches, getWinningPlayers, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
 import { createStatsCollector } from '../engine/statsCollector.js';
-import { renderSetupScreen, renderGameScreen, updateGameDisplay, setThinkingState, setThinkingProgress, renderEndScreen } from './board.js';
+import { renderSetupScreen, renderGameScreen, updateGameDisplay, setThinkingState, setThinkingProgress, renderEndScreen, showToast } from './board.js';
 import * as basicBot from '../bots/basicBot.js';
 import * as mctsBot from '../bots/mctsBot.js';
 
+// EVERY REFUSAL IN THIS FILE GOES TO showToast, NOT alert() (9 August, ticket 00
+// / finding 16). The ten catch blocks below print the engine's own message, word
+// for word, exactly as they did before - only the transport changed. See the
+// toast's own note in board.js for why an OS dialog was the wrong one.
 let gameState = null;
 let statsCollector = null;
 let autoPlayMode = false;
@@ -112,7 +116,7 @@ function onMarketClick(rowOrCol, isRow, declaration, declarationType) {
       checkAutoAdvance();
     }
   } catch (e) {
-    alert(e.message);
+    showToast(e.message);
   }
 }
 
@@ -127,7 +131,7 @@ function onBonusTile(marketIndex) {
     updateDisplay();
     checkAutoAdvance();
   } catch (e) {
-    alert(e.message);
+    showToast(e.message);
   }
 }
 
@@ -138,7 +142,7 @@ function onPlacementSubmit(placements) {
     updateDisplay();
     checkAutoAdvance();
   } catch (e) {
-    alert(e.message);
+    showToast(e.message);
   }
 }
 
@@ -149,7 +153,7 @@ function onClaimSubmit(cardId, removedBoardIndex, destination) {
     updateDisplay();
     checkAutoAdvance();
   } catch (e) {
-    alert(e.message);
+    showToast(e.message);
   }
 }
 
@@ -160,7 +164,7 @@ function onSkipClaim() {
     updateDisplay();
     checkAutoAdvance();
   } catch (e) {
-    alert(e.message);
+    showToast(e.message);
   }
 }
 
@@ -171,7 +175,7 @@ function onSkipMove() {
     updateDisplay();
     checkAutoAdvance();
   } catch (e) {
-    alert(e.message);
+    showToast(e.message);
   }
 }
 
@@ -196,7 +200,7 @@ function onRemovePlate(index) {
     window._gameUI.cupcakeMode = false;
     updateDisplay();
   } catch (e) {
-    alert(e.message);
+    showToast(e.message);
   }
 }
 
@@ -230,7 +234,7 @@ function onExtraTile(marketIndex) {
     window._gameUI.extraTileMode = false;
     updateDisplay();
   } catch (e) {
-    alert(e.message);
+    showToast(e.message);
   }
 }
 
@@ -255,7 +259,7 @@ function onDealCards() {
     dealCards(gameState);
     updateDisplay();
   } catch (e) {
-    alert(e.message);
+    showToast(e.message);
   }
 }
 
@@ -272,7 +276,7 @@ function onReserveCard(cardId) {
     window._gameUI.reserveMode = false;
     updateDisplay();
   } catch (e) {
-    alert(e.message);
+    showToast(e.message);
   }
 }
 

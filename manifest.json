@@ -1,0 +1,27 @@
+{
+  "name": "Fancy That!",
+  "short_name": "Fancy That!",
+  "description": "A spot of strategy with your afternoon tea. A tile-placement board game for 2 to 4 players.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "theme_color": "#FBF5EC",
+  "background_color": "#FBF5EC",
+  "icons": [
+    {
+      "src": "https://www.wombatgamefactory.com/favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "https://www.wombatgamefactory.com/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "https://www.wombatgamefactory.com/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

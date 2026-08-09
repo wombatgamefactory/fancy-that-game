@@ -116,9 +116,19 @@ body {
   line-height: 1.5;
 }
 
+/* 100dvh, NOT 100vh (9 August, ticket 00 / finding 18). On mobile Safari and
+   Chrome for Android, 100vh is the LARGE viewport - the height the page would
+   have if the browser toolbars were hidden - so for the whole time the toolbars
+   are showing, which is most of the time, a 100vh box is taller than the screen
+   the player is looking at and the page starts life already scrollable. 100dvh
+   is the viewport as it is right now and follows the toolbars as they retract.
+
+   The two are identical on desktop and in a headless browser, so nothing above
+   the phone band moves and nothing in the layout harness measures a difference.
+   The change is only visible on the devices the whole map is about. */
 #app {
   width: 100%;
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ======= Typography ======= */
@@ -398,10 +408,27 @@ label {
   min-width: 70px;
 }
 
+/* THE AI/HUMAN TOGGLE READ BACKWARDS until 9 August (ticket 00 / finding 11).
+   The group carried a solid grey fill, so the UNSELECTED half was the one that
+   looked filled in, while the selected half was white with orange text - the
+   lighter, quieter of the two. Every player who has ever used a segmented
+   control reads the filled half as the chosen one, so the control was telling
+   them the opposite of the truth on the one screen they have to get right
+   before the game starts.
+
+   The fix is the ordinary convention: the selected half is filled with the
+   accent and reversed out in white; the unselected half is left plain on the
+   white player row it sits in, with only the group's border to say the two
+   belong together.
+
+   NOTE for the typography ticket: accent on white measures 3.4:1, which clears
+   the 3:1 UI-component bar but not the 4.5:1 text bar. --color-accent-hover
+   measures 4.8:1 if that turns out to matter more than matching the buttons. */
 .ft-setup__toggle-group {
   display: flex;
   gap: 4px;
-  background: #F0F0F0;
+  background: transparent;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 2px;
 }
@@ -420,9 +447,9 @@ label {
 }
 
 .ft-setup__toggle-btn.active {
-  background: var(--color-card);
-  color: var(--color-accent);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  background: var(--color-accent);
+  color: #FFFFFF;
+  font-weight: 600;
 }
 
 .ft-setup__difficulty-group {
@@ -1057,8 +1084,17 @@ label {
 
    All the renderer emits now is the card's ADDRESS on the sheet - a column and
    a row - and the geometry is done in percentages, which are independent of the
-   rendered size. reward-cards-v5.png is a TTS-style 10x7 sheet (7501 x 7277);
+   rendered size. reward-cards-v6.webp is a TTS-style 10x7 sheet (3391 x 3290);
    cards 1-50 fill the first five rows and the last two are blank.
+
+   WEB SCALE, NOT PRINT SCALE (ticket 17, 9 August). v5 was the print export
+   dropped straight into the build at 7501 x 7277 and 11.3MB, which was 92.4% of
+   everything the page loaded. v6 is the same art resampled so one card cell is
+   470px tall - exactly 2x the largest --card-height (235px at XL) and no more -
+   and written as WebP at quality 85. 11,327,047 bytes becomes 521,206. The
+   printed swatches survive it: tools/check-card-sheet.mjs reads the colours back
+   out of this file and still matches all 50 cards. Re-export at the same 2x
+   rule, not at whatever the print sheet happens to be.
 
    THE SHEET IS DATA AND IT GOES STALE. The pattern swatches are painted into
    the art, so a card whose pattern is edited in reward_cards.csv keeps showing
@@ -1090,7 +1126,7 @@ label {
   position: relative;
   height: var(--card-height);
   aspect-ratio: 0.72155;
-  background-image: url('images/reward-cards-v5.png?v=5');
+  background-image: url('images/reward-cards-v6.webp?v=6');
   background-repeat: no-repeat;
   background-size: 1000% 700%;
   background-position: calc(var(--sprite-col) / 9 * 100%)
@@ -2565,6 +2601,68 @@ label {
   color: var(--color-text-primary);
 }
 
+/* ======= Toast ======= */
+
+/* THE REPLACEMENT FOR alert() (9 August, ticket 00 / finding 16). See the note
+   on showToast in src/ui/board.js for why the OS dialog had to go.
+
+   FIXED AND BODY-MOUNTED, for the same reason the JS mounts it on document.body:
+   the game re-renders by assigning #app.innerHTML, so anything living inside the
+   app tree would vanish mid-message.
+
+   It sits ABOVE the phase bar rather than at the top of the screen because the
+   phase bar is where a player's eyes already are while taking a turn, and on a
+   phone the top of the page may be scrolled a long way from what they tapped.
+   The clearance below is the bar's own budget - see .ft-game's padding-bottom in
+   the touch band, which is measured from the same figure.
+
+   Deliberately built from existing tokens only, and deliberately plain: the
+   typography ticket may restyle it, and it should not have to undo anything. */
+.ft-toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--spacing-lg) + env(safe-area-inset-bottom, 0px));
+  z-index: 950;
+  max-width: min(420px, calc(100vw - 2 * var(--spacing-lg)));
+  /* A tap dismisses it, so it is a touch target and carries the 44px floor
+     unconditionally - the toast is not a per-band control and there is no width
+     at which a mouse is the only way to reach it. */
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding: var(--spacing-md) var(--spacing-lg);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--color-text-primary);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-modal);
+  cursor: pointer;
+}
+
+.ft-toast--flash {
+  animation: toast-in 0.28s ease;
+}
+
+@keyframes toast-in {
+  0% { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* The toast still APPEARS instantly for anyone who has asked for less motion -
+   it just does not slide. The message is the point; the slide is not. */
+@media (prefers-reduced-motion: reduce) {
+  .ft-toast--flash {
+    animation: none;
+  }
+}
+
 /* ======= Utility Classes ======= */
 
 .ft-hidden {
@@ -2603,8 +2701,9 @@ select:focus {
 
 /* ======= Game End Screen ======= */
 
+/* 100dvh for the same reason as #app - see the note there. */
 .ft-game-end {
-  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--color-cream);
   padding: var(--spacing-2xl);
   display: flex;
@@ -3570,24 +3669,10 @@ select:focus {
   text-transform: uppercase;
 }
 
-/* Teacup badge on the reserved card — reads as "ordered, not yet served". */
-.ft-card__teacup {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  background: var(--color-card);
-  border: 2px solid var(--color-accent-gold);
-  border-radius: 50%;
-  box-shadow: 0 1px 4px rgba(61, 43, 31, 0.4);
-  pointer-events: none;
-  z-index: 2;
-}
+/* .ft-card__teacup DELETED 9 August (ticket 00 / finding 07). It drew a gold
+   ring around a teapot emoji in the corner of a reserved card. The emoji went
+   with the rest of them, and the ring had nothing left to hold: the "On order"
+   label directly above the card already says what the badge said. */
 
 /* ======= Touch hygiene (plan B2) =======
 
@@ -4023,10 +4108,21 @@ select:focus {
     pointer-events: none;
   }
 
+  /* THE HOME INDICATOR (9 August, ticket 00 / finding 18). The safe-area inset
+     used to be carried on the MARGIN, which lifts the whole bar and leaves a
+     strip of page showing under it - and on an iPhone that strip is exactly
+     where the home indicator sits, so the bar's own bottom edge was still being
+     crossed by it. Carrying the inset as PADDING instead grows the bar's cream
+     downwards into the unsafe area: the indicator now floats over the bar's
+     background rather than over its content or the page behind it.
+
+     `max(12px, ...)` because the inset is 0 on every device without an
+     indicator, and the bar needs bottom padding regardless - 12px matches
+     --spacing-md, which is the padding on the other three sides. */
   .ft-seat__controls > .ft-phase-bar {
     pointer-events: auto;
-    margin: 0 var(--spacing-sm)
-            calc(var(--spacing-sm) + env(safe-area-inset-bottom, 0px));
+    margin: 0 var(--spacing-sm) var(--spacing-sm);
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
     box-shadow: 0 -2px 12px rgba(61, 43, 31, 0.18);
   }
 
@@ -4035,6 +4131,14 @@ select:focus {
      buttons); 190 covers it plus the safe-area inset on an iPad. */
   .ft-game {
     padding-bottom: 190px;
+  }
+
+  /* The bar is fixed from here down, so the toast has to clear it or it lands on
+     top of the controls it is talking about. 150 is the measured bar (~127px in
+     its tallest phase) plus a gap, and it stays inside the 190px the page below
+     is already reserving. */
+  .ft-toast {
+    bottom: calc(150px + env(safe-area-inset-bottom, 0px));
   }
 }
 
