@@ -6,11 +6,94 @@
   <title>Fancy That! - Play Online | Wombat Game Factory</title>
   <meta name="description" content="Play Fancy That! online - a cozy tile-placement board game for 2-4 players. Sweep tiles, build colour patterns, and claim kawaii patisserie figurines.">
 
+  <!-- LIGHT ONLY, DECLARED (plan section 8.10, stage 1). Dark mode is refused,
+       not deferred: the ground is a pale linen cloth under one warm light and a
+       dark version of it turns the lights off in the tearoom. Without this
+       declaration Chrome on Android's automatic dark theme INVENTS one by
+       inverting the page, which is the worst available outcome. The matching
+       `color-scheme: light` sits on :root in style.css; both are needed - the
+       meta is what the browser reads before the stylesheet arrives. -->
+  <meta name="color-scheme" content="light">
+
+  <!-- ===== Resource hints =================================================
+       These sit ABOVE the three analytics tags on purpose. Everything below
+       this block is either a third party or a piece of metadata, and the
+       preload scanner reads the head in order.
+
+       THE MODULE GRAPH IS WHAT BLOCKS FIRST PAINT, not the fonts (measured,
+       plan section 12.3). index.html ships an empty <div id="app">, so nothing
+       paints until the whole ES module graph has landed - and the graph was
+       being discovered THREE round trips deep, because a module's imports are
+       unknown until the module itself has been parsed:
+
+           main.js               wave 1
+           game.js, board.js     wave 2, not discovered until main.js parsed
+           tiles.js, tastingMenus.js   wave 3, not discovered until game.js did
+
+       Declaring all five up front flattens three waves into one, measured at
+       -232ms of first paint at 4G and -520ms at Slow 4G for about 250 bytes of
+       markup. It is the largest single lever in the build.
+
+       FIVE LINES, NOT THE EIGHT THE PLAN NAMES. The plan's eight counted
+       basicBot.js, mctsBot.js and statsCollector.js, which the SAME stage moves
+       to a dynamic import() fired on window.load (main.js). Preloading them
+       here would put all 57,499 gzipped bytes of them straight back on the
+       landing page's critical path and cancel that change out. The five below
+       are the whole of what the landing page's first paint waits for. -->
+  <link rel="modulepreload" href="src/ui/main.js">
+  <link rel="modulepreload" href="src/ui/board.js">
+  <link rel="modulepreload" href="src/engine/game.js">
+  <link rel="modulepreload" href="src/engine/tiles.js">
+  <link rel="modulepreload" href="src/engine/tastingMenus.js">
+
+  <!-- THE FONTS ARE SECOND IN THE QUEUE, which is why they moved here (plan
+       section 12.3). On the shipped build the @import on style.css:1 cost
+       nothing, because its chain finished at 663ms and first paint was not
+       until 936ms. Preload the modules above and first paint moves to 680ms, at
+       which point the @import chain IS the binding constraint and hoisting it
+       into the HTML with preconnects is worth a further 192ms. The two changes
+       are only worth making together. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz@9..144&family=Inter:wght@400;500;600;700&display=swap">
+
+  <link rel="preload" as="image" href="images/landing/hero.jpg">
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- THE GOAL-CARD SPRITE IS FETCHED AFTER THE LANDING PAGE, NOT BEFORE IT.
+       The sheet is 521,384 bytes for a screen the player has not reached, and
+       as a <link rel=preload> it held the connection from 114ms to 1,497ms at
+       4G while the module graph first paint was waiting on shared the pipe with
+       it. That alone was 42% of the landing page's critical-path payload and
+       the one reason budget 2 failed.
+
+       fetchpriority="low" ON THE PRELOAD WAS MEASURED AND DOES NOTHING - the
+       request still starts at 111ms and finishes at the same moment. A priority
+       hint is not a deferral. window.load is, and it is what the plan's
+       deferral rule (section 12.4) asks for: the sheet still lands at 1,833ms
+       instead of 1,497ms, warm long before anyone finishes choosing seats, and
+       finding 19's card pop-in stays answered.
+
+       The ?v=6 must match .card-market-sprite's in style.css EXACTLY or this
+       warms a second copy of the sheet rather than the one the page draws. -->
+  <script>
+    addEventListener('load', () => {
+      const sprite = new Image();
+      sprite.fetchPriority = 'low';
+      sprite.src = 'images/reward-cards-v6.webp?v=6';
+    });
+  </script>
+
   <!-- Open Graph -->
   <meta property="og:title" content="Fancy That! - Play Online">
   <meta property="og:description" content="A spot of strategy with your afternoon tea. Play the free online version of Fancy That!">
   <meta property="og:image" content="https://www.wombatgamefactory.com/images/fancy-that_logo_graph.jpg">
-  <meta property="og:url" content="https://wombatgamefactory.github.io/fancy-that-game/">
+  <!-- THE CANONICAL HOST, not the github.io one. wombatgamefactory.github.io
+       301s to www.wombatgamefactory.com, and measured on the open internet that
+       redirect takes time to first byte from 251-256ms to 486-600ms - a quarter
+       of the first-paint budget spent before the page starts, on the link a
+       publisher is most likely to open. -->
+  <meta property="og:url" content="https://www.wombatgamefactory.com/fancy-that-game/">
   <meta property="og:type" content="website">
 
   <!-- Twitter Card -->
@@ -26,9 +109,10 @@
        theme_color and background_color are both the cream, so the splash and the
        system bars match the page instead of flashing white.
 
-       ORIENTATION IS DELIBERATELY ABSENT. Locking it is a design decision that
-       belongs to the landscape ticket, and setting it here would quietly make
-       that decision by default. -->
+       ORIENTATION IS NOW SET, to the portrait GROUP (manifest.json). Ticket 00
+       left it out deliberately because locking it was the landscape ticket's
+       decision to make; that ticket made it (plan section 9) and landscape is
+       refused rather than deferred. -->
   <link rel="manifest" href="manifest.json">
 
   <!-- iOS ignores the manifest's display mode and reads these two instead.
@@ -60,20 +144,6 @@
 
   <!-- Metricool tracking -->
   <script>function loadScript(a){var b=document.getElementsByTagName("head")[0],c=document.createElement("script");c.type="text/javascript",c.src="https://tracker.metricool.com/resources/be.js",c.onreadystatechange=a,c.onload=a,b.appendChild(c)}loadScript(function(){beTracker.t({hash:"246df0746358adafd3745b08e93dc646"})});</script>
-
-  <link rel="preload" as="image" href="images/landing/hero.jpg">
-  <!-- The goal-card sprite sheet. It is referenced only from a background-image
-       in style.css, so the browser does not learn it exists until it has parsed
-       the stylesheet, matched the rule and laid out a card - by which time the
-       card row has already settled and the art pops in on top of it.
-
-       The ?v=6 must match .card-market-sprite's exactly or this preloads a
-       SECOND copy of the sheet rather than the one the page will use.
-
-       The 11MB that used to be the real problem here is gone: ticket 17
-       re-exported the sheet to web scale as WebP and it is now 521KB. -->
-  <link rel="preload" as="image" href="images/reward-cards-v6.webp?v=6">
-  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div id="app"></div>

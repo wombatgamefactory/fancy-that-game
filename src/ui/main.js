@@ -1,8 +1,57 @@
 import { createGame, sweep, takeBonusTile, declineBonusTile, dealCards, canDealCards, takeExtraTile, canBuyExtraTile, place, claim, skipClaim, skipSpend, refill, moveTile, removePlate, canRemovePlate, getMoveCost, reserveCard, canReserveCard, canClaimMore, getValidSweeps, getValidPlacements, getPatternMatches, getWinningPlayers, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
-import { createStatsCollector } from '../engine/statsCollector.js';
 import { renderSetupScreen, renderGameScreen, updateGameDisplay, setThinkingState, setThinkingProgress, renderEndScreen, showToast } from './board.js';
-import * as basicBot from '../bots/basicBot.js';
-import * as mctsBot from '../bots/mctsBot.js';
+
+// ---------------------------------------------------------------------------
+// THE THREE MODULES THE LANDING PAGE CANNOT USE (9 August, stage 1, plan
+// section 12.6)
+// ---------------------------------------------------------------------------
+//
+// basicBot.js, mctsBot.js and statsCollector.js were static imports, which put
+// 57,499 gzipped bytes of them on the landing page's critical path - 34% of the
+// module graph's second wave - for three things that cannot exist until a game
+// has been created. No bot has an opponent to think about on a seat-taking
+// screen and no collector has a game to bind to.
+//
+// THEY ARE PREWARMED, NOT MERELY LAZY, and the difference is the whole of plan
+// section 12.4's deferral rule: "an asset the current screen does not draw is
+// not fetched before that screen is interactive; it is fetched afterwards, at
+// low priority, so it is warm by the time the player asks for it." Firing the
+// import() at window.load means the fetch is off the critical path AND finished
+// long before anybody has chosen a player count, so pressing Start is still the
+// 42ms render it was rather than a load. The await below is what makes that
+// safe if it is not: a player who presses Start on the first frame waits for
+// the download instead of getting a half-built game.
+//
+// One promise, memoised, so a second call cannot start a second fetch.
+let deferredModules = null;
+function loadDeferredModules() {
+  if (!deferredModules) {
+    deferredModules = Promise.all([
+      import('../engine/statsCollector.js'),
+      import('../bots/basicBot.js'),
+      import('../bots/mctsBot.js'),
+    ]).then(([stats, basic, mcts]) => ({
+      createStatsCollector: stats.createStatsCollector,
+      basicBot: basic,
+      mctsBot: mcts,
+    }));
+  }
+  return deferredModules;
+}
+
+// main.js is a module script, so it runs at DOMContentLoaded time and the load
+// event is still ahead of it - but a bfcache restore or a re-executed bundle
+// could land after it has already fired, and then nothing would ever warm.
+if (document.readyState === 'complete') {
+  loadDeferredModules();
+} else {
+  addEventListener('load', () => loadDeferredModules(), { once: true });
+}
+
+// Set by onGameStart, before anything can ask a bot for a move. autoPlayGame is
+// only ever reached from onGameStart, confirmTurn or checkAutoAdvance, all of
+// which are downstream of a started game.
+let bots = null;
 
 // EVERY REFUSAL IN THIS FILE GOES TO showToast, NOT alert() (9 August, ticket 00
 // / finding 16). The ten catch blocks below print the engine's own message, word
@@ -79,9 +128,29 @@ function confirmTurn() {
   }
 }
 
-function onGameStart(playerConfigs) {
+// Start is now asynchronous (it awaits the deferred modules), so for the first
+// time there is a window in which it can be pressed twice. On a warm import
+// that window is one microtask; on a cold one it is a download. Two games would
+// otherwise be created and the second would render over the first.
+let starting = false;
+
+async function onGameStart(playerConfigs) {
+  if (starting) return;
+  starting = true;
+  try {
+    await startGame(playerConfigs);
+  } finally {
+    starting = false;
+  }
+}
+
+async function startGame(playerConfigs) {
   undoStack.length = 0;
-  statsCollector = createStatsCollector();
+  // Normally already resolved: the import fired at window.load and the player
+  // has spent seconds on the seat screen since. See loadDeferredModules.
+  const deferred = await loadDeferredModules();
+  bots = deferred;
+  statsCollector = deferred.createStatsCollector();
   gameState = createGame(playerConfigs, statsCollector);
   autoPlayMode = playerConfigs.every(p => !p.isHuman);
 
@@ -359,7 +428,7 @@ async function autoPlayGame() {
     if (!currentPlayer.isHuman) {
       try {
         const isMCTS = currentPlayer.aiDifficulty && currentPlayer.aiDifficulty.startsWith('mcts');
-        const bot = isMCTS ? mctsBot : basicBot;
+        const bot = isMCTS ? bots.mctsBot : bots.basicBot;
 
         if (gameState.gamePhase === 'sweep') {
           if (gameState.bonusTileAvailable) {

@@ -5,7 +5,7 @@ import { BOARD_SIZE, REWARD_CARDS } from '../engine/tiles.js';
 // them is a hard error rather than a dead name. countBoardIngredient goes with
 // them: it survives in the engine for the bots, but the only thing that ever
 // asked it a question here was the objectives panel.
-import { getPatternMatches, getLegalDestinations, getMoveCost, canDealCards, canBuyExtraTile, canReserveCard, canRemovePlate, canClaimMore, getExtraClaimCupcakeCost, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, RESERVE_CUPCAKE_COST, RESERVE_LIMIT, getSweepPlacementCount, getVisibleTeapotSymbols, getStartingCupcakes, isTastingMenuInPlay, getAvailableMenus, getMenuDeficit, getMenuIngredients, satisfiesMenu, TASTING_MENU_VP, TASTING_MENUS, isFlavourInPlay, getFlavourCount, getFlavourLeaders, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
+import { getPatternMatches, getLegalDestinations, getMoveCost, canDealCards, canBuyExtraTile, canReserveCard, canRemovePlate, canClaimMore, getExtraClaimCupcakeCost, getMaxExtraTilesPerTurn, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, RESERVE_CUPCAKE_COST, RESERVE_LIMIT, getSweepPlacementCount, getVisibleTeapotSymbols, getStartingCupcakes, isTastingMenuInPlay, getAvailableMenus, getMenuDeficit, getMenuIngredients, satisfiesMenu, TASTING_MENU_VP, TASTING_MENUS, isFlavourInPlay, getFlavourCount, getFlavourLeaders, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
 
 // Ingredient names as they appear in copy. The engine's INGREDIENTS are lowercase
 // keys that double as image filenames (images/symbol-<ingredient>-v2.png), and a
@@ -110,6 +110,23 @@ function isTouchInput() {
     && window.matchMedia('(hover: none)').matches;
 }
 
+// "Tap" or "Click", capitalised, for the start of an instruction.
+//
+// 9 AUGUST, STAGE 1, DEFECT 14. Ticket 00 fixed the verb at ONE site - the
+// placement line below - and eight more visible strings were missed, five of
+// them in the phase bar and all three steps of the claim. A phone player was
+// being told to click through the hardest part of the game to learn.
+//
+// A HELPER RATHER THAN EIGHT INLINE TERNARIES, because the ninth site is what
+// the last one was: the point of a named function is that a grep for it finds
+// every place the verb is decided. isTouchInput() is still read LIVE on every
+// call - a tablet with a keyboard case flips the answer mid-session and every
+// caller here runs inside a re-render, so caching it would be a stale string
+// nobody would think to look for.
+function clickVerb() {
+  return isTouchInput() ? 'Tap' : 'Click';
+}
+
 // "1 cupcake" / "2 cupcakes". The three paid spends used to print their price as
 // a bare number followed by the cupcake emoji; with the emoji gone (9 August,
 // ticket 00 / finding 07) the price has to say what it is in words, and the
@@ -132,6 +149,41 @@ function getDifficultyLabel(difficulty) {
 }
 
 export function showRulesModal() {
+  // THREE CORRECTIONS, 9 August, stage 1, defect 15. The one surface a
+  // first-timer reads before playing was the one surface that was wrong, and
+  // the game's own in-moment copy was right where the book was wrong:
+  //
+  //   - the extra tile was called "Once per turn" against
+  //     MAX_EXTRA_TILES_PER_TURN = null. The button's own tooltip already said
+  //     "as often as you can pay".
+  //   - the claim was called "One card per turn" against an uncapped 1-cupcake
+  //     further claim that the phase bar was already offering correctly. A
+  //     player was being talked out of a legal move by the rules screen.
+  //   - the spends were counted as five where six exist.
+  //
+  // ALL THREE ARE DERIVED FROM THE ENGINE rather than typed, in the same
+  // spirit as the numbers already interpolated below. Both rules can still be
+  // swung back by the A/B seams (setExtraClaimCupcakeCost,
+  // setMaxExtraTilesPerTurn), and a modal that stated the dead rule is exactly
+  // the defect being fixed - so the copy has to follow the live value, not the
+  // value that was live on the day it was written.
+  const extraClaimCost = getExtraClaimCupcakeCost();
+  const extraTileCap = getMaxExtraTilesPerTurn();
+
+  const extraTileRule = extraTileCap === null
+    ? 'as often as you can pay'
+    : `up to ${extraTileCap} time${extraTileCap === 1 ? '' : 's'} per turn`;
+
+  const claimRule = extraClaimCost === null
+    ? '<strong>One card per turn.</strong>'
+    : `<strong>Your first claim is free. Each further one costs ${extraClaimCost} cupcake${extraClaimCost === 1 ? '' : 's'}.</strong>`;
+
+  // Four spends live at step 3; the extra tile at step 1 and the further claim
+  // at step 4 sit outside it. Counted rather than typed for the same reason.
+  const spendCount = extraClaimCost === null
+    ? 'One more spend sits outside this step: the extra tile at step 1. Five in all.'
+    : 'Two more spends sit outside this step: the extra tile at step 1, and a further claim at step 4. Six in all.';
+
   const modal = document.createElement('div');
   modal.className = 'ft-modal';
   modal.innerHTML = `
@@ -170,7 +222,7 @@ export function showRulesModal() {
             <div class="ft-rules__step-title">1. Sweep</div>
             <div class="ft-rules__text">Pick a row or column of the market and declare a colour or an ingredient. Take every tile in that line matching your declaration.</div>
             <div class="ft-rules__text">Clear the whole line and take 1 free extra tile from anywhere on the market.</div>
-            <div class="ft-rules__text"><strong>${EXTRA_TILE_CUPCAKE_COST} cupcake:</strong> take 1 extra tile from anywhere on the market. Once per turn, at this step only - it is placed with your swept tiles.</div>
+            <div class="ft-rules__text"><strong>${EXTRA_TILE_CUPCAKE_COST} cupcake:</strong> take 1 extra tile from anywhere on the market, ${extraTileRule}. At this step only - each one is placed with your swept tiles.</div>
           </div>
 
           <div class="ft-rules__step">
@@ -185,12 +237,12 @@ export function showRulesModal() {
             <div class="ft-rules__text"><strong>${REMOVE_PLATE_CUPCAKE_COST}:</strong> return one empty plate from your board to the box, freeing that cell.</div>
             <div class="ft-rules__text"><strong>${RESERVE_CUPCAKE_COST}:</strong> reserve a card from the market. You may hold ${RESERVE_LIMIT}, and you cannot claim it on the turn you reserve it. A reserved card is safe from the tea flush.</div>
             <div class="ft-rules__text"><strong>${DEAL_CARDS_CUPCAKE_COST}:</strong> deal ${CARDS_PER_DEAL} new cards onto the card row. <strong>You may claim one of them this turn.</strong> Not available if the row has no room for both.</div>
-            <div class="ft-rules__text">Each once per turn - and the extra tile at step 1 is a fifth, independent of these.</div>
+            <div class="ft-rules__text">Each of these four is once per turn. ${spendCount}</div>
           </div>
 
           <div class="ft-rules__step">
             <div class="ft-rules__step-title">4. Claim (optional)</div>
-            <div class="ft-rules__text">If tiles on your board make a card's colour pattern, in any rotation or reflection, claim it. <strong>One card per turn.</strong></div>
+            <div class="ft-rules__text">If tiles on your board make a card's colour pattern, in any rotation or reflection, claim it. ${claimRule}</div>
             <div class="ft-rules__text">Remove 1 tile from the pattern and put it on a cake stand row or in your crumb tray.</div>
             <div class="ft-rules__text">Each ingredient locks to <strong>one</strong> stand row: the first tile you plate fixes that row, and no other row may ever hold that ingredient. Once the row is full, further tiles of it go to the crumb tray.</div>
             <div class="ft-rules__text">An empty plate fills the cell the tile came from. Nothing can be placed there again and it breaks patterns. Plates are unlimited.</div>
@@ -1409,8 +1461,41 @@ function updateTastingMenus(gameState) {
     <!-- "ANYWHERE" IS THE WHOLE NOTE (7 August). The commonest misreading of this
          panel at the table is that a card's symbols have to be on ONE ROW of the
          stand, or in the order printed - neither is true, and a player who
-         believes either will not go for a menu they already half hold. -->
-    <p class="ft-section__note">Have these symbols <strong>anywhere</strong> on your cake stand to claim the reward.</p>
+         believes either will not go for a menu they already half hold.
+
+         9 AUGUST, STAGE 1, DEFECT 16: the note now carries the two facts that
+         were sitting in title attributes, WHERE A PHONE CANNOT REACH THEM -
+         there is no hover on a touch device and a long press raises the context
+         menu instead. This panel was the one rail panel that taught nothing:
+         it rendered as three bare numbers while "5 VP to whoever gets there
+         first" and the zones a menu reads were invisible to every phone player.
+
+         MERGED INTO THE EXISTING LINE rather than added below it. The plan
+         measured a separate foot line at 0px, but it measured it inside ticket
+         07's rail, where a panel is position: fixed and out of the app's flow
+         entirely. That rail is stage 7; today this panel is on the canvas and a
+         second line would be real page height at every phone width. One line
+         carries both facts and costs nothing.
+
+         "not your board" is the trap worth the words: the menus read the cake
+         stand and the crumb tray, which is the exact opposite of the flavour of
+         the day sitting two panels along.
+
+         EVERY WORD IS MEASURED, not judged, and the line below is the one that
+         costs NOTHING. The note is display:none below 1150, so no phone or
+         tablet width can see it either way. Above that it was probed against
+         the line it replaces at 1150 / 1280 / 1399 / 1400 / 1700 / 1920 / 2180
+         / 2400, on both the note's own height and the top of #cardMarket:
+         45px / 45px / 45px / 30px / 30px / 30px / 30px / 30px and an identical
+         card-row position at all eight. The obvious wordings do not: the
+         natural "Anywhere on your cake stand or crumb tray, not your board.
+         First to qualify keeps it." is a third line from 1400 to 2180 and
+         pushes the whole card row down 15px, and a version that also repeats
+         the VP figure takes the M band's page from 1618 to 1633.
+
+         The VP figure is deliberately not repeated: the panel head two lines
+         above already prints "5 VP each". -->
+    <p class="ft-section__note">Stand or crumb tray, <strong>anywhere</strong> - not your board. First to qualify keeps it.</p>
     ${note ? `<span class="ft-menus__note">${note}</span>` : ''}
   `;
 }
@@ -1726,9 +1811,9 @@ function showSweepOptionsForCol(gameState, col) {
 function furtherClaimMessage() {
   const cost = getExtraClaimCupcakeCost();
   if (cost === null) {
-    return 'One claim per turn - you have already claimed. Click "Confirm Turn →" to end your turn.';
+    return `One claim per turn - you have already claimed. ${clickVerb()} "Confirm Turn →" to end your turn.`;
   }
-  return `Another card costs ${cost} cupcake${cost === 1 ? '' : 's'} and you cannot pay. Click "Confirm Turn →" to end your turn.`;
+  return `Another card costs ${cost} cupcake${cost === 1 ? '' : 's'} and you cannot pay. ${clickVerb()} "Confirm Turn →" to end your turn.`;
 }
 
 // True when a human is looking at cards they may no longer claim this turn. The
@@ -2595,7 +2680,26 @@ function renderStand(player, opts = {}) {
       <span class="ft-stand__crumbs-note">1 pt each</span>
     </div>`;
 
-  return `<div class="ft-stand">${rowsHtml}${crumbHtml}</div>`;
+  // THE ONE IRREVERSIBLE CHOICE IN THE GAME, SAID WHERE IT IS MADE (defect 17,
+  // 9 August, stage 1). The first tile plated on a row locks that row to that
+  // ingredient for the whole game, no other row may ever hold it, and four rows
+  // against five ingredients means one ingredient can only ever reach the crumb
+  // tray at a point each. The interface enforces it perfectly - only legal rows
+  // highlight - and until now the only place that said so was the rules modal
+  // and a `title` a phone cannot render.
+  //
+  // ONLY WHILE THE STAND IS A LIVE DESTINATION. The plan puts this line in the
+  // stand rather than in the phase bar (section 15, defect 17), and "at the
+  // moment it binds" is what decides when: the destination step IS the moment,
+  // it is reached on every claim of every game, and outside it the line would
+  // be page height spent on a decision nobody is making. Ticket 21's phase-bar
+  // variant is the one the plan overrides here, and it is also the one its own
+  // write-up flagged as the only item that could fail measurement at 360.
+  const lockNote = interactive
+    ? `<p class="ft-stand__lock-note">Choosing an empty row locks it to that ingredient for the rest of the game.</p>`
+    : '';
+
+  return `<div class="ft-stand">${rowsHtml}${crumbHtml}${lockNote}</div>`;
 }
 
 // THE OPPONENT STAND, IN ONE LINE. Four lock symbols, each with a filled/capacity
@@ -2816,13 +2920,13 @@ function updateStats(gameState) {
       <div class="ft-cupcake-supply ${cupcakeClass}" id="cupcakeSupply${playerIdx + 1}">
         <div class="ft-cupcake-header">
           <span class="ft-cupcake-label">Cupcakes</span>
-          <span class="ft-cupcake-help-text">Click to move a tile (${MOVE_TILE_CUPCAKE_COST}) or remove an empty plate (${REMOVE_PLATE_CUPCAKE_COST})</span>
+          <span class="ft-cupcake-help-text">${clickVerb()} to move a tile (${MOVE_TILE_CUPCAKE_COST}) or remove an empty plate (${REMOVE_PLATE_CUPCAKE_COST})</span>
         </div>
         <div class="ft-cupcake-icons">
           ${cupcakeCount > 0 ? Array(cupcakeCount).fill().map((_, i) => `
             <button class="ft-cupcake-btn ${!canUseCupcakes ? 'ft-cupcake-btn--disabled' : 'ft-cupcake-btn--active'}"
                     data-cupcake-index="${i}"
-                    title="Click to move a tile or remove an empty plate (${canUseCupcakes ? 'available' : 'unavailable'})"
+                    title="${clickVerb()} to move a tile or remove an empty plate (${canUseCupcakes ? 'available' : 'unavailable'})"
                     ${!canUseCupcakes ? 'disabled' : ''}>
               <img src="images/cupcake.png" class="ft-cupcake-icon" alt="cupcake" />
             </button>
@@ -2954,7 +3058,7 @@ function updatePhaseControls(gameState) {
     html = `
       <div class="ft-phase-bar">
         <div class="ft-phase-bar__instruction">Bonus tile available!</div>
-        <div class="ft-phase-bar__status success">Click any market tile to claim it</div>
+        <div class="ft-phase-bar__status success">${clickVerb()} any market tile to claim it</div>
         <div class="ft-phase-bar__controls">
           ${undoBtn}
         </div>
@@ -3048,7 +3152,7 @@ function updatePhaseControls(gameState) {
       html = `
         <div class="ft-phase-bar">
           <div class="ft-phase-bar__instruction">Choose a destination for the removed tile</div>
-          <div class="ft-phase-bar__status success">Click a highlighted stand row or your crumb tray</div>
+          <div class="ft-phase-bar__status success">${clickVerb()} a highlighted stand row or your crumb tray</div>
           <div class="ft-phase-bar__controls">
             <button id="cancelClaim" class="ft-btn ft-btn--secondary ft-btn--small">Cancel</button>
           </div>
@@ -3058,7 +3162,7 @@ function updatePhaseControls(gameState) {
       html = `
         <div class="ft-phase-bar">
           <div class="ft-phase-bar__instruction">Select a tile to remove</div>
-          <div class="ft-phase-bar__status danger">Click a highlighted tile</div>
+          <div class="ft-phase-bar__status danger">${clickVerb()} a highlighted tile</div>
           <div class="ft-phase-bar__controls">
             <button id="cancelClaim" class="ft-btn ft-btn--secondary ft-btn--small">Cancel</button>
           </div>
@@ -3100,8 +3204,8 @@ function updatePhaseControls(gameState) {
         const extraCost = getExtraClaimCupcakeCost();
         const isFurther = gameState.claimsThisTurn > 0 && extraCost !== null;
         const instruction = isFurther
-          ? `Click another card to claim it - ${extraCost} cupcake${extraCost === 1 ? '' : 's'}`
-          : 'Click a card to claim it';
+          ? `${clickVerb()} another card to claim it - ${extraCost} cupcake${extraCost === 1 ? '' : 's'}`
+          : `${clickVerb()} a card to claim it`;
         // Their first claim was free; this names what the next one costs against
         // what they hold, which is the comparison the decision actually needs.
         const status = isFurther

@@ -1,12 +1,31 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz@9..144&family=Inter:wght@400;500;600;700&display=swap');
+/* THE FONT @import HAS MOVED INTO index.html (9 August, stage 1, plan section
+   12.3). It is not deleted - the same two families load, from the same URL,
+   with the same display=swap - it is hoisted two hops up so the preload scanner
+   can see it. An @import on line 1 of a stylesheet hides the request behind two
+   round trips the scanner cannot look through, and once the module graph is
+   preloaded that chain becomes the thing first paint waits for: measured at 192
+   milliseconds. Do not put it back here. */
 
 :root {
-  /* Color palette — warm afternoon tea theme */
+  /* LIGHT ONLY. The companion to <meta name="color-scheme"> in index.html, and
+     both are needed: the meta is read before this file arrives, this one is
+     what form controls and scrollbars key off. Dark mode is refused, not
+     deferred (plan section 8.10) - no @media (prefers-color-scheme: dark) block
+     is written anywhere in this file. */
+  color-scheme: light;
+
+  /* Color palette - warm afternoon tea theme */
   --color-cream: #FBF5EC;
   --color-card: #FFFFFF;
   --color-border: #E8D5B7;
   --color-accent: #C17B5C;
   --color-accent-hover: #A0624A;
+  /* THE DEEP ACCENT (defect 1, 9 August). White on --color-accent measures
+     3.36:1, so every primary button in the game failed the 4.5:1 text bar on
+     the ground it already had. White on this measures 6.15:1. It is a token
+     rather than a literal because plan section 8.7 puts every icon stroke on it
+     too, and stage 3's token layer will not re-add it. */
+  --accent-deep: #8E5239;
   --color-accent-gold: #D4AF37;
   /* THE FLAVOUR OF THE DAY's colour (6 August), and it is the last free slot on
      the meters rail: the tea gauge owns gold, the Tasting Menus own the green
@@ -16,7 +35,12 @@
      thing it marks IS a tile. */
   --color-accent-pink: #C4708A;
   --color-text-primary: #3D2B1F;
-  --color-text-secondary: #7A6050;
+  /* DEEPENED FROM #7A6050 (defect 2, 9 August). The old value passed only
+     because today's page is one flat #FBF5EC, where it measures 5.36:1; on the
+     painted grounds stage 4 brings it fell to 4.31:1 on the cloth's shaded stop
+     and 3.71:1 on the wall's. #6B5040 measures 6.81:1 on today's cream and
+     holds 4.72:1 on the deepest ground the finished screen will have. */
+  --color-text-secondary: #6B5040;
   --color-danger: #C0392B;
   --color-success: #5A8A5C;
   --color-disabled: #CCCCCC;
@@ -499,8 +523,11 @@ label {
   cursor: not-allowed;
 }
 
+/* WHITE ON --accent-deep, NOT ON --accent (defect 1). The accent stays a fill,
+   a rail, a ring, a meter and a border everywhere else in this file; what it
+   cannot be is the ground under text, which is what this button is. */
 .ft-btn--primary {
-  background: var(--color-accent);
+  background: var(--accent-deep);
   color: white;
 }
 
@@ -1072,6 +1099,21 @@ label {
   background: rgba(212, 175, 55, 0.25);
 }
 
+/* THE ROW LOCK, SAID AT THE MOMENT IT BINDS (defect 17, 9 August).
+   Rendered only while the stand is a live destination - see renderStand's
+   `interactive` branch - so it costs zero page height on every other frame of
+   the game, which is every frame the layout harness measures. It is not
+   first-run copy: it appears on every claim of every game, and a veteran reads
+   it as the label on a choice they are making right now. */
+.ft-stand__lock-note {
+  margin-top: var(--spacing-xs);
+  padding: 0 var(--spacing-xs);
+  font-size: 10px;
+  font-style: italic;
+  line-height: 1.3;
+  color: var(--color-text-secondary);
+}
+
 /* ======= Card VP Badge ======= */
 
 /* ONE REWARD CARD, cut out of the shared sprite sheet.
@@ -1325,7 +1367,15 @@ label {
   align-items: center;
   justify-content: center;
   cursor: grab;
-  transition: all 0.15s ease;
+  /* NARROWED FROM `all` (defect 9, 9 August). `all` covered background-color,
+     border-color and box-shadow as well, and it only fails to bite today
+     because updateGameDisplay makes every tile node new on every render, so
+     nothing ever has an old value to animate away from. That makes it a trap
+     for the first render path that reuses a node rather than a live bug: the
+     tile's colour, its rim and its state ring would all cross-fade for 150ms
+     on a state change that is meant to be instant. transform and opacity are
+     also the only two properties that animate off the main thread. */
+  transition: transform 0.15s ease, opacity 0.15s ease;
   background: var(--color-card);
   position: relative;
 }
