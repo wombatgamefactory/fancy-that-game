@@ -333,6 +333,77 @@
   --ft-ease-travel: cubic-bezier(.2, 0, 0, 1);
   --ft-ease-enter: cubic-bezier(.05, .7, .1, 1);
   --ft-ease-exit: cubic-bezier(.4, 0, 1, 1);
+
+  /* ---- 8.6 / section 1: THE CLOTH RING ------------------------------------
+     The cloth's own padding, the one dimension of the painted layer that
+     changes by band: 14 at XL, 12 at L, 10 at M and S, 6 at an M opponent's
+     24px board and none at an S opponent's 14px one.
+
+     IT IS SPENT AS A NEGATIVE MARGIN ON THE HORIZONTAL AXIS, and that is not a
+     flourish. XL is frozen by decision 6 at a measured content minimum of
+     2181px, and 2181 is a sweep width: the right-hand seat's panel ends at
+     2180.4 of a 2181px viewport, so the layout has SIX TENTHS OF A PIXEL of
+     horizontal headroom and any ring at all would overflow it. Bleeding the
+     ring outward costs nothing and the harness reads every width unchanged.
+     Vertically it is real padding on a board (there is a swept-tile tray
+     directly above your own) and a bleed on the market (whose wrap already
+     carries more padding than the ring). */
+  --cloth-ring: 14px;
+
+  /* ---- 8.6 THE TILE'S FORM, AND THE SHRINK LADDER -------------------------
+     Three values, declared here and OVERRIDDEN BY VALUE in the bands, which is
+     what keeps the shrink ladder inside the rule that a band sets values and
+     never component rules. The ladder, in full:
+
+       60  XL, every board     rim, full form, ink, slab shadow 2px 3px
+       48  L and M, your board rim, full form, ink, slab shadow 2px 3px
+       44  phone, your board   rim, full form, ink, slab shadow 1px 2px
+       42  ------------------- the almond's two grooves go below here
+       40  L, an opponent      rim, full form, ink less the almond's grooves
+       33  ------------------- the floor for drawing an ingredient at all
+       24  M, an opponent      rim, edge light only, no ink, no cast shadow
+       14  phone, an opponent  rim only, no form, no ink, no cast shadow
+
+     At 24 and 14 THE INGREDIENT IS NOT SHOWN AND IS NOT CLAIMED TO BE SHOWN, so
+     nothing is being carried by colour alone and the hard constraint is intact.
+
+     --form-edges is a custom property rather than three literals so that every
+     state rule can re-declare box-shadow WITHOUT DELETING THE PAINT. A state
+     adds a wash in front of the field; it must never subtract form. */
+  --form-edges:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 1px 0 0 rgba(255, 255, 255, 0.30),
+    inset -1px -1px 0 rgba(107, 78, 58, 0.26);
+  --tile-field:
+    radial-gradient(115% 115% at 27% 20%, rgba(255, 255, 255, 0.60), rgba(255, 255, 255, 0) 56%),
+    linear-gradient(148deg, var(--lt) 0%, var(--mid) 46%, var(--dk) 100%);
+
+  /* The dent's form is the tile's form INVERTED - shade top and left, light
+     bottom and right - and it shrinks on the same ladder. */
+  --dent-edges:
+    inset 0 2px 3px -1px rgba(var(--shadow-ink), 0.38),
+    inset 2px 0 3px -2px rgba(var(--shadow-ink), 0.26),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.60),
+    inset -1px 0 0 rgba(255, 255, 255, 0.35);
+
+  /* The empty plate: the well's near wall, its far wall catching the light, and
+     THE CONTACT SHADOW - the only shadow any object on this board casts at rest.
+     2px 3px at 60 and 48, 1px 2px at 44, none below 24, and the disc grows from
+     84 to 92 per cent of the cell as the detail drops, because the silhouette is
+     all that is left and it needs the pixels. */
+  --plate-size: 84%;
+  --plate-body:
+    radial-gradient(32% 32% at 26% 19%, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0) 74%),
+    radial-gradient(circle at 50% 50%,
+      rgba(110, 122, 140, 0) 0 46%,
+      rgba(110, 122, 140, 0.34) 57%,
+      rgba(255, 255, 255, 0.55) 66%,
+      rgba(255, 255, 255, 0) 76%),
+    linear-gradient(148deg, var(--china-lit) 0%, var(--china) 50%, var(--china-shade) 100%);
+  --plate-edges:
+    inset 0 2px 3px -1px rgba(var(--shadow-ink), 0.34),
+    inset 0 -2px 2px -1px rgba(255, 255, 255, 0.65),
+    2px 3px 4px -1px rgba(var(--shadow-ink), 0.40);
 }
 
 /* REDUCED MOTION IS A DIFFERENT SET OF NUMBERS, NOT AN OFF SWITCH (section
@@ -371,12 +442,65 @@
   box-sizing: border-box;
 }
 
+/* THE PAGE IS THE WALL (plan section 8.3, decision 12). --color-cream is not
+   deleted and does not move - it is REASSIGNED from the page to the panel, which
+   is why every panel below still names it and why --surface carries the same
+   literal. What changes is what is behind them: one 163 degree fall from the 10
+   o'clock light, 22.3 luminance points below the cloth's lit stop, so the cloth
+   reads as a lit thing in front of a shaded thing.
+
+   A wall at #E9DECB was tried and rejected: at Y 73.9 it is the same value as
+   the cloth's own shaded edge and the far edge of the table dissolves into it.
+
+   NOT background-attachment: fixed, which both prototypes use. A fixed
+   attachment paints the fall against the VIEWPORT, so on the 3,000px page the
+   phone band still has it covers the first screenful and leaves the rest of the
+   wall unpainted - reproduced here at 390 and 2400 before it was changed. The
+   fall belongs to the wall, so it runs the height of the wall. */
 body {
   font-family: 'Inter', sans-serif;
-  background: var(--color-cream);
+  background: linear-gradient(163deg, var(--wall-lit) 0%, var(--wall) 48%, var(--wall-deep) 100%);
+  background-repeat: no-repeat;
   color: var(--color-text-primary);
   font-size: 13px;
   line-height: 1.5;
+  position: relative;
+  min-height: 100dvh;
+}
+
+/* THE WALLPAPER (plan section 8.8, decision 19). The hero's own sprigged floral,
+   keyed out of landing/hero.jpg, on a single 340px repeat at every band.
+
+   TWELVE PER CENT, not the brief's 3 to 5. Opacity multiplies the pattern's OWN
+   contrast, and this floral differs from the wall by only about 70 levels, so 5
+   per cent is a 3.5-level shift and is invisible; 12 per cent is 11.2 levels.
+   The PNG carries alpha rather than cream, so the number is the pattern's
+   strength and the wall underneath is exactly the declared token.
+
+   THE FAILURE THAT MATTERS IS SPATIAL FREQUENCY, NOT OPACITY. The repeat must be
+   at least FOUR TIMES the tile pitch at every band or the two grids beat against
+   each other: 340px against a 46px pitch is 7.4x at the phone's 44px tile, 6.8x
+   at M and L's 48 and 5.5x at XL's 60. A 92px repeat at the same opacity is 2x
+   and visibly interferes.
+
+   Its own layer, behind everything and above the canvas, so its strength is one
+   number and it can never end up in front of a painted object. It stops at the
+   cloth's edge because the cloth is opaque and in front of it - the pattern is
+   never behind a board at all, which is the structural half of why it survives a
+   busy 5x5.
+
+   Absolutely positioned over the whole document rather than fixed to the
+   viewport, for the same reason the fall is: paper is on the wall, not on the
+   window, and a fixed layer leaves everything below the first screenful bare. */
+body::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: url('images/wallpaper-v1.png') repeat;
+  background-size: 340px 340px;
+  opacity: 0.12;
+  pointer-events: none;
 }
 
 /* 100dvh, NOT 100vh (9 August, ticket 00 / finding 18). On mobile Safari and
@@ -769,8 +893,15 @@ a .ft-icon {
   transition: all 0.2s ease;
 }
 
+/* THE TWENTIETH DEFECT, found by stage 1 and named by no list. White on
+   --color-accent measures 3.36:1 and fails the 4.5:1 text bar - the same failure
+   as defect 1, at a site the review missed, on the one screen a player has to
+   get through before the game starts. The AI/Human toggle is explicitly in scope
+   (finding 11), and it is fixed here rather than in stage 3 because stage 3 had
+   to produce an empty screenshot diff and this is a visible change. White on
+   --accent-deep is 6.15:1. */
 .ft-setup__toggle-btn.active {
-  background: var(--color-accent);
+  background: var(--accent-deep);
   color: #FFFFFF;
   font-weight: 600;
 }
@@ -830,8 +961,16 @@ a .ft-icon {
   color: white;
 }
 
+/* WIRED TO --accent-deep-hover (stage 3's second token defect). The hover still
+   went to --color-accent-hover #A0624A, which is LIGHTER than the base stage 1
+   deepened, so hovering the primary button took white from 6.15:1 back down to
+   4.84:1 - the fix for defect 1 undone by the pointer. The token currently
+   aliases --accent-deep, so the hover is the shadow lift alone; the plan retires
+   --color-accent-hover without supplying a deeper stop and inventing one would
+   be a design act. If Dean wants a distinct deeper brown it is a one-line change
+   to the token and nothing here moves. */
 .ft-btn--primary:hover:not(:disabled) {
-  background: var(--color-accent-hover);
+  background: var(--accent-deep-hover);
   box-shadow: var(--shadow-card);
 }
 
@@ -985,37 +1124,42 @@ a .ft-icon {
   width: 100%;
 }
 
+/* THE PANEL DOES NOT SURVIVE AS A GENERAL CONTAINER (plan section 8.5). Four
+   replacements take its jobs - a cloth region for the board areas, a flat
+   --surface for anything made of words and numbers, a sheet for anything that
+   comes over the board, and a strip for persistent chrome - and a SEAT is none
+   of them. A seat is a grouping, not a box: it holds a surface (the score
+   column) and a cloth region (the board), and what separates it from its
+   neighbour is the wall showing between them.
+
+   So the tint, the border, the radius, the shadow AND the padding all go. The
+   padding is not incidental: it is what pays for the cloth's ring. Removing 12px
+   of padding and 1px of border a side gives each seat back 26px of width, which
+   is what makes room for a 28px ring at XL where the layout has six tenths of a
+   pixel of horizontal headroom. A box with no ground has no reason to hold its
+   contents off its own edge.
+
+   THE FOUR SEAT TINTS GO WITH IT, and they were four of the five TILE hues -
+   orange, blue, green and pink - which stops working the moment the tile field
+   is painted. Seat colour is a mark now (section 8.9): a rule, a dot and an
+   outline, all at zero layout width. It never fills a seat's ground, because
+   four washes on a wall-and-cloth composition are four competing grounds. */
 .ft-panel {
-  background: var(--color-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-md);
-  box-shadow: var(--shadow-card);
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
 }
 
-.ft-panel--active {
-  border: 2px solid var(--color-accent);
-  box-shadow: 0 0 0 1px var(--color-accent);
-}
-
-.ft-panel--player1 {
-  background: #FFE8CC;
-}
-
-.ft-panel--player2 {
-  background: #E3F2FD;
-}
-
-.ft-panel--player3 {
-  background: #E8F5E9;
-}
-
-.ft-panel--player4 {
-  background: #FCE4EC;
-}
+/* The active seat is an OUTLINE ON ITS CLOTH plus the seat rule going 4px to 6
+   (plan section 8.9, carrier 3), so this rule holds no paint of its own - see
+   .ft-panel--active .ft-cloth and .ft-panel--active .ft-seat__rule below. A 2px
+   BORDER would have cost 4px of seat width; an outline sits outside the box
+   model and costs nothing, which is the whole reason it is the one chosen. */
 
 /* ======= Seats =======
    A SEAT is one player's whole area: their score column beside their board.
@@ -1052,10 +1196,59 @@ a .ft-icon {
   min-width: max-content;
 }
 
-.ft-seat--1 { grid-column: 1; grid-row: 1; }
-.ft-seat--2 { grid-column: 1; grid-row: 2; }
-.ft-seat--3 { grid-column: 3; grid-row: 1; }
-.ft-seat--4 { grid-column: 3; grid-row: 2; }
+.ft-seat--1 { grid-column: 1; grid-row: 1; --seat: var(--seat-1); }
+.ft-seat--2 { grid-column: 1; grid-row: 2; --seat: var(--seat-2); }
+.ft-seat--3 { grid-column: 3; grid-row: 1; --seat: var(--seat-3); }
+.ft-seat--4 { grid-column: 3; grid-row: 2; --seat: var(--seat-4); }
+
+/* ======= SEAT COLOUR AS A MARK (plan section 8.9, decision 18) =============
+   Four hues deliberately off the tile wheel - claret, teal, moss, plum - all
+   clearing 3:1 against every ground on the screen, 4.5:1 on the surface and the
+   cloth, and carrying white at 5.8 to 7.3:1.
+
+   THREE CARRIERS, AND NONE OF THEM MAY ADD TO A SEAT'S max-content WIDTH. That
+   is a standing rule rather than a preference: the opponent strip was measured
+   with exactly 2px of headroom at 390, where two more pixels of chip costs 269px
+   of page height because a seat drops from two per row to one. */
+
+/* 1. THE SEAT RULE. 4px of seat ink, the full width of the board column,
+      directly above the cloth. Every size, every seat, always - it is the one
+      carrier that never drops, because it is the only one that survives the
+      14px opponent board where the dot and the name are already gone. A block
+      element takes the width it is given, so this is free. */
+.ft-seat__rule {
+  height: 4px;
+  width: 100%;
+  border-radius: 2px;
+  background: var(--seat);
+  margin-bottom: 6px;
+  flex: 0 0 auto;
+}
+
+/* 2. THE SEAT DOT. 10px, before the player's name, on your own seat and on a
+      desktop opponent's. It is inline on the name line, which is never a seat's
+      widest row, so it costs no width either. Applied to the shrink ladder, seat
+      identity says: the dot goes first, the rule never does. */
+.ft-seat__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--seat);
+  flex: 0 0 auto;
+}
+
+/* 3. THE ACTIVE RING, around the seat's CLOTH rather than around the seat, so
+      what is marked is the thing being played on. outline-offset puts it in the
+      ring of cloth the padding already provides, and the seat rule thickens with
+      it - two carriers for one state, one of which survives desaturation. */
+.ft-panel--active .ft-cloth {
+  outline: 2px solid var(--seat);
+  outline-offset: 3px;
+}
+
+.ft-panel--active .ft-seat__rule {
+  height: 6px;
+}
 
 /* A seat with nobody in it, at player counts below four. */
 .ft-seat--absent {
@@ -1091,9 +1284,16 @@ a .ft-icon {
   width: var(--board-col-width);
 }
 
-.ft-seat__header {
+/* The seat dot sits BEFORE the name, so the header stops being a space-between
+   row - there is nothing to push to the far edge, and the two belong together.
+   TWO CLASSES, because .ft-panel__header carries the space-between and is
+   declared after this in the file; a single class would lose the cascade and
+   leave the dot stranded at the far left of the board column. */
+.ft-panel__header.ft-seat__header {
   width: 100%;
   margin-bottom: var(--spacing-sm);
+  justify-content: flex-start;
+  gap: 7px;
 }
 
 .ft-seat__swept-label {
@@ -1108,12 +1308,21 @@ a .ft-icon {
   margin-top: var(--spacing-md);
 }
 
+/* THE RULE UNDER A HEADING DIES (plan section 8.5). --rule keeps exactly two
+   jobs from here on - separating rows inside a table, and the single edge where
+   a persistent strip meets content - and a line under a heading is neither. */
 .ft-panel__header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: var(--spacing-sm);
+  border-bottom: none;
+  /* The 8px of padding-bottom went with the rule. It was the space that held the
+     name off the line under it; with no line it is a second gap on top of the
+     8px margin the header already carries. IT IS ALSO 2px OF PAGE HEIGHT AT L:
+     the L band's tallest column is two seats stacked, so a saving in a seat is
+     doubled, and the mid-game position came in 1832 against an 1830 ratchet
+     until this came off. It is worth 16. */
+  padding-bottom: 0;
 }
 
 .ft-panel__title {
@@ -1137,8 +1346,8 @@ a .ft-icon {
   gap: var(--spacing-sm);
   font-size: 13px;
   padding: var(--spacing-md);
-  background: #FAFAFA;
-  border-radius: var(--radius-md);
+  background: var(--surface);
+  border-radius: var(--radius-lg);
 }
 
 .ft-score-table__header {
@@ -1198,8 +1407,8 @@ a .ft-icon {
   gap: 2px;
   margin-top: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-md);
-  background: #FAFAFA;
-  border-radius: var(--radius-md);
+  background: var(--surface);
+  border-radius: var(--radius-lg);
   font-size: 12px;
 }
 
@@ -1225,9 +1434,22 @@ a .ft-icon {
   gap: 3px;
   margin-top: var(--spacing-md);
   padding: var(--spacing-sm) var(--spacing-xs) var(--spacing-md);
-  background: linear-gradient(180deg, #FFFFFF 0%, #FBF5EC 100%);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  /* THE STAND TRAY IS A BOARD AREA (plan section 8.5's container table), so it
+     takes the cloth: the same three stops on the same 163deg fall, the same
+     grain at full strength, the same one contact shadow, radius 10, no border.
+     It keeps its OWN padding rather than taking the cloth ring - the ring is
+     specified for the board region, and at XL the score column this sits in is
+     content-sized with no width to give. */
+  background:
+    url('images/grain-v1.png') repeat,
+    radial-gradient(150% 110% at 18% 4%, rgba(255, 255, 255, 0.80), rgba(255, 255, 255, 0) 62%),
+    linear-gradient(163deg, var(--cloth-lit) 0%, var(--cloth-mid) 52%, var(--cloth-shade) 100%);
+  background-size: 128px 128px, auto, auto;
+  border: none;
+  border-radius: 10px;
+  box-shadow:
+    2px 3px 10px -3px rgba(var(--shadow-ink), 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 .ft-stand__prompt {
@@ -1264,11 +1486,13 @@ a .ft-icon {
   transform: translateY(-50%);
   margin-right: 5px;
   text-align: right;
-  font-size: 10px;
+  /* --type-stamp: 10px Inter 700 at +0.08em, and THE ONLY UPPERCASE ROLE LEFT
+     in the whole system (plan section 8.5). */
+  font-size: var(--type-stamp);
   font-weight: 700;
   line-height: 1.15;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
   color: var(--color-text-secondary);
   white-space: nowrap;
   pointer-events: none;
@@ -1322,7 +1546,7 @@ a .ft-icon {
 
 /* Subtle marker on the four cupcake plates: sits in the plate's top-right
    corner, present whether the plate is empty or filled. Marks the plate, not
-   the tile — see CUPCAKE_PLATES in game.js and the board art (cake_stand.png). */
+   the tile - see CUPCAKE_PLATES in game.js and the board art (cake_stand.png). */
 .ft-stand__cupcake-plate {
   position: absolute;
   top: -5px;
@@ -1341,17 +1565,23 @@ a .ft-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--color-border);
+  /* The same 1px rim of the tile's own dark stop, shrinking inside border-box so
+     the plate's 34/32/30/28px size does not move. */
+  border: 1px solid var(--dk);
+  background: var(--tile-field);
+  box-shadow: var(--form-edges);
 }
 
+/* An empty slot on the stand is the same object an empty board cell is: a dent,
+   square, never round, at the plate's own radius. */
 .ft-stand__plate--empty {
-  background: #FFFFFF;
-  border-style: dashed;
-  border-color: #E0D3BC;
+  background: var(--dent);
+  border-color: transparent;
+  box-shadow: var(--dent-edges);
 }
 
 .ft-stand__plate--filled {
-  border-color: rgba(0, 0, 0, 0.2);
+  border-color: var(--dk);
 }
 
 .ft-stand__symbol {
@@ -1380,8 +1610,8 @@ a .ft-icon {
   padding: var(--spacing-xs) var(--spacing-sm);
   font-size: 12px;
   color: var(--color-text-secondary);
-  background: #FFFFFF;
-  border: 1px solid var(--color-border);
+  background: var(--surface);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
 }
 
@@ -1522,16 +1752,16 @@ a .ft-icon {
   gap: var(--spacing-md);
   margin-top: var(--spacing-md);
   padding: var(--spacing-md);
-  background: linear-gradient(135deg, #FBF5EC 0%, rgba(193, 123, 92, 0.03) 100%);
-  border: 2px solid #F0D5B8;
-  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: none;
+  border-radius: var(--radius-lg);
   transition: all 0.2s ease;
 }
 
+/* ANNOUNCING, so it takes the left rail - the one job the rail keeps. Additive:
+   nothing about the resting panel changes, a mark appears on it. */
 .ft-cupcake-supply--active {
-  border-color: var(--color-accent);
-  background: linear-gradient(135deg, rgba(193, 123, 92, 0.1) 0%, rgba(193, 123, 92, 0.05) 100%);
-  box-shadow: 0 0 12px rgba(193, 123, 92, 0.2);
+  box-shadow: inset 3px 0 0 var(--color-accent);
 }
 
 .ft-cupcake-header {
@@ -1627,30 +1857,119 @@ a .ft-icon {
 
 /* ======= Game Grids ======= */
 
+/* THE SWEPT-TILE TRAY IS FLAT, and the anti-creep clause is what decides it
+   (plan section 8, decision 3): an item on neither the painted list nor the flat
+   list is flat until a ticket puts it on the painted list, and the painted list
+   names board areas - your board, the market, opponent boards, the stand tray -
+   not this. Painted tiles standing on a flat surface is the register working as
+   intended; a painted object does not paint its container. What comes off is the
+   dashed border, because borders die. */
 .ft-working-area {
   display: grid;
   grid-template-columns: repeat(4, var(--tile-size));
   gap: var(--tile-gap);
   min-height: calc(var(--tile-size) + 2 * var(--spacing-sm));
   padding: var(--spacing-sm);
-  background: #FAFAFA;
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: none;
+  border-radius: var(--radius-lg);
   justify-content: center;
 }
 
+/* ======= THE CLOTH (plan section 8.6, tickets 06 and 10) ===================
+   The ground of the BOARD AREAS ONLY. Four things on it and nothing else: the
+   three sampled stops on one 163 degree fall, a broad soft highlight at the
+   upper left, the shared grain, and a contact shadow down and to the right. No
+   border, no four-sided drop shadow, no printed pattern, no lace, no hem, no
+   depicted weave, no folds.
+
+   THE GRAIN IS A BACKGROUND LAYER AT FULL STRENGTH, not an overlay at 42 or 55
+   per cent (plan section 17, amendment 1, decision 24). grain-v1.png carries its
+   own alpha at a mean of 7/255 and a peak of 22/255, so at full strength it
+   shifts a cream ground by at most 13.7 levels - the same order as the wallpaper
+   at the 12 per cent it chose. Stacked opacities put it at 5.7 to 7.5 levels,
+   which the grounds ticket measured as at or below a whisper. Drawn once, in the
+   background stack: visible, ZERO pseudo-elements on the board, and no linen
+   weave painted over the fondant tiles standing on it. It is a WORLD texture at
+   a fixed 128px that objects reveal, so it is never scaled with an object.
+
+   THE CONTACT SHADOW IS LOAD-BEARING, NOT DECORATION. The cloth's far corner is
+   only 4.1 luminance points above the wall; at .34 the shadow puts the wall
+   under that edge 18 points below the cloth's shaded stop, which is what makes
+   the two read as two planes rather than as a seam. A later session must not
+   delete it as decoration. */
+.ft-cloth {
+  padding: var(--cloth-ring);
+  /* The ring is spent outward on the horizontal axis - see --cloth-ring in
+     :root for the 0.6px of headroom at 2181 that forces it. */
+  margin-left: calc(-1 * var(--cloth-ring));
+  margin-right: calc(-1 * var(--cloth-ring));
+  border-radius: 10px;
+  background:
+    url('images/grain-v1.png') repeat,
+    radial-gradient(150% 110% at 18% 4%, rgba(255, 255, 255, 0.80), rgba(255, 255, 255, 0) 62%),
+    linear-gradient(163deg, var(--cloth-lit) 0%, var(--cloth-mid) 52%, var(--cloth-shade) 100%);
+  background-size: 128px 128px, auto, auto;
+  box-shadow:
+    2px 3px 10px -3px rgba(var(--shadow-ink), 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+/* The market's cloth wraps the whole container, the two sweep-button gutters
+   included, and bleeds on all four sides: .ft-market-wrap already carries more
+   padding than the ring on every band, so the ring is free in both axes and the
+   grid tracks - and therefore every button's alignment with the line it sweeps -
+   do not move by a pixel. */
+.ft-cloth--market {
+  margin: calc(-1 * var(--cloth-ring));
+  width: max-content;
+}
+
+/* ======= THE RECESS =======================================================
+   The 5x5 pressed into the cloth, so the 2px grid gaps read as the cloth in
+   SHADE rather than as the lit cloth - which is decision 17's binding condition
+   on the yellow tile.
+
+   FLAT AND OPAQUE, AND THAT IS A DECISION. The elegant transparent slate wash is
+   refused with a measurement: decision 17 is a FLOOR ON A VALUE, and a gradient
+   turns a floor into a range. A 5 per cent wash leaves the board's near corner
+   ten points above the floor and a 16 per cent wash puts the far corner 11.9
+   points lower, so the yellow tile's edge would differ cell by cell. A flat
+   #E9D9BE makes the guarantee identical in all twenty-five cells. Do not make it
+   a wash.
+
+   THE 8px OF PADDING AND THE 1px BORDER ARE KEPT EXACTLY, because
+   --board-col-width is derived from them and the layout harness reads it. The
+   border is not decoration either - it is the near wall of the recess.
+
+   THE SLAB SHADOW IS A box-shadow ON THIS RECTANGLE, never a filter:
+   drop-shadow on the grid: a grid of tiles is lit as ONE slab, and a filter
+   would force all 25 children into a single compositing layer and re-rasterise
+   the lot on any change. A resting tile stays one element with no layer, which
+   is what stage 8's transition-name budget depends on. */
 .ft-board-grid {
   display: grid;
   grid-template-columns: repeat(5, var(--tile-size));
   gap: var(--tile-gap);
   padding: var(--spacing-sm);
-  background: #FAFAFA;
-  border: 1px solid var(--color-border);
+  background: var(--recess);
+  border: 1px solid var(--near-wall);
   border-radius: var(--radius-md);
   justify-content: center;
   margin: 0 auto;
+  box-shadow:
+    inset 0 2px 3px -1px rgba(var(--shadow-ink), 0.30),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.40),
+    2px 3px 9px -3px rgba(var(--shadow-ink), 0.30);
 }
 
+/* THE MARKET IS A BOARD AREA and takes the same ground. It gets the recess with
+   NO padding of its own and a bleeding 1px near wall, because its cells are
+   positioned by the container's grid tracks and the sweep buttons are aligned to
+   those same tracks - 9px of recess padding would slide every tile away from the
+   button that sweeps it. The recess's job here is the ground behind the 2px
+   gaps, and that is unaffected. The 8px padding is a BOARD-grid requirement,
+   there because --board-col-width is computed from it. */
 .ft-market-grid {
   display: grid;
   /* 5x5 tile market at all player counts. board.js also sets this inline from
@@ -1658,18 +1977,46 @@ a .ft-icon {
   grid-template-columns: repeat(5, var(--tile-size));
   gap: var(--tile-gap);
   padding: 0;
-  background: transparent;
-  border-radius: 0;
+  margin: -1px;
+  background: var(--recess);
+  border: 1px solid var(--near-wall);
+  border-radius: var(--radius-sm);
+  box-shadow:
+    inset 0 2px 3px -1px rgba(var(--shadow-ink), 0.30),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.40),
+    2px 3px 9px -3px rgba(var(--shadow-ink), 0.30);
 }
 
-/* ======= Tiles ======= */
+/* ======= THE TILE (plan section 8.6, decisions 7 and 13) ===================
+   A painted fondant square. Four layers, in this order, and nothing else:
+
+     1. RIM      1px of the tile's own DARK STOP. Present at every size from 14
+                 to 60, and the only layer that never drops. It replaces the 2px
+                 cream border, which is the single thing that made a tile read as
+                 a swatch rather than as an object - and it shrinks INSIDE
+                 border-box, so no dimension moves.
+     2. FORM     a 10 o'clock radial highlight, a 148deg body gradient light to
+                 dark, an inner edge light on the top and left, an inner shade on
+                 the bottom right.
+     3. SURFACE  NOT ON THE TILE. The weave lives in the cloth (plan section 17,
+                 amendment 1). A world texture is continuous across objects.
+     4. INK      the existing <img>, the pure black silhouette at 60 per cent,
+                 unlit and unshaded. Ink printed on a painted object.
+
+   A RESTING TILE IS ONE ELEMENT, one border, one gradient pair and one
+   box-shadow list. No pseudo-element, no image, no filter, no opacity, no
+   transform: 75 tiles, 75 paints, zero compositing layers at rest. Stage 8's
+   transition-name budget depends on that and so does the slab lighting.
+
+   The rim is not a breach of the 2.00px painted-feature floor: the floor governs
+   depicted features, and an edge is not one. */
 
 .ft-tile {
   width: var(--tile-size);
   height: var(--tile-size);
   aspect-ratio: 1;
-  border: 2px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--dk);
+  border-radius: calc(var(--tile-size) * 0.14);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1683,7 +2030,8 @@ a .ft-icon {
      on a state change that is meant to be instant. transform and opacity are
      also the only two properties that animate off the main thread. */
   transition: transform 0.15s ease, opacity 0.15s ease;
-  background: var(--color-card);
+  background: var(--tile-field);
+  box-shadow: var(--form-edges);
   position: relative;
 }
 
@@ -1695,62 +2043,135 @@ a .ft-icon {
    there, with the row and column buttons; clicking an individual market tile
    does nothing, and lifting it on hover was promising an interaction the game
    does not have. That was actively working against the sweep buttons, which are
-   the real control. */
-.ft-tile:hover:not(.ft-tile--empty):not(.ft-tile--ghost):not(.market-tile) {
-  transform: scale(1.08);
-  box-shadow: var(--shadow-card);
-  border-color: var(--color-accent);
-}
+   the real control.
 
-/* ...except on the two occasions a single market tile IS the move: the free
-   line-clear bonus tile, and the paid extra tile. Then the lift is honest and
-   it comes back. */
-.market-tile.ft-tile--pickable:hover {
-  transform: scale(1.08);
-  box-shadow: var(--shadow-card);
-  border-color: var(--color-accent);
+   NO SCALE, AND NO BORDER CHANGE (plan section 8.6, every state). scale(1.08) at
+   a 60px tile is +4.8px into a 2px gap, so a hovered tile overlapped its
+   neighbours; and a painted object is never repainted to show state, which rules
+   the accent border out. A 3px rise and a cast shadow say the same thing and can
+   never collide. THINGS THAT LIFT, CAST: this is the one place a single tile is
+   allowed a compositing layer, because it is the one place it leaves the slab.
+
+   Wrapped in @media (hover: hover), which is what the touch-hygiene block at the
+   end of the file used to have to undo by hand. */
+@media (hover: hover) {
+  .ft-tile:hover:not(.ft-tile--empty):not(.ft-tile--ghost):not(.ft-tile--blocked):not(.market-tile),
+  .market-tile.ft-tile--pickable:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--form-edges), 2px 3px 4px rgba(var(--shadow-ink), 0.42);
+  }
 }
 
 .ft-tile:active:not(.ft-tile--empty) {
   cursor: grabbing;
 }
 
+/* ======= THE DENT (decision 16, plan section 8.6) =========================
+   An empty cell is not a white square and not a faded tile. It is a shallow
+   recess in the cloth - a place setting waiting for a tile - so a nearly-empty
+   board looks intended rather than unfinished.
+
+   THE FORM IS THE TILE'S FORM INVERTED, and that is the whole idea. A tile is
+   proud: light on its top and left, shade on its bottom right. A dent is sunk:
+   shade on its top and left, light on its bottom right. Same light, opposite
+   relief. That is what stops 25 empty cells reading as 25 pale tiles, and it
+   costs the order of two shadows.
+
+   IT IS SQUARE AND IT IS NEVER ROUND. A faint plate ring in an empty cell is a
+   faint version of the empty plate, and the empty plate is the one thing on this
+   board that must never be mistaken for an empty cell. Square is a place you can
+   use; round is a place you have used up. */
 .ft-tile--empty {
-  background: white;
-  border-color: #E8E8E8;
+  background: var(--dent);
+  border-color: transparent;
+  box-shadow: var(--dent-edges);
 }
 
+/* A placed tile is JUST THE OBJECT (plan section 8.6, every state). The shipped
+   `border-color: rgba(0,0,0,.2)` was a state drawn into the paint; the rim is
+   the tile's own dark stop now and needs nothing added to say "placed". */
 .ft-tile--placed {
-  border-color: rgba(0, 0, 0, 0.2);
+  border-color: var(--dk);
 }
 
+/* GHOST - a provisional placement, in hand but not committed. The shipped
+   opacity: .6 is refused outright: NOTHING IS DIMMED, at any width, in any
+   state. Emphasis is additive. Full paint, and a solid accent ring says it is
+   provisional. */
 .ft-tile--ghost {
-  opacity: 0.6;
+  opacity: 1;
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }
 
-/* A BLOCKED CELL - an empty plate planted on the board when a card was claimed.
-   updatePlayerBoards has always added this class and there has never been a rule
-   for it: the cell was identified SOLELY by its empty_plate.png icon. That made
-   the board unreadable if the image failed to load, and it breaks outright under
-   the colour-only opponent treatment, which hides tile icons.
+/* ======= THE EMPTY PLATE (decision 23, plan section 8.6) ===================
+   THE BOARD HAS THREE HEIGHTS AND THIS IS THE TOP ONE:
 
-   A dark neutral, at EVERY size. It has to be unmistakable against both the five
-   tile colours (all light and saturated) and an empty cell (white), because at a
-   14px opponent tile the fill is the only thing left to read. */
+     below the cloth   a DENT   a place you may still use
+     flush with it     a TILE   a place you have used well
+     on top of it      a PLATE  a place you have used up
+
+   THE DARK #6B5847 FILL GOES. Once the plate is a shape rather than an image the
+   job that fill existed for is done by the silhouette, and a dark chocolate
+   square reads as a hole burnt in the cloth. The cell under the plate is the
+   recess, so the plate stands on the board rather than in a hole.
+
+   FOUR INDEPENDENT CARRIERS separate a plate from a cell and two of them survive
+   at 14px desaturated: shape (a disc against a rounded square), value (china at
+   Y 82.8 per cent against the dent's 66.3 - the plate is the brightest cell on
+   the board), relief, and the cast shadow. THE PLATE IS THE ONLY OBJECT ON THE
+   BOARD THAT CASTS AT REST: a tile casts only when it lifts, but a plate is not
+   a tile, it is a painted object standing on the table.
+
+   EVERY PLATE IS IDENTICAL - no chip, no crumb, no tea stain, no per-cell
+   rotation. The engine has one { type: 'blocked' }, any depicted wear is under
+   the 2px floor, and a randomised mark would visibly change while travelling
+   under a View Transition. What accumulates is RELIEF: nine plates is nine
+   shadows, and adjacent plates darken the 2px gap between them twice over. */
 .ft-tile--blocked {
-  background: #6B5847;
-  border-color: #4F4034;
+  background: var(--recess);
+  border-color: transparent;
+  box-shadow: none;
   cursor: default;
 }
 
+.ft-plate {
+  width: var(--plate-size);
+  height: var(--plate-size);
+  border-radius: 50%;
+  /* THE RIM LINE IS THE FILIGREE'S OWN BLUE-GREY, sampled off the painting and
+     promoted to the plate's edge exactly as each tile's dark stop was promoted
+     to its rim. It is the plate's yellow tile: #A7B1B9 reads 1.57:1 against the
+     gap where the yellow rim reads 1.55:1. Same problem, same fix. */
+  border: 1px solid var(--china-dk);
+  /* Three layers: the specular at 10 o'clock on the rim band; the WELL, drawn as
+     light rather than as a colour exactly as the tile's form is - a shadow ring
+     where the well's wall turns up, then the rim band catching the light above
+     it, soft enough that no edge falls under the 2px floor (the junction runs
+     from 46 to 76 per cent of the diameter, 9.6 CSS px at a 44px tile); and the
+     body along the light. NO FILIGREE AND NO SCALLOPS: measured off the painting
+     they render at 0.39 / 0.32 / 0.29 and 1.11 / 0.89 / 0.81 CSS px, and
+     anything under the floor is deleted rather than shrunk. */
+  background: var(--plate-body);
+  box-shadow: var(--plate-edges);
+  pointer-events: none;
+}
+
+/* ILLEGAL / REMOVABLE - "this is going away". A ring plus a wash, never a
+   repaint: the only 3px ring in the system, at offset 2, plus a 14 per cent
+   danger wash sitting ABOVE the field and BELOW the content, so no state at any
+   strength can reach the black silhouette. The wash is
+   `inset 0 0 0 999px`, which costs zero elements and zero layers. */
 .ft-tile--removable {
-  border: 2px solid var(--color-danger);
-  box-shadow: 0 0 0 2px var(--color-danger);
+  outline: 3px solid var(--color-danger);
+  outline-offset: 2px;
+  box-shadow: inset 0 0 0 999px rgba(192, 57, 43, 0.14), var(--form-edges);
   cursor: pointer;
 }
 
-.ft-tile--removable:hover {
-  background: rgba(192, 57, 43, 0.05);
+/* A removable EMPTY PLATE keeps the plate's own relief under the danger wash. */
+.ft-tile--blocked.ft-tile--removable {
+  box-shadow: inset 0 0 0 999px rgba(192, 57, 43, 0.14);
 }
 
 .ft-tile__icon {
@@ -1761,16 +2182,19 @@ a .ft-icon {
 
 /* Teapot symbol printed on the tile-market board. Rendered only on the five
    symbol cells while they are EMPTY (see TEAPOT_SYMBOL_CELLS / updateMarket).
-   A printed-on-board marker, not a collectible tile, showing what the tea player
-   would collect into the cupcake pot. Empty market cells are otherwise drawn at
-   0.3 opacity; a symbol cell is NOT dimmed that way (updateMarket skips it), or
-   the marker would be all but invisible at 0.3 x 0.5.
+   A PRINTED MARKER IN A DENT, not a collectible tile: plan section 8.6 settles
+   the five symbol cells as dents with the teapot printed into them, because a
+   printed marker in a dent is not an object standing in a place setting.
 
-   The size and opacity here are tuned to the TEAPOT art, which replaced a
-   cupcake. Two things about it force higher values than the cupcake needed:
-   it is cream-on-cream against the #FFFCF5 cell rather than saturated purple,
-   so it washes out below ~0.6; and it is a landscape image, so object-fit:
-   contain in a square box renders far less ink than the square cupcake did. */
+   Nothing dims it any more. Empty market cells used to be drawn at 0.3 opacity
+   and a symbol cell was exempted from that so the marker was not lost at
+   0.3 x 0.5; the dent replaces the fade entirely, so this is just a marker on
+   the board's own ground.
+
+   The size and opacity are tuned to the TEAPOT art, which replaced a cupcake:
+   it is cream-on-cream, so it washes out below ~0.6, and it is a landscape image
+   in a square box, so object-fit: contain renders far less ink than the square
+   cupcake did. */
 .ft-market-teapot-symbol {
   position: absolute;
   top: 50%;
@@ -1786,61 +2210,47 @@ a .ft-icon {
 
 /* THE GATE, SHOWN ON THE BOARD. Once REFRESH_THRESHOLD symbols are uncovered a
    fresh pot may be ordered, so at that instant every showing symbol lights up.
-   Together with the panel below the market it means a player never has to count
-   cells to know whether the trigger is live. */
+   GOLD MEANS "THIS COSTS YOU SOMETHING", or here that a gate is open (decision
+   15), and it lights THE MARKER rather than repainting the cell - the cell is a
+   dent and a dent is part of the board, not a state indicator.
+
+   .ft-tile--symbol (#FFFCF5) and .ft-tile--symbol-armed (a gold wash and a
+   pulse) were deleted here. Neither had EVER rendered: the empty market cell's
+   inline `background-color: white` beat both of them for the whole life of the
+   build, so the five teapot cells have always been plain white on screen. They
+   were reproduced deliberately by stage 3 so its screenshot diff could be empty,
+   and retired here, which is the first stage entitled to change what they look
+   like. */
 .ft-market-teapot-symbol--armed {
   opacity: 1;
   filter: drop-shadow(0 0 3px rgba(212, 175, 55, 0.9));
 }
 
-/* A market cell carrying a showing symbol, still waiting on the threshold. */
-.ft-tile--symbol {
-  border-color: var(--color-border);
-  background: #FFFCF5;
-}
-
-/* ...and the same cell once the threshold is met. */
-.ft-tile--symbol-armed {
-  border: 2px solid var(--color-accent-gold);
-  background: rgba(212, 175, 55, 0.14);
-  animation: pulse-symbol 1.6s ease-in-out infinite;
-}
-
-@keyframes pulse-symbol {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.55); }
-  50% { box-shadow: 0 0 0 4px rgba(212, 175, 55, 0); }
-}
-
+/* DRAG-OVER - the cell a dragged tile is currently over. A ring and a wash. */
 .ft-tile.drag-over {
-  background: rgba(193, 123, 92, 0.15);
-  border-color: var(--color-accent);
-  box-shadow: inset 0 0 8px rgba(193, 123, 92, 0.3);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+  box-shadow: inset 0 0 0 999px rgba(193, 123, 92, 0.10), var(--dent-edges);
 }
 
+/* MOVABLE - a tile a cupcake could pick up. Gold, because it costs a cupcake. */
 .ft-tile--movable {
   cursor: grab;
-  border: 2px dashed var(--color-accent);
-  opacity: 1 !important;
-}
-
-.ft-tile--movable:hover {
-  background: rgba(193, 123, 92, 0.1);
-  box-shadow: 0 0 8px rgba(193, 123, 92, 0.3);
+  outline: 2px solid var(--color-accent-gold);
+  outline-offset: 1px;
+  box-shadow: inset 0 0 0 999px rgba(212, 175, 55, 0.16), var(--form-edges);
 }
 
 .ft-tile--movable:active {
   cursor: grabbing;
 }
 
+/* MOVE TARGET - where the paid move may land. The same gold, on a dent. */
 .ft-tile--move-target {
-  background: rgba(193, 123, 92, 0.1);
-  border: 2px dotted var(--color-accent);
+  outline: 2px solid var(--color-accent-gold);
+  outline-offset: 1px;
+  box-shadow: inset 0 0 0 999px rgba(212, 175, 55, 0.16), var(--dent-edges);
   cursor: crosshair;
-}
-
-.ft-tile--move-target:hover {
-  background: rgba(193, 123, 92, 0.2);
-  border-color: var(--color-accent-hover);
 }
 
 /* ======= The tap path (plan B1) =======
@@ -1848,43 +2258,61 @@ a .ft-icon {
    A swept tile that has been tapped and is waiting for a destination. It has to
    be unmistakable, because on touch there is no cursor and no drag ghost to say
    what is in hand - this ring IS the feedback that the tap registered. */
+/* ARMED. A solid accent ring at 2px offset 2, a 2px rise, and THE TILE CASTS -
+   because things that lift, cast. The shipped glow is replaced by the cast
+   shadow, which is the same message told with the one light the whole system
+   uses rather than with a halo that has no source. */
 .working-tile--selected {
-  outline: 3px solid var(--color-accent);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
-  box-shadow: 0 0 10px rgba(193, 123, 92, 0.5);
   transform: translateY(-2px);
+  box-shadow:
+    inset 0 0 0 999px rgba(193, 123, 92, 0.08),
+    var(--form-edges),
+    2px 3px 5px rgba(var(--shadow-ink), 0.40);
 }
 
-/* THE TRIM RULE (6 August). A swept tile with nowhere left to go: the board is
-   full up and this one is going back into the bag when Done is pressed. It is
-   drawn as FADED AND STRUCK THROUGH rather than as an alarm - giving a tile up is
-   an ordinary outcome, not a mistake, and the phase bar already says how many.
-   The point is only that it must not read as a tile the player forgot to place. */
+/* BACK IN THE BAG (the trim rule, 6 August). A swept tile with nowhere left to
+   go: the board is full and this one returns to the bag when Done is pressed.
+   Giving a tile up is an ordinary outcome, not a mistake, and the phase bar
+   already says how many - the point is only that it must not read as a tile the
+   player forgot to place.
+
+   NOTHING IS DIMMED. The shipped `opacity: .45` plus `grayscale(.6)` is exactly
+   what the register forbids - it fades a painted object and desaturates the one
+   layer the colourblind gate depends on. A 52 per cent COOL SLATE WASH says the
+   same thing without touching the paint, and the flat strike stays. The wash
+   sits above the field and below the content, so the black silhouette is still
+   pure black. */
 .working-tile--to-bag {
-  opacity: 0.45;
-  filter: grayscale(0.6);
+  opacity: 1;
+  filter: none;
   position: relative;
   cursor: not-allowed;
+  box-shadow: inset 0 0 0 999px rgba(var(--shadow-ink), 0.52), var(--form-edges);
 }
 
 .working-tile--to-bag::after {
   content: '';
   position: absolute;
-  left: 10%;
-  right: 10%;
+  left: 8%;
+  right: 8%;
   top: 50%;
-  border-top: 2px solid rgba(0, 0, 0, 0.55);
+  border-top: 2px solid rgba(61, 43, 31, 0.60);
   transform: rotate(-20deg);
   pointer-events: none;
 }
 
-/* Every cell the armed tile could legally land in. Deliberately quieter than
-   .ft-tile--move-target, which marks a cupcake move - a paid, once-a-turn
-   action that should shout - whereas this is the ordinary case and is on up to
-   24 cells at once. */
+/* TAP TARGET - every cell the armed tile could legally land in. Deliberately
+   quieter than .ft-tile--move-target, which marks a PAID once-a-turn move,
+   whereas this is the ordinary case and is on up to 24 cells at once. The dashed
+   border moves OUTSIDE the cell as an outline, which is what stops 24 of them
+   nudging the grid, and the wash goes 6 to 10 per cent to pay for the border no
+   longer being drawn on the cell itself. */
 .ft-tile--tap-target {
-  border: 2px dashed var(--color-accent);
-  background: rgba(193, 123, 92, 0.06);
+  outline: 2px dashed var(--color-accent);
+  outline-offset: 1px;
+  box-shadow: inset 0 0 0 999px rgba(193, 123, 92, 0.10), var(--dent-edges);
   cursor: pointer;
 }
 
@@ -1902,43 +2330,38 @@ a .ft-icon {
    it costs the per-colour DARK STOP, and the rim is derived from it. Do not
    revisit it.
 
-   THREE THINGS A LATER STAGE MUST NOT UNDO.
+   TWO THINGS A LATER STAGE MUST NOT UNDO.
 
-   1. The selector is deliberately at three classes. Four rules in this file
-      set a background on a state that a COLOURED tile can be in at the same
-      time - .ft-tile--removable:hover, .ft-tile--movable:hover,
-      .ft-tile.drag-over, and the hover:none block's transparent versions of
-      the first two - and all four are two classes' worth of specificity. The
-      inline declaration beat every one of them, so matching it exactly is what
-      keeps this stage's screenshot diff empty. Anything less and a removable
-      tile would pick up a danger tint on hover that it has never had.
-   2. ft-colour-none is not a colour. It is the literal `background-color:
-      white` an EMPTY MARKET CELL carried inline, and it has to go on beating
-      .ft-tile--symbol (#FFFCF5) and .ft-tile--symbol-armed (a gold wash) the
-      way the inline declaration did, or the five teapot cells visibly change
-      in a stage that adds nothing. STAGE 4 RETIRES IT: an empty market cell
-      becomes the dent, and the teapot cells become dents with the teapot
-      printed into them.
-   3. --lt / --mid / --dk are the names stage 4 is written against
-      (`border: 1px solid var(--dk)`). The MID is an alias of the shipped
-      --tile-<colour> and does not move: it is the printed tile colour and the
-      goal cards' pattern swatch, and web and print may not diverge on the
-      game's own colour language. Only --lt and --dk are new. */
+   1. The selector stays at three classes. Stage 3 needed it because four rules
+      here set a background on a state a COLOURED tile can be in at the same
+      time and the inline declaration beat all four; STAGE 4 HAS TAKEN THE
+      BACKGROUND OFF EVERY ONE OF THEM - a state is a ring plus a wash now, and
+      a wash is a box-shadow - so the specificity is no longer load-bearing for
+      that reason. It is kept because it is what paints the flat mid under the
+      tile's own gradient stack and on the two non-tile carriers below, and
+      because lowering specificity is a change with no upside.
+   2. --lt / --mid / --dk are the names the painted tile is written against
+      (`border: 1px solid var(--dk)`, and --tile-field's 148deg fall). The MID is
+      an alias of the shipped --tile-<colour> and does not move: it is the
+      printed tile colour and the goal cards' pattern swatch, and web and print
+      may not diverge on the game's own colour language. Only --lt and --dk are
+      new.
+
+   ft-colour-none IS RETIRED. It was the literal `background-color: white` an
+   empty market cell carried inline, and an empty cell is not a colour - it is
+   the whole cell, drawn as a dent. getColourClass() returns nothing for a cell
+   with no tile in it. */
 .ft-colour-yellow { --lt: var(--yellow-lt); --mid: var(--yellow); --dk: var(--yellow-dk); }
 .ft-colour-pink   { --lt: var(--pink-lt);   --mid: var(--pink);   --dk: var(--pink-dk); }
 .ft-colour-green  { --lt: var(--green-lt);  --mid: var(--green);  --dk: var(--green-dk); }
 .ft-colour-blue   { --lt: var(--blue-lt);   --mid: var(--blue);   --dk: var(--blue-dk); }
 .ft-colour-orange { --lt: var(--orange-lt); --mid: var(--orange); --dk: var(--orange-dk); }
-/* No --lt and no --dk on purpose: an empty cell has no fondant and therefore
-   no stops, and a white rim would be worse than an obviously missing one. */
-.ft-colour-none   { --mid: #FFFFFF; }
 
 .ft-tile.ft-colour.ft-colour-yellow,
 .ft-tile.ft-colour.ft-colour-pink,
 .ft-tile.ft-colour.ft-colour-green,
 .ft-tile.ft-colour.ft-colour-blue,
 .ft-tile.ft-colour.ft-colour-orange,
-.ft-tile.ft-colour.ft-colour-none,
 .ft-stand__plate.ft-colour,
 .ft-modal__option-colour.ft-colour {
   background-color: var(--mid);
@@ -2068,13 +2491,9 @@ a .ft-icon {
                  The objectives are deleted, so the cards have the band to
                  themselves and were resized for it.
 
-   Every block inside them is a .ft-section and they all share one heading
-   treatment, so the column reads as one designed thing rather than five
-   separately-invented boxes. Each section carries its OWN background tint and a
-   coloured left rule, which is what separates them - not gaps, which only add
-   height. The tints are all drawn from the warm tea palette and kept low in
-   saturation: enough to say "different area", never enough to compete with the
-   tiles and cards, which are the only things here that are meant to be colourful.
+   Every block inside them is a .ft-section, and since stage 4 a section is a
+   flat SURFACE on the wall: one ground, one radius, no tint, no border, no rail
+   and no shadow. What separates two of them is the gap of wall between them.
    =========================================================================== */
 
 /* ONE panel spanning BOTH grid rows, sized to its own content.
@@ -2092,41 +2511,66 @@ a .ft-icon {
   grid-row: 1 / span 2;
   align-self: start;
   gap: var(--spacing-sm);
-  padding: var(--spacing-sm);
+  /* The centre stops being a panel with the rest of them: a card inside a card
+     wasted ~36px of width, and each section carries its own ground. */
+  padding: 0;
 }
 
-/* ---- The shared section component ---------------------------------------- */
+/* ---- THE SURFACE (plan section 8.5) ---------------------------------------
+   A section is a SURFACE: the flat container for anything made of words and
+   numbers. Ground --surface, radius 12, NO BORDER, NO SHADOW, NO TINT AND NO
+   RAIL. The gap of wall around it is what separates it from its neighbour, and
+   it separates far better than a tint ever did - a 12px gap of wall between two
+   surfaces is a 23 point luminance step, where the six section tints were 4.
+
+   THE LEFT RAIL RETURNS AS STATE, not as identity: a 3px accent rail shown only
+   while a section is announcing something. A rail that is always there says
+   nothing; a rail that appears says read me. It is an inset box-shadow rather
+   than a border so it costs no width - see .ft-section--alert. */
 .ft-section {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-md);
-  border: 1px solid var(--color-border);
-  border-left: 3px solid var(--color-text-secondary);
-  border-radius: var(--radius-md);
-  background: var(--color-card);
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
   min-width: 0;
 }
 
-/* One heading treatment for every section: small, uppercase, letterspaced, with
-   an optional figure hard right. Uppercase rather than title case because these
-   are labels for areas, not titles of documents - and at 11px it stays legible
-   where a 16px serif would eat a row of height. */
+/* The announcing state, ready for stages 6 and 7 to switch on. */
+.ft-section--alert {
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+/* ONE HEADING TREATMENT: Fraunces 15, sentence case, no rule under it.
+   ALL-CAPS LETTERSPACED TYPE LEAVES THE HEADING SYSTEM ENTIRELY (plan section
+   8.5) and survives in exactly one role, --type-stamp. Fraunces is the voice of
+   the game and is never uppercase, never letterspaced and never below 15px. */
 .ft-section__head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--spacing-sm);
   padding-bottom: var(--spacing-xs);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: none;
+}
+
+/* A head with no title left in it has nothing to push apart. */
+.ft-section__head--metaonly,
+.ft-section__head--figure {
+  justify-content: flex-start;
+  padding-bottom: 0;
 }
 
 .ft-section__title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: var(--color-text-secondary);
+  font-family: 'Fraunces', serif;
+  font-size: var(--type-heading);
+  font-weight: 600;
+  line-height: 1.3;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--color-text-primary);
   white-space: nowrap;
 }
 
@@ -2143,66 +2587,41 @@ a .ft-icon {
 
 /* A figure that IS the point of its section (a score, a ratio) rather than an
    aside - sized and coloured to be read from across the table. */
+/* A FIGURE THAT IS THE POINT of its section rather than an aside, at
+   --type-figure: 22px at L and XL, 20 below M. It carries --accent-deep rather
+   than --accent, which fails the text bar on five of the nine grounds this build
+   has (plan section 8.4 ruling 1: the accent is a fill, a rail, a ring, a meter
+   or a border, and never an ink). */
 .ft-section__meta--figure {
   font-family: 'Fraunces', serif;
-  font-size: 16px;
+  font-size: var(--type-figure);
   font-weight: 700;
-  color: var(--color-accent);
+  line-height: 1;
+  color: var(--accent-deep);
   font-variant-numeric: tabular-nums;
 }
 
-/* The one-line plain-language note some sections end on. */
+/* The caption under a figure, and the one-line plain-language note some sections
+   end on: --type-caption. */
 .ft-section__note {
   margin: 0;
-  font-size: 11px;
-  line-height: 1.35;
+  font-size: var(--type-caption);
+  line-height: 1.4;
   color: var(--color-text-secondary);
 }
 
-/* ---- Per-section identity ------------------------------------------------
-   Each area gets a tint and a matching left rule. Same hue family, different
-   temperature, so they separate without turning the page into a quilt. */
+/* ---- Per-section identity: THERE ISN'T ANY, AND THAT IS THE POINT ----------
+   The six section tints and their six coloured left rules are DELETED (plan
+   section 8.5). They were doubled in strength on 7 August to try to make six
+   panels stacked in one column read as six things; the answer turned out not to
+   be more tint but no box - the gap of wall between two surfaces is a 23 point
+   luminance step and does the separating on its own, at zero saturation, without
+   competing with the tiles and cards, which are the only things on this screen
+   that are meant to be colourful.
 
-/* ---- THE SECTION TINTS, DEEPENED 7 August ---------------------------------
-   THE PROBLEM THEY WERE FAILING AT: six panels stacked in one column, each a 4-6%
-   wash of a different hue over white, is six panels that read as one cream page
-   with faint lines across it. The hues were already distinct on paper; there was
-   simply not enough of any of them to see. So every tint below is roughly doubled,
-   and the neighbours in the rail are now separated in LIGHTNESS as well as hue -
-   a rail that runs peach, gold, rose, green top to bottom, with the market's oat
-   above it.
-   THE ONE THAT STAYS PALE IS THE MARKET, deliberately: it is the largest surface
-   on the page and it sits under the only genuinely colourful thing in the game.
-   Everything else can afford saturation because it is a strip of text.
-   The 3px left rule stays the primary identifier in every case - the fill is what
-   makes the boxes separable at a glance, the rule is what names them. */
-
-/* Tiles: oat. Deliberately the most neutral of the six - the market grid is the
-   most colourful thing on the page and the surface behind it must not compete. */
-.ft-section--tiles {
-  background: #F6EFDF;
-  border-left-color: #B79B6E;
-}
-
-/* Cards claimed: the clock. Terracotta, matching the progress bar it contains. */
-.ft-section--claims {
-  background: #F7DFCE;
-  border-left-color: var(--color-accent);
-}
-
-/* THE TWO SECTION TITLES ALLOWED TO WRAP (7 August). Titles are nowrap everywhere
-   else, and rightly: a two-word label that breaks looks broken. These two are
-   sentences, and both were measured overflowing the 220px rail rather than
-   wrapping inside it:
-   - the clock's, "End of Game Trigger - Full Board", because the meter needed to
-     say what it triggers rather than only what it counts;
-   - the Flavour's, which carries its price in the title ("1 VP a tile") next to a
-     "+3 most" figure. Measured 7 August: 257px of content in a 192px head, with
-     the +3 sitting 52px OUTSIDE the panel's right edge.
-   min-width: 0 is the load-bearing half: without it the flex item refuses to
-   shrink below its content and pushes the figure out of the panel instead of
-   wrapping the words. */
-.ft-section--claims .ft-section__title,
+   THE WRAPPING HACK RETIRES WITH THEM. .ft-section--claims's title is deleted
+   outright - it is a figure with a caption now - so only the Flavour's title,
+   which carries its price beside a "+3 most" figure, still needs to wrap. */
 .ft-flavour .ft-section__title {
   white-space: normal;
   min-width: 0;
@@ -2220,26 +2639,12 @@ a .ft-icon {
   padding-right: 4px;
 }
 
-/* .ft-section--objectives was here - gold, the colour a pantry goal lit up in
-   when it was ready to take. Deleted 4 August with the goals themselves, which
-   is also why there are four section tints now rather than five. */
-
-/* Card market: blush, the pink of the patisserie cards it holds. Deeper than the
-   Flavour panel's rose and cooler than the clock's peach - it is a wide box rather
-   than a strip in the rail, so it never sits directly beside either. */
-.ft-section--cards {
-  background: #F8E4E2;
-  border-left-color: #C98B8B;
-}
-
-/* Fresh pot: gold, the colour of something that "becomes due". (It used to share
-   this reading with the objectives panel, which is gone.) The gauge's own
-   --ready / --locked state modifiers are declared later in the file and
-   deliberately win over this base tint - a gauge that cannot go loud when the pot
-   is due is not a gauge. */
-.ft-section--tea {
-  border-left-color: var(--color-accent-gold);
-}
+/* .ft-section--objectives, --tiles, --claims, --cards and --tea all carried a
+   tint and a coloured left rule here. All five are deleted by stage 4: TINT
+   DIES, BORDER DIES, RAIL SURVIVES ONLY AS STATE. The tea gauge's own --ready /
+   --locked modifiers are declared further down and still win, which is right - a
+   gauge that cannot go loud when the pot is due is not a gauge, and that is a
+   section ANNOUNCING something rather than a section wearing a colour. */
 
 /* ---- BAND 1: the title bar ----------------------------------------------- */
 .ft-centre-head {
@@ -2300,8 +2705,11 @@ a .ft-icon {
   gap: var(--spacing-md);
 }
 
+/* The turn bar is a STRIP, and its label is the stamp role - the second and last
+   site of the only uppercase role in the system. */
 .ft-centre-head__stat {
-  font-size: 11px;
+  font-size: var(--type-stamp);
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: rgba(251, 245, 236, 0.65);
@@ -2690,10 +3098,15 @@ a .ft-icon {
 
 /* ======= Phase Bar ======= */
 
+/* The phase bar is the one piece of persistent chrome in the seat, and from the
+   M band down it is fixed to the foot of the viewport - which is a STRIP (plan
+   section 8.5): one ground, one hairline on the edge facing content, no box. The
+   3px accent top rule survives as that hairline's louder relative, because a bar
+   that says what you must do now IS a section announcing something. */
 .ft-phase-bar {
-  background: var(--color-cream);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: none;
+  border-radius: var(--radius-lg);
   padding: var(--spacing-md);
   margin-top: var(--spacing-md);
   border-top: 3px solid var(--color-accent);
@@ -3532,13 +3945,13 @@ select:focus {
 .ft-tea-option {
   margin-top: var(--spacing-md);
   padding: var(--spacing-sm) var(--spacing-md);
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-md);
-  /* Gold, deepened 7 August with the rest of the section tints - at 0.06 over
-     #FDF9F2 it was indistinguishable from the oat market above it and the peach
-     clock beside it. The --ready state below still has to out-shout this, which is
-     why it goes deeper again rather than merely differently. */
-  background: linear-gradient(135deg, #FAEBC4 0%, rgba(212, 175, 55, 0.32) 100%);
+  border: none;
+  border-radius: var(--radius-lg);
+  /* The sixth tint, and the last to go. It was deepened on 7 August so it could
+     be told apart from the oat market above it and the peach clock beside it;
+     both of those are --surface now, and the gauge is a surface on the wall like
+     everything else. Gold is left free to mean what decision 15 says it means. */
+  background: var(--surface);
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -3546,25 +3959,29 @@ select:focus {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* A pot is coming at the end of this turn: solid gold border and a lit panel. */
+/* A pot is coming at the end of this turn. GOLD MEANS THIS COSTS YOU SOMETHING,
+   or here that a gate is open (decision 15), and the panel says so ADDITIVELY -
+   the resting ground is untouched and a gold rail plus a gold wash appear on it.
+   The tint the panel used to wear at rest is gone, so a state can be a state. */
 .ft-tea-option--ready {
-  border: 2px solid var(--color-accent-gold);
-  /* Deepened 7 August alongside the resting state, which moved up to 0.26 - a
-     "ready" that is paler than "not ready" is worse than no state at all. */
-  background: linear-gradient(135deg, #F9EBCB 0%, rgba(212, 175, 55, 0.42) 100%);
-  box-shadow: 0 0 12px rgba(212, 175, 55, 0.35);
+  box-shadow:
+    inset 3px 0 0 var(--color-accent-gold),
+    inset 0 0 0 999px rgba(212, 175, 55, 0.16);
 }
 
-/* Not available: the gauge stays perfectly readable, it just stops advertising. */
+/* Not available: the gauge stays perfectly readable, it just stops advertising.
+   NOTHING IS DIMMED, so the 0.85 goes and the resting state IS the resting
+   state - what "locked" means here is only that no rail has appeared. */
 .ft-tea-option--locked {
-  opacity: 0.85;
+  opacity: 1;
 }
 
 /* Forced (the tile market emptied): no longer an option, so it stops looking
-   like one and shouts instead. */
+   like one and shouts instead. Danger rail, danger wash, same grammar. */
 .ft-tea-option--forced {
-  border: 2px solid var(--color-danger);
-  background: linear-gradient(135deg, #FBF5EC 0%, rgba(192, 57, 43, 0.12) 100%);
+  box-shadow:
+    inset 3px 0 0 var(--color-danger),
+    inset 0 0 0 999px rgba(192, 57, 43, 0.10);
   animation: pulse-forced 1.4s ease-in-out infinite;
 }
 
@@ -3591,8 +4008,6 @@ select:focus {
   flex-wrap: nowrap;
   gap: var(--spacing-sm);
   margin-top: 0;
-  border-style: solid;
-  border-left-width: 3px;
 }
 
 /* (.ft-tea-option__count and its strong stood here - the "[teapot] teapots
@@ -3650,21 +4065,20 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
-  border-left-color: var(--color-success);
-  /* DEEPER TWICE ON 7 AUGUST, for two different reasons that pull the same way.
-     First: 0.10 of the success green over #F7FAF6 put the panel within a few
-     percent of the white cards on it, and once the symbols shrank and two cards
-     began sharing a row they read as one strip - the cards have to be the lightest
-     thing in this panel, see .ft-menu. Then again with the whole rail, so the
-     panels stop fading into each other. This is the deepest tint on the page and
-     can afford to be: it is the one panel whose content is pure white. */
-  background: linear-gradient(135deg, #E5EFE3 0%, rgba(90, 138, 92, 0.30) 100%);
+  /* The green tint and its rail go with the other five (plan section 8.5). It
+     was deepened twice on 7 August to stop the panel merging with the white menu
+     cards on it and to stop the rail's panels merging with each other; on the
+     wall, with a gap of wall between every surface, neither problem exists. The
+     cards are --object white and this is --surface, which is a 8.1 point step
+     rather than a few per cent. */
 }
 
-/* Every menu gone. This IS an ending - nothing brings them back - so it dims
-   further than the Freshness panel's equivalent state ever did. */
+/* Every menu gone. This IS an ending - nothing brings them back - and the panel
+   says so in words ("Every menu has gone") on the line below. NOTHING IS DIMMED
+   at any width in any state, so the 0.66 goes: the struck-through cards carry
+   it, each stamped with the name of whoever took it. */
 .ft-menus--spent {
-  opacity: 0.66;
+  opacity: 1;
 }
 
 /* The price tag beside the head. It rides INSIDE the title span so the
@@ -3925,11 +4339,9 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
-  border-left-color: var(--color-accent-pink, #C4708A);
-  /* Rose, deepened with the rest of the rail on 7 August. It sits between the
-     gold gauge above and the green menus below, so it needs to hold its own hue
-     against a warm neighbour on one side and a cool one on the other. */
-  background: linear-gradient(135deg, #FAE6EE 0%, rgba(196, 112, 138, 0.26) 100%);
+  /* The rose tint and its rail go with the rest. It existed to hold its own
+     between a gold neighbour above and a green one below; neither is tinted any
+     more, so there is nothing to hold out against. */
 }
 
 /* The price tag beside the head, matching the menus' treatment: a price is prose,
@@ -4118,23 +4530,16 @@ select:focus {
    `@media (hover: hover)`: the desktop stylesheet then stays exactly as it was,
    byte for byte, which is what keeps the XL freeze honest. */
 @media (hover: none) {
-  /* The lifts. These are the ones that actually mislead: a scaled-up tile is the
-     game's own vocabulary for "this is the one you picked". */
-  .ft-tile:hover:not(.ft-tile--empty):not(.ft-tile--ghost):not(.market-tile),
-  .market-tile.ft-tile--pickable:hover,
+  /* THE TILE'S OWN HOVER LIFT NO LONGER NEEDS UNDOING HERE. Stage 4 wrapped it
+     in @media (hover: hover) at the point of declaration, which is the honest
+     form: a lift that only exists where there is a pointer cannot stick to a
+     tap. The three card and cupcake lifts are still declared unconditionally
+     further up the file and are still undone here. */
   .ft-cupcake-btn--active:hover,
   .ft-card--reservable:hover,
-  .ft-card--claimable:hover,
-  .ft-tile--movable:hover {
+  .ft-card--claimable:hover {
     transform: none;
     box-shadow: none;
-  }
-  /* Restore the borders those rules also set, so a tapped tile is not left
-     wearing the accent border either. .ft-card--claimable keeps its gold one,
-     which is a STATE ("you can claim this") rather than a hover response. */
-  .ft-tile:hover:not(.ft-tile--empty):not(.ft-tile--ghost):not(.market-tile),
-  .market-tile.ft-tile--pickable:hover {
-    border-color: var(--color-border);
   }
   .ft-card--claimable:hover {
     border-color: var(--color-accent-gold);
@@ -4142,17 +4547,15 @@ select:focus {
   }
 
   /* The background-only rules. Milder, but a stand row left highlighted after a
-     tap suggests it is still the chosen destination. */
+     tap suggests it is still the chosen destination.
+     The three tile rules that used to sit here - .ft-tile--removable:hover,
+     .ft-tile--movable:hover and .ft-tile--move-target:hover - are gone with the
+     hover backgrounds they were undoing. A tile state is a ring plus a wash and
+     does not respond to hover at all. */
   .ft-stand__row--legal:hover,
   .ft-stand__crumbs--legal:hover { background: rgba(212, 175, 55, 0.12); }
-  .ft-tile--removable:hover { background: transparent; }
-  .ft-tile--movable:hover { background: transparent; }
-  .ft-tile--move-target:hover {
-    background: rgba(193, 123, 92, 0.1);
-    border-color: var(--color-accent);
-  }
   .ft-cupcake-spend-btn:hover:not(:disabled) {
-    background: #FFFFFF;
+    background: var(--surface);
     border-color: var(--color-border);
   }
 }
@@ -4224,6 +4627,7 @@ select:focus {
     --score-col-min: 184px;
     --card-height: 200px;
     --stand-plate: 30px;
+    --cloth-ring: 12px;
   }
 
   /* YOUR OWN score column gets a definite width, exactly as the opponents' do
@@ -4307,6 +4711,19 @@ select:focus {
   .ft-seat--opp {
     --stand-plate: 24px;
   }
+
+  /* THE 42px RUNG (plan section 17, amendment 2). L's opponent tile is 40px, and
+     the redrawn almond's two grooves render at 1.91 CSS px there - under the
+     2.00px floor, and anything under the floor is DELETED rather than shrunk.
+     The solid teardrop is the same drawing with its two grooves filled, derived
+     from the same source render rather than redrawn, so the silhouette is
+     identical and only the sub-floor detail is gone. It loses nothing that
+     carries the ingredient.
+     `content` on a replaced element swaps the image without a second code path
+     in board.js and without a second <img> in 25 cells. */
+  .ft-seat--opp .ft-tile__icon[alt="almond"] {
+    content: url('images/symbol-almond-solid-v3.png');
+  }
 }
 
 /* The strip is INERT above the M band: its seats are promoted back out and
@@ -4388,6 +4805,23 @@ select:focus {
        a symbol would be mush and is dropped instead (plan 6.1 - validated by eye
        at 24, 14 and 40px; all five colours stay plainly distinct). */
     --tile-size-opp: 24px;
+    --cloth-ring: 10px;
+  }
+
+  /* THE 24px RUNG OF THE SHRINK LADDER, set as VALUES so no component rule moves
+     (plan section 8.6). Rim, flat local colour, one 1px inner edge light: no
+     body gradient, no highlight, no ingredient - and the ingredient is neither
+     shown nor claimed to be shown, so nothing is carried by colour alone. The
+     dent mirrors it exactly, one 1px inner SHADE on the top edge. Below 24 the
+     cast shadow is off, so the plate keeps its relief and loses its contact. */
+  .ft-seat--opp {
+    --cloth-ring: 6px;
+    --tile-field: linear-gradient(var(--mid), var(--mid));
+    --form-edges: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    --dent-edges: inset 0 1px 0 rgba(var(--shadow-ink), 0.38);
+    --plate-size: 92%;
+    --plate-body: linear-gradient(var(--china), var(--china));
+    --plate-edges: inset 0 1px 0 rgba(var(--shadow-ink), 0.34);
   }
 
   .ft-game {
@@ -4530,6 +4964,16 @@ select:focus {
     width: auto;
   }
 
+  /* THE TWO SURVIVING PANEL HEADINGS ARE DELETED BELOW L (plan section 8.5's
+     table: phone, S and M lose them, L and XL keep them). Cover the heading, and
+     ask whether a player can still name what they are looking at: a row of
+     patisserie cards and a row of menu cards both answer yes. Nothing is
+     renamed - Dean's terms stand, and both are still printed here at L and XL. */
+  .ft-menus .ft-section__title,
+  .ft-section--cards .ft-section__title {
+    display: none;
+  }
+
   /* ---- THE ACTION BAR, pinned to the bottom of the viewport (plan 5.5) ------
 
      FIXED, NOT STICKY, and the plan's own CSS cannot work here. `position:
@@ -4619,6 +5063,32 @@ select:focus {
        consumes either token until stage 4. */
     --type-display: 24px;
     --type-figure: 20px;
+
+    --cloth-ring: 10px;
+  }
+
+  /* 44px, YOUR OWN BOARD: full form and full ink, but the cast shadow drops to
+     1px 2px - the light does not move, the object is simply smaller. */
+  :root {
+    --plate-edges:
+      inset 0 2px 3px -1px rgba(var(--shadow-ink), 0.34),
+      inset 0 -2px 2px -1px rgba(255, 255, 255, 0.65),
+      1px 2px 3px -1px rgba(var(--shadow-ink), 0.40);
+  }
+
+  /* THE 14px RUNG. Rim and flat local colour, and that is the whole object; the
+     dent is fill only. The board region's ring goes to nothing, because at 14px
+     a 5x5 is 78px wide and a 10px ring round it would be half the object again -
+     and because the opponent strip was measured with two pixels of width
+     headroom at 390, where two more would cost 269px of page height. */
+  .ft-seat--opp {
+    --cloth-ring: 0px;
+    --tile-field: linear-gradient(var(--mid), var(--mid));
+    --form-edges: 0 0 0 0 rgba(0, 0, 0, 0);
+    --dent-edges: 0 0 0 0 rgba(0, 0, 0, 0);
+    --plate-size: 92%;
+    --plate-body: linear-gradient(var(--china), var(--china));
+    --plate-edges: 0 0 0 0 rgba(0, 0, 0, 0);
   }
 
   /* .ft-centre and .ft-centre-table dissolve so their children become items of

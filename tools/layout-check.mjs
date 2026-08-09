@@ -124,6 +124,26 @@ const PHASE_WIDTHS = [430, 390, 360, 768, 1024, 1400];
 // tallest COLUMN, and one pixel off the title bar disappears into that column's
 // slack.
 //
+// LOWERED AGAIN ON 10/08/2026 BY STAGE 4, at EVERY width and in both positions -
+// the first stage to move all sixteen. The painted layer was budgeted as a cost
+// and came in as a refund, because the four things it deletes are all height:
+//
+//   - THE PANEL. A seat stops being a box, so 12px of padding a side and 1px of
+//     border go with the tint and the shadow. At L, where the tallest column is
+//     TWO SEATS STACKED, that is doubled.
+//   - THE RULE UNDER A HEADING, and the 8px of padding that held the heading off
+//     it. Worth 8 a seat, 16 a column at L, and it is the whole reason the mid
+//     position at L came in at 1816 rather than 1832 - the only number in the
+//     table that went the wrong way before it came off.
+//   - THREE PANEL HEADINGS. "Tile Market" everywhere, "Patisserie goals" and
+//     "Tasting menus" below the L band, and "End of Game Trigger - Full Board"
+//     replaced by the figure it sat beside. The M band's -210 is mostly this.
+//   - THE SECTION BORDERS, 2px a section over six sections.
+//
+// Against that, the cloth's ring is real padding on the vertical axis (2 x 10 to
+// 2 x 14 per board area) and the seat rule is 10px per seat. Both are paid for
+// several times over. The largest fall is at 360: 3330 to 3033.
+//
 // TARGET_SCREENS is what a phone layout should aim at rather than what it is:
 // two screenfuls of scroll for a turn. Reported as a gap in the detail line, and
 // deliberately NOT asserted, because failing every phone width on an aspiration
@@ -132,10 +152,11 @@ const TARGET_SCREENS = 2.0;
 const PAGE_HEIGHT_BUDGET = {
   // The 4-player seeded OPENING position, human in seat 0, boards empty.
   open: {
-    2400: 1453, 2181: 1453, 2180: 1546, 1920: 1546, 1700: 1546, 1400: 1546,
-    1399: 1617, 1366: 1617, 1280: 1617, 1150: 1617,   // was 1618
-    1149: 2524, 1024: 2524, 768: 2524,                // was 2549
-    430: 3070,  390: 3085,  360: 3330,                // was 3119 / 3134 / 3403
+    2400: 1387, 2181: 1387,                           // was 1453
+    2180: 1493, 1920: 1493, 1700: 1493, 1400: 1493,   // was 1546
+    1399: 1407, 1366: 1407, 1280: 1407, 1150: 1407,   // was 1617
+    1149: 2471, 1024: 2471, 768: 2471,                // was 2524
+    430: 3014,  390: 3014,  360: 3033,                // was 3070 / 3085 / 3330
   },
   // MID-GAME, after one scripted human turn and the bots' replies. Taller than
   // the opening at every width except XL, because four boards now carry tiles
@@ -143,10 +164,11 @@ const PAGE_HEIGHT_BUDGET = {
   // the worst case a phone actually has to scroll, and it had no number at all
   // before 09/08/2026.
   mid: {
-    2400: 1453, 2181: 1453, 2180: 1830, 1920: 1830, 1700: 1830, 1400: 1830,
-    1399: 1800, 1366: 1800, 1280: 1800, 1150: 1800,   // was 1801
-    1149: 2707, 1024: 2707, 768: 2707,                // was 2732
-    430: 3435,  390: 3450,  360: 3695,                // was 3484 / 3499 / 3768
+    2400: 1387, 2181: 1387,                           // was 1453
+    2180: 1816, 1920: 1816, 1700: 1816, 1400: 1816,   // was 1830
+    1399: 1589, 1366: 1589, 1280: 1589, 1150: 1589,   // was 1800
+    1149: 2654, 1024: 2654, 768: 2654,                // was 2707
+    430: 3379,  390: 3379,  360: 3398,                // was 3435 / 3450 / 3695
   },
 };
 

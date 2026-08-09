@@ -8,7 +8,7 @@ import { BOARD_SIZE, REWARD_CARDS } from '../engine/tiles.js';
 import { getPatternMatches, getLegalDestinations, getMoveCost, canDealCards, canBuyExtraTile, canReserveCard, canRemovePlate, canClaimMore, getExtraClaimCupcakeCost, getMaxExtraTilesPerTurn, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, RESERVE_CUPCAKE_COST, RESERVE_LIMIT, getSweepPlacementCount, getVisibleTeapotSymbols, getStartingCupcakes, isTastingMenuInPlay, getAvailableMenus, getMenuDeficit, getMenuIngredients, satisfiesMenu, TASTING_MENU_VP, TASTING_MENUS, isFlavourInPlay, getFlavourCount, getFlavourLeaders, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
 
 // Ingredient names as they appear in copy. The engine's INGREDIENTS are lowercase
-// keys that double as image filenames (images/symbol-<ingredient>-v2.png), and a
+// keys that double as image filenames (images/symbol-<ingredient>-v3.png), and a
 // sentence should not be the place that discovers that.
 //
 // The -v2 files are the web-scale export (ticket 17, 9 August): 88px on the long
@@ -638,16 +638,34 @@ function seatHTML(playerIdx, gameState) {
     present ? '' : 'ft-seat--absent',
   ].filter(Boolean).join(' ');
 
+  // THE SEAT RULE (plan section 8.9, carrier 1). 4px of the seat's own ink, the
+  // full width of the board column, directly above the cloth, at every size and
+  // on every seat. It costs ZERO width - it is a block that takes the width it
+  // is given - which is the whole reason seat colour is a mark rather than a
+  // wash: the opponent strip has no width to spend at all (see the note in the
+  // M band about the strip's 2px of headroom).
+  const seatRule = `<div class="ft-seat__rule" aria-hidden="true"></div>`;
+
+  // THE CLOTH (plan section 8.6, "the board region and the cloth"). One element
+  // per board area: the three-stop 163deg fall, the upper-left highlight, the
+  // grain in its own background stack at full strength, one contact shadow.
+  // The RECESS is .ft-board-grid itself, which already carries the 8px of
+  // padding and the 1px border that --board-col-width is derived from, so
+  // wrapping it moves no dimension the harness reads.
   return `
       <div class="${classes}" id="playerPanel${n}">
         <div id="playerScore${n}" class="ft-player-score ft-seat__score-col"></div>
         <div class="ft-seat__board-col">
           <div class="ft-panel__header ft-seat__header">
+            <span class="ft-seat__dot" aria-hidden="true"></span>
             ${title}
           </div>
           ${sweptLabel}
           <div id="workingArea${n}" class="ft-working-area ft-hidden"></div>
-          <div id="playerBoard${n}" class="ft-board-grid"></div>
+          ${seatRule}
+          <div class="ft-cloth">
+            <div id="playerBoard${n}" class="ft-board-grid"></div>
+          </div>
           ${controls}
         </div>
       </div>`;
@@ -704,8 +722,12 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
              market grid instead of adding height below it. -->
         <div class="ft-centre-table">
         <section class="ft-section ft-section--tiles">
-          <div class="ft-section__head">
-            <span class="ft-section__title">Tile Market</span>
+          <!-- THE HEADING IS DELETED (plan section 8.5, the heading test): a 5x5
+               grid of painted tiles under a teapot gauge is not a thing anybody
+               needed labelling, and the words cost a row of height in the column
+               that overflows. The tile count survives, because it is a number
+               rather than a label. -->
+          <div class="ft-section__head ft-section__head--metaonly">
             <span class="ft-section__meta"><strong id="marketDisplay">25</strong> tiles left</span>
           </div>
         <div class="ft-market-wrap">
@@ -713,11 +735,19 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
                FULL TILE each - 60px of height for a row of buttons that needs 26,
                and 60px of width for buttons that need 34. The tile tracks stay at
                --tile-size; only the gutters shrink, so the buttons still line up
-               exactly with the rows and columns they sweep. -->
+               exactly with the rows and columns they sweep.
+
+               THE CLOTH WRAPS THE WHOLE CONTAINER, buttons included, and it does
+               it on a NEGATIVE MARGIN so the ring costs no layout at all - the
+               grid tracks, and therefore the alignment of every sweep button
+               with the line it sweeps, are exactly where they were. The ring
+               bleeds outward into .ft-market-wrap's own padding. -->
+          <div class="ft-cloth ft-cloth--market">
           <div id="marketContainer" style="display: grid; grid-template-columns: var(--market-gutter-w) repeat(${gameState.marketSize}, var(--tile-size)); grid-template-rows: var(--market-gutter-h) repeat(${gameState.marketSize}, var(--tile-size)); gap: 2px;">
             <div style="grid-column: 2 / span ${gameState.marketSize}; grid-row: 1; display: flex; gap: var(--tile-gap);" id="marketColButtons"></div>
             <div style="grid-column: 1; grid-row: 2 / span ${gameState.marketSize}; display: flex; flex-direction: column; gap: var(--tile-gap);" id="marketRowButtons"></div>
             <div id="market" class="ft-market-grid" style="grid-column: 2 / span ${gameState.marketSize}; grid-row: 2 / span ${gameState.marketSize}; display: grid; grid-template-columns: repeat(${gameState.marketSize}, var(--tile-size)); grid-template-rows: repeat(${gameState.marketSize}, var(--tile-size)); gap: 2px;"></div>
+          </div>
           </div>
         </div>
         </section>
@@ -732,24 +762,19 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
                  keeps its id and its markup so the layout and the responsive bands
                  are untouched; only what it counts has changed. -->
             <section class="ft-section ft-section--claims" id="cardProgress">
-              <div class="ft-section__head">
-                <!-- The non-breaking space keeps the dash with the phrase before
-                     it, so the two-line wrap in the narrow rail reads
-                     "End of Game Trigger -" / "Full Board" rather than starting a
-                     line with a dangling dash. -->
-                <span class="ft-section__title">End of Game Trigger&nbsp;- Full Board</span>
+              <!-- A FIGURE WITH A CAPTION, not a heading (plan section 8.5). The
+                   heading test - cover it, and see whether a player can still name
+                   what they are looking at - deletes "END OF GAME TRIGGER - FULL
+                   BOARD" outright: the number, the bar and one sentence say all of
+                   it, and the words were the two-line title that needed the
+                   wrapping hack in the first place. That hack retires with them. -->
+              <div class="ft-section__head ft-section__head--figure">
                 <span class="ft-section__meta ft-section__meta--figure" id="cardProgressText">0/25</span>
               </div>
               <div class="ft-claim-meter__track">
                 <div id="cardProgressBar" class="ft-claim-meter__bar"></div>
               </div>
-              <!-- TRIMMED 7 August, to one clause. The head now says what the meter
-                   IS, so the note only has to say what makes it move. What came off:
-                   "you then finish the round" (the rules modal's job, and the phase
-                   bar announces the final round when it actually arrives) and the
-                   two sentences on which cells count, which describe the board
-                   sitting directly below it. -->
-              <p class="ft-section__note">When any player's board is full, the end is triggered.</p>
+              <p class="ft-section__note">Board filled. The game ends at 25.</p>
             </section>
 
             <!-- The fresh-pot affordance is PERSISTENT and sits beside the market
@@ -816,8 +841,11 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
                rejection instead of an alert), and the card area itself, which
                grows in height rather than shrinking the cards. -->
           <section class="ft-section ft-section--cards">
+            <!-- Sentence case, Fraunces 15, and it is DELETED below the L band
+                 (plan section 8.5). Nothing is renamed: Dean's terms stand, and
+                 only the case changes. -->
             <div class="ft-section__head">
-              <span class="ft-section__title">Patisserie Goals</span>
+              <span class="ft-section__title">Patisserie goals</span>
               <span class="ft-section__meta" id="cardRowCount">3 cards</span>
             </div>
             <p class="ft-section__note">Make these patterns in your player area. VP shown on each card.</p>
@@ -1185,7 +1213,7 @@ function updateMarket(gameState) {
   if (!market) return;
 
   // Cells carrying a printed teapot symbol - one set for all player counts. The
-  // symbol shows through only while the cell is EMPTY (uncovered) — it is what the
+  // symbol shows through only while the cell is EMPTY (uncovered) - it is what the
   // tea player collects into the cupcake pot. It is a printed-on-board marker, so
   // it renders dimmed/small under where a tile would sit.
   const symbolCells = new Set(TEAPOT_SYMBOL_CELLS);
@@ -1232,15 +1260,27 @@ function updateMarket(gameState) {
     // to tiles that will actually respond - see .ft-tile--pickable.
     if (isBonusAvailable || isBuyable) tileClass += ' ft-tile--pickable';
     const showTeapotSymbol = isEmpty && symbolCells.has(idx);
-    if (showTeapotSymbol) tileClass += gateArmed ? ' ft-tile--symbol-armed' : ' ft-tile--symbol';
-    // Defect 8. An EMPTY cell takes ft-colour-none, which is the white it used
-    // to be handed inline - including under a teapot symbol, where the inline
-    // white was already beating .ft-tile--symbol's #FFFCF5.
-    tileClass += ` ${getColourClass(tile && tile.colour)}`;
+    // STAGE 4. .ft-tile--symbol and .ft-tile--symbol-armed are GONE, and they
+    // were never seen: the empty market cell's inline `background-color: white`
+    // beat both of them for the whole life of the build, so the five teapot
+    // cells have always rendered plain white. Plan section 8.6 settles what they
+    // become - "the five teapot symbol cells stay DENTS with the teapot printed
+    // into them", a printed marker in a dent rather than an object standing in a
+    // place setting - so an armed cell now says so with a ring on the printed
+    // marker (.ft-market-teapot-symbol--armed) and nothing repaints the cell.
+    //
+    // An empty cell also carries NO COLOUR CLASS. ft-colour-none was the literal
+    // white the cell used to be handed inline and it is not a colour; it retires
+    // with the dent.
+    if (tile) tileClass += ` ${getColourClass(tile.colour)}`;
 
+    // NOTHING IS DIMMED, at any width, in any state (plan section 8, decision 3).
+    // The `opacity: 0.3` an empty market cell carried is what the dent replaces:
+    // a faded tile said "there was something here"; a dent says "this is a place
+    // you may still use", which is the true statement.
     return `
-      <div class="${tileClass} market-tile" data-index="${idx}" style="${isEmpty && !showTeapotSymbol ? 'opacity: 0.3;' : ''} ${(isBonusAvailable || isBuyable) ? 'cursor: pointer;' : ''}">
-        ${tile ? `<img src="images/symbol-${tile.ingredient}-v2.png" class="ft-tile__icon" alt="${tile.ingredient}">` : ''}
+      <div class="${tileClass} market-tile" data-index="${idx}" style="${(isBonusAvailable || isBuyable) ? 'cursor: pointer;' : ''}">
+        ${tile ? `<img src="images/symbol-${tile.ingredient}-v3.png" class="ft-tile__icon" alt="${tile.ingredient}">` : ''}
         ${showTeapotSymbol ? `<img src="images/teapot.png" class="ft-market-teapot-symbol${gateArmed ? ' ft-market-teapot-symbol--armed' : ''}" alt="teapot symbol" title="${symbolTitle}">` : ''}
       </div>
     `;
@@ -1369,7 +1409,7 @@ function updateTeaOption(gameState) {
          said. The icon belongs next to the number it counts; the caption was the
          line that made it a separate thing. -->
     <div class="ft-section__head">
-      <span class="ft-section__title">Fresh Pot of Tea</span>
+      <span class="ft-section__title">Fresh pot of tea</span>
       <span class="ft-section__meta ft-section__meta--figure">
         <img src="images/teapot.png" class="ft-tea-option__icon" alt="teapots visible">
         ${shown}/${REFRESH_THRESHOLD}
@@ -1463,7 +1503,7 @@ function updateTastingMenus(gameState) {
     const needs = Object.entries(menu.need).sort((a, b) => b[1] - a[1]);
     const chips = needs.map(([ingredient, need]) => `
       <span class="ft-menu__need" title="${need} x ${ingredientLabel(ingredient)}">
-        <img src="images/symbol-${ingredient}-v2.png" class="ft-menu__symbol" alt="${ingredient}">
+        <img src="images/symbol-${ingredient}-v3.png" class="ft-menu__symbol" alt="${ingredient}">
         ${need > 1 ? `<span class="ft-menu__count">${need}</span>` : ''}
       </span>`).join('');
 
@@ -1513,8 +1553,13 @@ function updateTastingMenus(gameState) {
          show it: a taken menu is struck through and stamped with the name of
          whoever took it, which says more than the count did and says it in the
          place a player is already looking. -->
+    <!-- THE PRICE COMES OUT OF THE TITLE (stage 4). Plan section 8.5 deletes the
+         words below the L band and keeps them at L and XL, and "${TASTING_MENU_VP} VP each" is not a
+         heading - it is a per-decision number a player steers a sweep by. Moved
+         into the meta slot, which survives at every band. -->
     <div class="ft-section__head">
-      <span class="ft-section__title">Tasting Menus <span class="ft-menus__vp">${TASTING_MENU_VP} VP each</span></span>
+      <span class="ft-section__title">Tasting menus</span>
+      <span class="ft-section__meta ft-menus__vp">${TASTING_MENU_VP} VP each</span>
     </div>
     <div class="ft-menus__cards">${cards}</div>
     <!-- "ANYWHERE" IS THE WHOLE NOTE (7 August). The commonest misreading of this
@@ -1604,7 +1649,7 @@ function updateFlavourOfTheDay(gameState) {
            bar where the tiles have to be, which the card below says.
            The non-breaking spaces hold the NAME together so the wrap in the narrow
            rail falls between the name and its price rather than mid-name. -->
-      <span class="ft-section__title">Flavour&nbsp;of&nbsp;the&nbsp;Day: <span class="ft-flavour__vp">${FLAVOUR_VP_PER_TILE}VP&nbsp;per&nbsp;tile, +${FLAVOUR_MAJORITY_VP}&nbsp;for&nbsp;most</span></span>
+      <span class="ft-section__title">Flavour&nbsp;of&nbsp;the&nbsp;day: <span class="ft-flavour__vp">${FLAVOUR_VP_PER_TILE}VP&nbsp;per&nbsp;tile, +${FLAVOUR_MAJORITY_VP}&nbsp;for&nbsp;most</span></span>
     </div>
     <!-- SYMBOL LEFT, PLACE RIGHT (7 August). The card used to be the ingredient and
          nothing else, which answered "what" and left "where" to a tooltip nobody
@@ -1616,7 +1661,7 @@ function updateFlavourOfTheDay(gameState) {
          "somewhere in your player area" by anyone who has just learned that Tasting
          Menus read the stand; naming the stand and ruling it out is what stops it. -->
     <div class="ft-flavour__card" title="Today's flavour is ${ingredientLabel(flavour)}. Score ${FLAVOUR_VP_PER_TILE} VP for every ${ingredientLabel(flavour)} tile on your PLAYER BOARD at the end, and ${FLAVOUR_MAJORITY_VP} VP more for the most - ties are friendly. Your cake stand and crumb tray do not count. It was revealed at setup and does not change.">
-      <img src="images/symbol-${flavour}-v2.png" class="ft-flavour__symbol" alt="${flavour}">
+      <img src="images/symbol-${flavour}-v3.png" class="ft-flavour__symbol" alt="${flavour}">
       <div class="ft-flavour__where">
         <span class="ft-flavour__label">${ingredientLabel(flavour)}</span>
         <span class="ft-flavour__place">tiles on your player board, <strong>not</strong> your cake stand</span>
@@ -1654,7 +1699,7 @@ function setupMarketSelectButtons(gameState, enabled) {
     </button>
   `).join('');
 
-  if (!enabled) return; // no listeners — the disabled buttons are inert visuals
+  if (!enabled) return; // no listeners - the disabled buttons are inert visuals
 
   document.querySelectorAll('.market-row-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1736,7 +1781,7 @@ function showSweepOptionsForRow(gameState, row) {
     const count = tiles.filter(t => t && t.ingredient === ing).length;
     html += `
       <button class="ft-modal__option sweep-option-btn" data-row="${row}" data-col="-1" data-type="symbol" data-val="${ing}">
-        <img src="images/symbol-${ing}-v2.png" class="ft-modal__option-icon" alt="${ing}">
+        <img src="images/symbol-${ing}-v3.png" class="ft-modal__option-icon" alt="${ing}">
         <span style="font-size: 11px; color: var(--color-text-secondary);">(${count})</span>
       </button>
     `;
@@ -1823,7 +1868,7 @@ function showSweepOptionsForCol(gameState, col) {
     const count = tiles.filter(t => t && t.ingredient === ing).length;
     html += `
       <button class="ft-modal__option sweep-option-btn" data-row="-1" data-col="${col}" data-type="symbol" data-val="${ing}">
-        <img src="images/symbol-${ing}-v2.png" class="ft-modal__option-icon" alt="${ing}">
+        <img src="images/symbol-${ing}-v3.png" class="ft-modal__option-icon" alt="${ing}">
         <span style="font-size: 11px; color: var(--color-text-secondary);">(${count})</span>
       </button>
     `;
@@ -2041,7 +2086,7 @@ function updateCardMarket(gameState) {
   if (ui.reserveMode && canReserveCard(gameState)) {
     const actor = gameState.players[gameState.currentPlayerIndex];
     if (actor.isHuman) {
-      // Scope to the card market only — the "On order" reserve slots in player
+      // Scope to the card market only - the "On order" reserve slots in player
       // panels also carry the .card-market-sprite class and must NOT be treated
       // as reservable market cards.
       cardMarket.querySelectorAll('.card-market-sprite').forEach(cardEl => {
@@ -2165,9 +2210,19 @@ function updatePlayerBoards(gameState) {
       // Defect 8. A blocked cell keeps no colour class at all: .ft-tile--blocked
       // owns its own fill, and stage 4 turns it into the CSS empty plate.
       if (displayTile && !isBlockedCell) tileClass += ` ${getColourClass(displayTile.colour)}`;
+      // THE EMPTY PLATE IS CSS NOW (decision 23, plan section 8.6). The painting
+      // measured 95,269 bytes and drew its filigree at 0.39 / 0.32 / 0.29 CSS px
+      // and its scallops at 1.11 / 0.89 / 0.81 - under the 2.00px floor at every
+      // size the board ever draws it, four times further under it than the
+      // almond. A plate on this board is a plain plate whatever it is made of,
+      // so it is a disc, a rim band, a sunk well, one 10 o'clock highlight and a
+      // contact shadow, at zero bytes.
+      //
+      // aria-label because the deleted <img> carried alt="blocked", which was the
+      // only thing announcing an empty plate to a screen reader.
       const imageHtml = isBlockedCell
-        ? `<img src="images/empty_plate.png" class="ft-tile__icon" alt="blocked">`
-        : (displayTile ? `<img src="images/symbol-${displayTile.ingredient}-v2.png" class="ft-tile__icon" alt="${displayTile.ingredient}">` : '');
+        ? `<div class="ft-plate" role="img" aria-label="empty plate"></div>`
+        : (displayTile ? `<img src="images/symbol-${displayTile.ingredient}-v3.png" class="ft-tile__icon" alt="${displayTile.ingredient}">` : '');
       const menuBadge = menuPayout > 0
         ? `<span class="ft-tile__menu" title="Tasting Menu - remove this tile and plate it on your cake stand and you complete a menu, worth ${menuPayout} VP">+${menuPayout}</span>`
         : '';
@@ -2213,7 +2268,7 @@ function updatePlayerBoards(gameState) {
           : tile.ingredient;
         return !isPlaced ? `
           <div class="ft-tile working-tile${isSelected ? ' working-tile--selected' : ''}${backToBag} ${getColourClass(tile.colour)}" draggable="true" data-tile-index="${idx}" style="cursor: grab; user-select: none; flex-shrink: 0;" title="${title}">
-            <img src="images/symbol-${tile.ingredient}-v2.png" class="ft-tile__icon" style="pointer-events: none;" alt="${tile.ingredient}">
+            <img src="images/symbol-${tile.ingredient}-v3.png" class="ft-tile__icon" style="pointer-events: none;" alt="${tile.ingredient}">
           </div>
         ` : '';
       }).join('');
@@ -2239,7 +2294,7 @@ function updatePlayerBoards(gameState) {
         if (tileEl) {
           tileEl.addEventListener('click', () => {
             // Step 2 → 3: a tile is chosen for removal. Move to the destination
-            // step rather than committing — the player must now pick where the
+            // step rather than committing - the player must now pick where the
             // removed tile goes (a stand row or the crumb tray).
             const tile = player.board[idx];
             ui.removedBoardIndex = idx;
@@ -2295,7 +2350,7 @@ function renderOnOrderSlot(gameState, player, playerIdx, boardEl) {
     <div class="ft-on-order__cards">${cardsHTML}</div>
   `;
 
-  // Wire each card by position — cardSpriteHTML emits them in reserve order.
+  // Wire each card by position - cardSpriteHTML emits them in reserve order.
   const cardEls = slotEl.querySelectorAll('.card-market-sprite');
   player.reservedCards.forEach((card, i) => {
     const cardEl = cardEls[i];
@@ -2695,7 +2750,7 @@ function renderStand(player, opts = {}) {
       const tile = row.tiles[k];
       const filled = k < row.tiles.length;
       const plate = tile
-        ? `<div class="ft-stand__plate ft-stand__plate--filled ${getColourClass(tile.colour)}"><img src="images/symbol-${tile.ingredient}-v2.png" class="ft-stand__symbol" alt="${tile.ingredient}"></div>`
+        ? `<div class="ft-stand__plate ft-stand__plate--filled ${getColourClass(tile.colour)}"><img src="images/symbol-${tile.ingredient}-v3.png" class="ft-stand__symbol" alt="${tile.ingredient}"></div>`
         : `<div class="ft-stand__plate ft-stand__plate--empty"></div>`;
       // Cupcake plates (bottom[1], second[1], third[1], top[0]) grant a cupcake
       // when plated onto; mark them on the board whether empty or filled.
@@ -2722,7 +2777,7 @@ function renderStand(player, opts = {}) {
     }
 
     const marker = row.ingredient
-      ? `<img src="images/symbol-${row.ingredient}-v2.png" class="ft-stand__lock" alt="${row.ingredient}" title="Row locked to ${row.ingredient}">`
+      ? `<img src="images/symbol-${row.ingredient}-v3.png" class="ft-stand__lock" alt="${row.ingredient}" title="Row locked to ${row.ingredient}">`
       : `<div class="ft-stand__lock ft-stand__lock--empty" title="Row not yet locked"></div>`;
 
     // NAMING THE COMPONENT. The rules, the Tasting Menus and the cards all say
@@ -2795,7 +2850,7 @@ function renderStandSummary(player) {
     const row = player.stand[rowIndex];
     const full = row.tiles.length >= row.capacity;
     const marker = row.ingredient
-      ? `<img src="images/symbol-${row.ingredient}-v2.png" class="ft-stand-mini__lock" alt="${row.ingredient}">`
+      ? `<img src="images/symbol-${row.ingredient}-v3.png" class="ft-stand-mini__lock" alt="${row.ingredient}">`
       : `<span class="ft-stand-mini__lock ft-stand-mini__lock--empty"></span>`;
     const title = row.ingredient
       ? `Locked to ${row.ingredient} - ${row.tiles.length} of ${row.capacity} plated`
@@ -2866,7 +2921,7 @@ function updateStats(gameState) {
     const bd = getScoreBreakdown(p, gameState);
 
     // The current human is picking a destination for a removed tile when
-    // destinationChoices is set — make their own stand's legal spots clickable.
+    // destinationChoices is set - make their own stand's legal spots clickable.
     const destinationMode = isCurrentPlayer && p.isHuman && Array.isArray(ui.destinationChoices);
     const legalRows = destinationMode
       ? new Set(ui.destinationChoices.filter(d => d.type === 'row').map(d => d.rowIndex))
@@ -2899,7 +2954,7 @@ function updateStats(gameState) {
           const menu = TASTING_MENUS.find(m => m.id === id);
           if (!menu) return '';
           return Object.entries(menu.need).map(([ing, need]) =>
-            `<img src="images/symbol-${ing}-v2.png" class="ft-score-breakdown__symbol" alt="${ing}" title="${need} x ${ingredientLabel(ing)}">`).join('');
+            `<img src="images/symbol-${ing}-v3.png" class="ft-score-breakdown__symbol" alt="${ing}" title="${need} x ${ingredientLabel(ing)}">`).join('');
         }).join(' ')} Tasting Menus</span><strong>${bd.menus}</strong></div>`
       : `<div class="ft-score-breakdown__item"><span>Tasting Menus</span><strong>0</strong></div>`;
 
@@ -2913,7 +2968,7 @@ function updateStats(gameState) {
     // check. The majority chip is marked as provisional in its tooltip because it
     // is not settled until the game ends.
     const flavourLine = isFlavourInPlay(gameState)
-      ? `<div class="ft-score-breakdown__item"><span><img src="images/symbol-${gameState.flavourOfTheDay}-v2.png" class="ft-score-breakdown__symbol" alt="${gameState.flavourOfTheDay}" title="Flavour of the Day: ${ingredientLabel(gameState.flavourOfTheDay)}"> Flavour${bd.flavourLeading ? ` <span class="ft-score-breakdown__lead" title="Currently holds the most - worth ${FLAVOUR_MAJORITY_VP} VP at the end, and shared if the lead is level">most +${FLAVOUR_MAJORITY_VP}</span>` : ''} <span class="ft-score-breakdown__sub">${bd.flavourTiles} on board</span></span><strong>${bd.flavour}</strong></div>`
+      ? `<div class="ft-score-breakdown__item"><span><img src="images/symbol-${gameState.flavourOfTheDay}-v3.png" class="ft-score-breakdown__symbol" alt="${gameState.flavourOfTheDay}" title="Flavour of the Day: ${ingredientLabel(gameState.flavourOfTheDay)}"> Flavour${bd.flavourLeading ? ` <span class="ft-score-breakdown__lead" title="Currently holds the most - worth ${FLAVOUR_MAJORITY_VP} VP at the end, and shared if the lead is level">most +${FLAVOUR_MAJORITY_VP}</span>` : ''} <span class="ft-score-breakdown__sub">${bd.flavourTiles} on board</span></span><strong>${bd.flavour}</strong></div>`
       : '';
 
     let html = `
@@ -3516,9 +3571,14 @@ function cardSpriteHTML(card, height = null, { extraClass = '', clickable = fals
 // name.
 //
 // The bare ft-colour is the marker that buys the specificity; the second class
-// carries the stops. ft-colour-none is not a colour - it is the literal white
-// an empty market cell used to be given inline, and it is also the fallback for
-// an unrecognised colour, which is what the old '#fff' return did.
+// carries the stops.
+//
+// STAGE 4 RETIRED ft-colour-none. It was the literal white an empty market cell
+// used to be given inline, and an empty cell is not a colour - it is a DENT, and
+// the dent is the whole cell rather than a fill sitting in one. An unrecognised
+// colour now returns nothing at all, which leaves .ft-tile's own field showing
+// with no --lt / --mid / --dk declared, rather than painting a white square that
+// would beat every rule under it exactly as the inline declaration used to.
 function getColourClass(colour) {
   const classMap = {
     yellow: 'ft-colour ft-colour-yellow',
@@ -3527,7 +3587,7 @@ function getColourClass(colour) {
     blue: 'ft-colour ft-colour-blue',
     orange: 'ft-colour ft-colour-orange',
   };
-  return classMap[colour] || 'ft-colour ft-colour-none';
+  return classMap[colour] || '';
 }
 
 export function renderGameEnd(container, data) {
