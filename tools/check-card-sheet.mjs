@@ -217,7 +217,15 @@ const server = http.createServer((req, res) => {
   const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\//, '') || 'index.html';
   const file = path.join(ROOT, rel);
   if (!file.startsWith(ROOT) || !fs.existsSync(file)) { res.writeHead(404); return res.end(); }
-  res.writeHead(200, { 'Content-Type': rel.endsWith('.png') ? 'image/png' : 'text/html' });
+  // The sheet has been PNG and is now WebP (ticket 17), and the extension is
+  // read out of style.css rather than fixed here, so the type has to follow it.
+  // Serving a WebP as text/html makes img.decode() reject and the run dies with
+  // a bare "sheet failed to load", which says nothing about the cause.
+  const type = rel.endsWith('.png') ? 'image/png'
+    : rel.endsWith('.webp') ? 'image/webp'
+    : rel.endsWith('.jpg') || rel.endsWith('.jpeg') ? 'image/jpeg'
+    : 'text/html';
+  res.writeHead(200, { 'Content-Type': type });
   res.end(fs.readFileSync(file));
 });
 await new Promise(r => server.listen(PORT, r));

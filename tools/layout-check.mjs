@@ -10,7 +10,7 @@
 //
 // Add --keep to leave the browser open, --width=N to restrict the sweep.
 //
-// FIVE things about this harness are non-obvious, and each cost a round to
+// SEVEN things about this harness are non-obvious, and each cost a round to
 // rediscover the first time:
 //
 // 1. Playwright is installed GLOBALLY, not in this project. Hence createRequire
@@ -28,6 +28,16 @@
 // 5. updatePlayerBoards clears and re-hides #workingArea1 on every render, so
 //    tiles injected synthetically for measurement are wiped by the next bot move
 //    a few hundred ms later and the measurement silently becomes 0.
+// 6. The phone widths are measured at their REAL device height, not at the
+//    1000px the desktop sweep uses. A phone is not a short desktop: page height
+//    only means anything as a multiple of the screen it has to fit on, and the
+//    fixed phase bar's share of the viewport is a much bigger fraction of 780px
+//    than of 1000px. Every width from 768 up keeps height 1000 so that the
+//    assertions signed off before 09/08/2026 measure exactly what they did then.
+// 7. Below 1400 the phase bar is position: fixed, so its document coordinates
+//    move with the scroll and are meaningless in a co-visibility span. It is
+//    handled by SUBTRACTING its height from the available viewport instead:
+//    a fixed bar is always visible, and it always covers that much of the page.
 
 import { createRequire } from 'node:module';
 import http from 'node:http';
@@ -44,7 +54,14 @@ const SHOTS = path.join(HERE, 'screenshots');
 const BASELINE = path.join(SHOTS, 'baseline');
 const CURRENT = path.join(SHOTS, 'current');
 const DIFFS = path.join(SHOTS, 'diff');
-const PORT = 8097;
+
+// EPHEMERAL, not the fixed 8097 this used to hard-code. Two runs overlapping -
+// which happens the moment anybody starts a second one before the first has
+// finished, or re-runs after killing a run that left its server behind - made
+// the second die on EADDRINUSE and, worse, made "kill whatever is on 8097" the
+// obvious fix, which then killed a live run. Both cost a round on 09/08/2026.
+// Port 0 lets the OS assign a free one, so runs cannot collide at all.
+let PORT = 0;
 
 const MODE = process.argv[2] || 'check';
 const KEEP = process.argv.includes('--keep');
@@ -56,7 +73,65 @@ const KEEP = process.argv.includes('--keep');
 // layout needs 2181px, so 1800-2180 could never fit it. 2400 checks that XL
 // still has room to breathe above its own minimum, and 2181/2180 straddle the
 // switch. 1800 is no longer a boundary and is dropped.
-const SWEEP_WIDTHS = [2400, 2181, 2180, 1920, 1700, 1400, 1399, 1366, 1280, 1150, 1149, 1024, 768];
+//
+// 09/08/2026, wayfinder ticket 04: the three phone widths are appended rather
+// than inserted, so the desktop sweep runs in exactly the order it always has
+// and a phone width can never change what a desktop width measures. 390x844 is
+// the iPhone 14/15/16 base, 430x932 the Pro Max, 360x780 the small-Android floor
+// that every layout below has to survive.
+const SWEEP_WIDTHS = [2400, 2181, 2180, 1920, 1700, 1400, 1399, 1366, 1280, 1150, 1149, 1024, 768, 430, 390, 360];
+
+// Only the phones get a real device height; see note 6 in the header. Nothing at
+// 768 and above may change, because its assertions were signed off at 1000.
+const PHONE_HEIGHTS = { 430: 932, 390: 844, 360: 780 };
+const heightFor = w => PHONE_HEIGHTS[w] ?? 1000;
+
+// The widths that get the per-phase co-visibility walk and the per-phase tap
+// audit. A fresh seeded game is started for each, so this list costs real time
+// and is deliberately the phone band plus one tablet and two desktop controls.
+const PHASE_WIDTHS = [430, 390, 360, 768, 1024, 1400];
+
+// ---------------------------------------------------------------------------
+// The page-height ratchet
+//
+// THE HEADLINE METRIC OF THE PHONE MAP. Page height is what the whole phone band
+// effort is judged on, and until 09/08/2026 the harness had no line for it at
+// all - it screenshotted a 3,134px page at 390 and reported nothing.
+//
+// These numbers are a RATCHET, not a target. Each is what the build measured on
+// 09/08/2026 after wayfinder ticket 00 landed, on the 4-player seeded opening
+// position with a human in seat 0. The assertion is height <= budget, so a
+// ticket may lower a number and must never raise one. Lowering the build without
+// lowering the budget here is allowed and simply shows up as slack in the detail.
+//
+// The ticket's own stated baseline - 3,224 at 390, 2,916 at 430, 2,663 at 768 -
+// was written before ticket 00 and is superseded by these.
+//
+// TARGET_SCREENS is what a phone layout should aim at rather than what it is:
+// two screenfuls of scroll for a turn. Reported as a gap in the detail line, and
+// deliberately NOT asserted, because failing every phone width on an aspiration
+// would drown the regression signal this table exists to carry.
+const TARGET_SCREENS = 2.0;
+const PAGE_HEIGHT_BUDGET = {
+  // The 4-player seeded OPENING position, human in seat 0, boards empty.
+  open: {
+    2400: 1453, 2181: 1453, 2180: 1546, 1920: 1546, 1700: 1546, 1400: 1546,
+    1399: 1618, 1366: 1618, 1280: 1618, 1150: 1618,
+    1149: 2549, 1024: 2549, 768: 2549,
+    430: 3119, 390: 3134, 360: 3403,
+  },
+  // MID-GAME, after one scripted human turn and the bots' replies. Taller than
+  // the opening at every width except XL, because four boards now carry tiles
+  // and the swept-tile trays and score breakdowns have grown with them. This is
+  // the worst case a phone actually has to scroll, and it had no number at all
+  // before 09/08/2026.
+  mid: {
+    2400: 1453, 2181: 1453, 2180: 1830, 1920: 1830, 1700: 1830, 1400: 1830,
+    1399: 1801, 1366: 1801, 1280: 1801, 1150: 1801,
+    1149: 2732, 1024: 2732, 768: 2732,
+    430: 3484, 390: 3499, 360: 3768,
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Static server
@@ -65,6 +140,7 @@ const SWEEP_WIDTHS = [2400, 2181, 2180, 1920, 1700, 1400, 1399, 1366, 1280, 1150
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
   '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg',
+  '.webp': 'image/webp',
   '.csv': 'text/csv', '.ico': 'image/x-icon', '.json': 'application/json',
 };
 
@@ -80,7 +156,7 @@ function serve() {
       res.end(data);
     });
   });
-  return new Promise(r => server.listen(PORT, () => r(server)));
+  return new Promise(r => server.listen(PORT, () => { PORT = server.address().port; r(server); }));
 }
 
 // ---------------------------------------------------------------------------
@@ -175,8 +251,15 @@ async function waitForHumanTurn(page, timeout = 30000) {
 // A scripted human turn: sweep row 0, take the first colour offered, place every
 // swept tile on the first legal cell, confirm, skip the claim. `mode` is 'drag'
 // or 'tap' - the two input paths that must both end in the same commit.
-async function playHumanTurn(page, { mode = 'drag', stopAfterPlacement = false } = {}) {
+//
+// `onPhase` is called once at each phase the turn passes through, with the page
+// parked in that phase. Added 09/08/2026 for the co-visibility and tap-target
+// tables: those have to be measured IN a phase, and a second copy of this turn
+// script would be a second thing to keep in step with the engine.
+async function playHumanTurn(page, { mode = 'drag', stopAfterPlacement = false, onPhase = null } = {}) {
+  const at = async (name) => { if (onPhase) await onPhase(name); };
   if (await phaseOf(page) !== 'sweep') return { reached: await phaseOf(page) };
+  await at('sweep');
 
   const rowBtn = page.locator('.market-row-btn:not([disabled])').first();
   if (await rowBtn.count() === 0) return { reached: 'no-sweep-available' };
@@ -197,6 +280,9 @@ async function playHumanTurn(page, { mode = 'drag', stopAfterPlacement = false }
   await page.waitForTimeout(300);
 
   const tileCount = await page.evaluate(() => window._gameUI.gameState.pendingSweepTiles.length);
+  // Measured with the tiles still in the tray, which is the state the place
+  // phase actually has to be playable in.
+  await at('place');
 
   for (let n = 0; n < tileCount; n++) {
     // Always take the lowest-numbered unplaced swept tile and the lowest-numbered
@@ -256,8 +342,14 @@ async function playHumanTurn(page, { mode = 'drag', stopAfterPlacement = false }
   if (!await step('#placementDone:not([disabled])')) {
     return { reached: 'place', placed, expected: tileCount, stuck: true };
   }
+  // Each measurement is taken BEFORE the click that leaves the phase, and is
+  // gated on the engine's own gamePhase rather than on the button existing, so a
+  // buried control reports as a missing phase rather than as a wrong reading.
+  if (await phaseOf(page) === 'spend') await at('spend');
   await step('#movePhaseNext');
+  if (await phaseOf(page) === 'claim') await at('claim');
   await step('#skipClaim');
+  if (await phaseOf(page) === 'refill') await at('refill');
   await step('#confirmTurn');
 
   return { reached: 'done', placed, expected: tileCount };
@@ -424,6 +516,248 @@ async function checkVertical(page) {
     'market + own board co-visible @ 768x920',
     ok,
     `market top ${r.marketTop}, board bottom ${r.boardBottom}, viewport ${r.viewport}`,
+  );
+}
+
+// Criterion 6, new 09/08/2026 (wayfinder ticket 04): PAGE HEIGHT. See the
+// PAGE_HEIGHT_BUDGET comment - this is the number the phone map is scored on.
+// Always printed, whether it passes or not, because the report matters as much
+// as the assertion.
+async function checkPageHeight(page, width, tag) {
+  const r = await page.evaluate(() => ({
+    height: document.documentElement.scrollHeight,
+    viewport: window.innerHeight,
+  }));
+  const screens = r.height / r.viewport;
+  const budget = PAGE_HEIGHT_BUDGET[tag]?.[width];
+  const shape = `${r.height}px = ${screens.toFixed(2)} screens of ${r.viewport}`;
+  if (budget === undefined) {
+    record(`page height @ ${width} (${tag})`, null, `${shape} - no budget recorded yet`);
+    return r.height;
+  }
+  const slack = budget - r.height;
+  const target = Math.round(r.viewport * TARGET_SCREENS);
+  const gap = r.height - target;
+  record(
+    `page height @ ${width} (${tag})`,
+    r.height <= budget,
+    `${shape}, budget ${budget}`
+      + (slack >= 0 ? ` (${slack}px under)` : ` (${-slack}px OVER)`)
+      + (gap > 0 ? `, ${gap}px above the ${TARGET_SCREENS}-screen target` : ''),
+  );
+  return r.height;
+}
+
+// Criterion 7, new 09/08/2026 (wayfinder ticket 04): the 44px floor applied to
+// EVERYTHING a finger can hit, not just the two sweep buttons checkTouchTargets
+// already guards. The map's first hard constraint is "44px minimum for anything
+// a finger taps" and nothing was measuring it.
+//
+// The audit does not carry a selector list, because one would rot. It takes
+// every visible element inside .ft-game that is either a native control or has a
+// computed `cursor: pointer` - and this codebase is unusually well suited to
+// that, because style.css deliberately withholds the pointer from a card that
+// cannot be claimed (style.css:2181) rather than setting it unconditionally. So
+// "the cursor says you may click it" is the same set as "you may click it".
+//
+// ONLY THE OUTERMOST tappable element counts. `cursor: pointer` inherits, so
+// every span and img inside a button qualifies on its own and the first run of
+// this audit reported `ft-btn-howto__icon 21x15` and `ft-btn-howto__label 71x15`
+// inside a button that comfortably clears the floor. A finger cannot hit the
+// label without hitting the button, so a descendant of a tappable element is
+// never itself a tap target, and reporting one is noise that buries the real
+// findings underneath it.
+//
+// Gated to the touch band. Above 1399 the XL layout is meant to have a 34x60
+// sweep button and a mouse to hit it with, which checkTouchTargets asserts in
+// the opposite direction.
+async function checkTapTargets(page, width, tag) {
+  const FLOOR = 44;
+  if (width > 1399) return record(`tap targets @ ${width} (${tag})`, null, 'above the touch band, mouse assumed');
+
+  const bad = await page.evaluate((floor) => {
+    const groups = new Map();
+    const root = document.querySelector('.ft-game');
+    if (!root) return null;
+    const tappable = (el) => {
+      const cs = getComputedStyle(el);
+      if (cs.visibility === 'hidden' || cs.display === 'none' || cs.pointerEvents === 'none') return false;
+      if (el.disabled) return false;                   // a dead control is not a tap target
+      const native = /^(BUTTON|SELECT|INPUT|TEXTAREA)$/.test(el.tagName)
+        || (el.tagName === 'A' && el.hasAttribute('href'));
+      return native || cs.cursor === 'pointer';
+    };
+    for (const el of root.querySelectorAll('*')) {
+      if (!tappable(el)) continue;
+      // Suppress descendants of anything already tappable.
+      let anc = el.parentElement, nested = false;
+      while (anc && anc !== root.parentElement) {
+        if (tappable(anc)) { nested = true; break; }
+        anc = anc.parentElement;
+      }
+      if (nested) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) continue;       // collapsed or clipped away
+      const smaller = Math.min(r.width, r.height);
+      if (smaller >= floor - 0.5) continue;
+      // Group by the shape of the element, not by the element, or a 5x5 board
+      // reports twenty-five identical failures.
+      const key = el.id
+        || (el.className && String(el.className).split(/\s+/).filter(c => c && !/--(selected|active|legal|removable|ghost|hover)/.test(c)).slice(0, 2).join('.'))
+        || el.tagName.toLowerCase();
+      const prev = groups.get(key);
+      const size = `${Math.round(r.width)}x${Math.round(r.height)}`;
+      if (!prev) groups.set(key, { key, n: 1, min: smaller, size });
+      else { prev.n++; if (smaller < prev.min) { prev.min = smaller; prev.size = size; } }
+    }
+    return [...groups.values()].sort((a, b) => a.min - b.min);
+  }, FLOOR);
+
+  if (bad === null) return record(`tap targets @ ${width} (${tag})`, null, 'no game screen rendered');
+  record(
+    `tap targets @ ${width} (${tag})`,
+    bad.length === 0,
+    bad.length === 0
+      ? `every tappable element >= ${FLOOR}px on its smaller axis`
+      : bad.map(b => `${b.key} ${b.size}${b.n > 1 ? ` x${b.n}` : ''}`).join(', '),
+  );
+  return bad;
+}
+
+// Criterion 9, new 09/08/2026 (wayfinder ticket 04): THE OPPONENT STRIP IS A
+// CLIFF, NOT A GRADIENT.
+//
+// Ticket 00 found this the hard way. .ft-opp-strip is `display: flex` with
+// `flex-wrap: wrap` (style.css:3969) and every .ft-seat inside it carries
+// `min-width: max-content` (style.css:695), so a seat is exactly as wide as its
+// widest unbreakable content. Give an opponent chip 26px more text and the strip
+// drops from two seats a row to one, which adds a WHOLE SEAT ROW: measured at
+// +245px of page height at 430 for a "Crumbs n" label.
+//
+// So the number tickets 05 and 07 actually need is not the strip's height, it is
+// its HEADROOM - how much wider one seat may get before the row breaks. This
+// reports it and fails when it drops under 20px, because at that point the strip
+// is one short word away from costing a quarter of a screen and nobody adding
+// the word would see it coming.
+const STRIP_HEADROOM_FLOOR = 20;
+async function checkOpponentStrip(page, width) {
+  const r = await page.evaluate(() => {
+    const strip = document.querySelector('.ft-opp-strip');
+    if (!strip) return { absent: true };
+    const cs = getComputedStyle(strip);
+    // Above the M band the strip is `display: contents` and its seats are placed
+    // by the XL grid instead, so there is no row to break.
+    if (cs.display === 'contents') return { inert: true };
+    const seats = [...strip.children].filter(el => el.getBoundingClientRect().width > 0);
+    if (seats.length === 0) return { absent: true };
+    const inner = strip.clientWidth
+      - parseFloat(cs.paddingLeft || 0) - parseFloat(cs.paddingRight || 0);
+    const gap = parseFloat(cs.columnGap) || parseFloat(cs.gap) || 0;
+    const rowGap = parseFloat(cs.rowGap) || parseFloat(cs.gap) || 0;
+    const rects = seats.map(el => el.getBoundingClientRect());
+    // Group into rows by top edge; the widest row's count is what fits.
+    const rows = new Map();
+    for (const b of rects) {
+      const key = Math.round(b.top);
+      rows.set(key, (rows.get(key) || 0) + 1);
+    }
+    const perRow = Math.max(...rows.values());
+    const seatW = Math.max(...rects.map(b => b.width));
+    const seatH = Math.max(...rects.map(b => b.height));
+    // The widest a seat could be and still fit `perRow` of them on one line.
+    const maxSeatW = (inner - (perRow - 1) * gap) / perRow;
+    return {
+      inner: Math.round(inner), gap: Math.round(gap),
+      perRow, rows: rows.size, seats: seats.length,
+      seatW: Math.round(seatW), seatH: Math.round(seatH),
+      headroom: Math.round(maxSeatW - seatW),
+      rowCost: Math.round(seatH + rowGap),
+    };
+  });
+
+  const name = `opponent strip headroom @ ${width}`;
+  if (r.absent) return record(name, null, 'no opponent strip rendered');
+  if (r.inert) return record(name, null, 'strip is display: contents above the M band, seats are grid-placed');
+  record(
+    name,
+    r.headroom >= STRIP_HEADROOM_FLOOR,
+    `${r.seats} seats, ${r.perRow} per row over ${r.rows} row${r.rows === 1 ? '' : 's'};`
+      + ` seat ${r.seatW}px of ${r.inner}px;`
+      + ` ${r.headroom}px of width headroom before it reflows, and a reflow costs ${r.rowCost}px of page height`
+      + (r.headroom >= STRIP_HEADROOM_FLOOR ? '' : ` (floor ${STRIP_HEADROOM_FLOOR}px)`),
+  );
+  return r;
+}
+
+// Criterion 8, new 09/08/2026 (wayfinder ticket 04): CO-VISIBILITY PER PHASE.
+// checkVertical below made this claim once, for one phase, at one viewport. The
+// phone band needs it as a table: for each phase of a human turn, are the things
+// that phase needs actually on screen together.
+//
+// The sets are deliberately minimal - only what the phase cannot be played
+// without. Sweep pairs the market with your own board because the row you take
+// is chosen against the room you have; claim pairs the cards with your own board
+// because a pattern is matched against it. Refill needs the Confirm button and
+// nothing else, so it is the control that proves the measurement is not simply
+// failing everything.
+//
+// It is EXPECTED to fail at phone widths today. That is the brief for ticket 05,
+// not a defect for this ticket to clear.
+const PHASE_NEEDS = {
+  sweep:  { needs: ['#marketContainer', '#playerPanel1 .ft-board-grid'], why: 'the market and your own board' },
+  place:  { needs: ['#workingArea1', '#playerPanel1 .ft-board-grid'], why: 'the swept tiles and your own board' },
+  spend:  { needs: ['#cupcakeSupply1', '#playerPanel1 .ft-board-grid'], why: 'your cupcakes and your own board' },
+  claim:  { needs: ['#cardMarket', '#playerPanel1 .ft-board-grid'], why: 'the goal cards and your own board' },
+  refill: { needs: [], why: 'the Confirm button alone' },
+};
+
+async function checkCoVisible(page, width, phase) {
+  const spec = PHASE_NEEDS[phase];
+  if (!spec) return;
+  const sels = [...spec.needs, '#phaseControls .ft-phase-bar'];
+
+  const r = await page.evaluate((selectors) => {
+    window.scrollTo(0, 0);
+    const boxes = [];
+    const missing = [];
+    let fixed = 0;
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      const b = el?.getBoundingClientRect();
+      if (!el || !b || b.height < 1) { missing.push(sel); continue; }
+      // Walk up for a fixed ancestor: the phase bar itself is static, its
+      // #phaseControls parent is what goes fixed below 1400.
+      let node = el, isFixed = false;
+      while (node && node !== document.documentElement) {
+        if (getComputedStyle(node).position === 'fixed') { isFixed = true; break; }
+        node = node.parentElement;
+      }
+      if (isFixed) { fixed += b.height; continue; }
+      boxes.push({ sel, top: Math.round(b.top + window.scrollY), bottom: Math.round(b.bottom + window.scrollY) });
+    }
+    return { boxes, missing, fixed: Math.round(fixed), viewport: window.innerHeight };
+  }, sels);
+
+  const name = `co-visible @ ${width} (${phase}: ${spec.why})`;
+  if (r.missing.length) return record(name, null, `not rendered: ${r.missing.join(', ')}`);
+  if (r.boxes.length === 0) {
+    // Everything this phase needs is in the fixed bar, so it is on screen by
+    // construction. Refill is the only phase that reaches here.
+    return record(name, r.fixed <= r.viewport, `fixed bar ${r.fixed}px of ${r.viewport} viewport`);
+  }
+
+  const top = Math.min(...r.boxes.map(b => b.top));
+  const bottom = Math.max(...r.boxes.map(b => b.bottom));
+  const span = bottom - top;
+  const available = r.viewport - r.fixed;
+  const topEl = r.boxes.find(b => b.top === top).sel;
+  const bottomEl = r.boxes.find(b => b.bottom === bottom).sel;
+  record(
+    name,
+    span <= available,
+    `span ${span}px from ${topEl} to ${bottomEl}, available ${available}px`
+      + ` (${r.viewport} viewport less ${r.fixed} fixed bar)`
+      + (span <= available ? ` - ${available - span}px spare` : ` - SHORT BY ${span - available}px`),
   );
 }
 
@@ -602,7 +936,7 @@ console.log(`\nFancy That! layout check - mode: ${MODE}\n`);
 
   console.log('\nLanding page:');
   for (const width of SWEEP_WIDTHS) {
-    await page.setViewportSize({ width, height: 1000 });
+    await page.setViewportSize({ width, height: heightFor(width) });
     await page.waitForTimeout(200);
     await page.screenshot({ path: path.join(outDir, `landing-${width}.png`), fullPage: true });
     if (MODE === 'baseline') continue;
@@ -657,7 +991,7 @@ console.log(`\nFancy That! layout check - mode: ${MODE}\n`);
   // Opening position, human to act, boards empty. Fully deterministic.
   console.log('Sweep: opening position');
   for (const width of SWEEP_WIDTHS) {
-    await page.setViewportSize({ width, height: 1000 });
+    await page.setViewportSize({ width, height: heightFor(width) });
     await page.waitForTimeout(200);
     await page.screenshot({ path: path.join(outDir, `open-${width}.png`), fullPage: true });
     if (MODE !== 'baseline') {
@@ -665,6 +999,9 @@ console.log(`\nFancy That! layout check - mode: ${MODE}\n`);
       await checkContainment(page, width);
       await checkTouchTargets(page, width);
       await checkActionBar(page, width);
+      await checkPageHeight(page, width, 'open');
+      await checkTapTargets(page, width, 'sweep');
+      await checkOpponentStrip(page, width);
     }
   }
 
@@ -681,9 +1018,13 @@ console.log(`\nFancy That! layout check - mode: ${MODE}\n`);
 
   console.log('Sweep: mid-game position');
   for (const width of SWEEP_WIDTHS) {
-    await page.setViewportSize({ width, height: 1000 });
+    await page.setViewportSize({ width, height: heightFor(width) });
     await page.waitForTimeout(200);
     await page.screenshot({ path: path.join(outDir, `mid-${width}.png`), fullPage: true });
+    // The mid-game page is the taller one - four boards carrying tiles, not four
+    // empty grids - so it is the worst case the phone band has to survive, and
+    // it had no number of any kind before 09/08/2026.
+    if (MODE !== 'baseline') await checkPageHeight(page, width, 'mid');
   }
 
   if (MODE === 'measure' || MODE === 'check') {
@@ -709,6 +1050,80 @@ console.log(`\nFancy That! layout check - mode: ${MODE}\n`);
     await checkHorizontal(page, '768 (place)');
   }
   if (!KEEP) await page.close();
+}
+
+// --- The per-phase co-visibility and tap-target tables ----------------------
+// New 09/08/2026 (wayfinder ticket 04). A fresh seeded game per width, walked
+// through a whole human turn, measuring at every phase it passes through.
+//
+// hasTouch is set at 1024 and below, because these two criteria are both about
+// a finger: it makes (hover: none) and (pointer: coarse) match, which is what
+// the build branches its placement copy on. It does NOT move the layout - the
+// stylesheet's only (hover: none) block is hover suppression (style.css:3684) -
+// so this cannot quietly explain away a co-visibility number.
+//
+// TURN 1 IS NOT ENOUGH, and this is the trap that made the first version of this
+// block report four phases instead of five. main.js's checkAutoAdvance calls
+// autoSkipEmptyClaim, so the claim phase never renders on a turn where nothing
+// on the player's board matches a card - and on turn 1 the board holds two tiles
+// and nothing ever matches. A probe walked the seeded game turn by turn: the
+// claim phase first renders on TURN 2, with three tiles down and two claimable
+// cards. So the walk plays up to MAX_TURNS turns and stops the moment every
+// phase has been measured once, rather than assuming one turn shows them all.
+//
+// EXPECTED TO FAIL at the phone widths. That is the brief for ticket 05.
+if (MODE === 'check') {
+  const MAX_TURNS = 4;
+  const ALL_PHASES = Object.keys(PHASE_NEEDS);
+  console.log('\nPer-phase co-visibility and tap targets:');
+  for (const width of PHASE_WIDTHS) {
+    const height = heightFor(width);
+    const touch = width <= 1024;
+    console.log(`\n  ${width}x${height}${touch ? ' (touch)' : ''}:`);
+    const page = await browser.newPage({ viewport: { width, height }, hasTouch: touch });
+    page.on('dialog', d => d.accept());
+    page.on('pageerror', e => console.log('  PAGE ERROR:', e.message));
+    await installSeededRandom(page);
+    await blockThirdParty(page);
+    await startGame(page, { players: 4, humanSeat0: true });
+
+    const seen = new Set();
+    const onPhase = async (phase) => {
+      if (seen.has(phase)) return;      // measure each phase once, on its first sighting
+      seen.add(phase);
+      await checkCoVisible(page, width, phase);
+      // The sweep phase's tap audit is already taken across every width in the
+      // opening-position loop above, and refill has nothing but the bar.
+      if (phase !== 'sweep' && phase !== 'refill') await checkTapTargets(page, width, phase);
+    };
+
+    let turn = { reached: 'not started', placed: 0, expected: 0 };
+    let turns = 0;
+    for (let t = 1; t <= MAX_TURNS && seen.size < ALL_PHASES.length; t++) {
+      if (t > 1) {
+        // Back round through three bots, then to the top of a fresh human turn.
+        const ok = await waitForHumanTurn(page).then(() => true).catch(() => false);
+        if (!ok) break;
+        const swept = await page.waitForFunction(
+          () => window._gameUI?.gameState?.gamePhase === 'sweep', null, { timeout: 10000},
+        ).then(() => true).catch(() => false);
+        if (!swept) break;
+      }
+      turns = t;
+      turn = await playHumanTurn(page, { mode: touch ? 'tap' : 'drag', onPhase });
+      if (turn.reached !== 'done') break;
+    }
+
+    record(`the turn completes @ ${width}`, turn.reached === 'done',
+      `reached ${turn.reached} on turn ${turns}, ${turn.placed}/${turn.expected} placed,`
+      + ` phases measured: ${[...seen].join(' ') || 'none'}`);
+    for (const phase of ALL_PHASES) {
+      if (!seen.has(phase)) {
+        record(`co-visible @ ${width} (${phase})`, null, `phase never rendered in ${turns} turns`);
+      }
+    }
+    if (!KEEP) await page.close();
+  }
 }
 
 // --- The tap path. Phase B; expected to be unimplemented before then. -------
@@ -867,5 +1282,24 @@ if (failed.length) {
 }
 console.log(`\nScreenshots: ${outDir}`);
 
-if (!KEEP) { await browser.close(); server.close(); }
 process.exitCode = failed.length ? 1 : 0;
+
+// SHUTTING DOWN PROPERLY, which this did not do until 09/08/2026 (wayfinder
+// ticket 17 hit it, ticket 04 fixed it). `server.close()` alone only stops the
+// server ACCEPTING new connections - every keep-alive socket the browser left
+// open stays open, so the event loop never empties and node never exits. The
+// run appeared to finish, printed its summary, and then sat there holding the
+// port; a stale `layout-check.mjs measure` process was found still squatting on
+// 8097 hours later, and the next run died on EADDRINUSE. closeAllConnections()
+// is what actually lets the process end.
+//
+// The unref'd timer is the belt to that pair of braces. If the loop is already
+// empty node exits at once and the timer never fires; if anything else is still
+// holding it open, the run ends anyway two seconds later instead of hanging.
+// Two seconds is far longer than a flush of the summary needs.
+if (!KEEP) {
+  await browser.close();
+  server.closeAllConnections?.();
+  await new Promise(resolve => server.close(resolve));
+  setTimeout(() => process.exit(process.exitCode), 2000).unref();
+}
