@@ -1233,9 +1233,13 @@ function updateMarket(gameState) {
     if (isBonusAvailable || isBuyable) tileClass += ' ft-tile--pickable';
     const showTeapotSymbol = isEmpty && symbolCells.has(idx);
     if (showTeapotSymbol) tileClass += gateArmed ? ' ft-tile--symbol-armed' : ' ft-tile--symbol';
+    // Defect 8. An EMPTY cell takes ft-colour-none, which is the white it used
+    // to be handed inline - including under a teapot symbol, where the inline
+    // white was already beating .ft-tile--symbol's #FFFCF5.
+    tileClass += ` ${getColourClass(tile && tile.colour)}`;
 
     return `
-      <div class="${tileClass} market-tile" data-index="${idx}" style="${isEmpty && !showTeapotSymbol ? 'opacity: 0.3;' : ''} ${(isBonusAvailable || isBuyable) ? 'cursor: pointer;' : ''} background-color: ${tile ? getColourCSS(tile.colour) : 'white'};">
+      <div class="${tileClass} market-tile" data-index="${idx}" style="${isEmpty && !showTeapotSymbol ? 'opacity: 0.3;' : ''} ${(isBonusAvailable || isBuyable) ? 'cursor: pointer;' : ''}">
         ${tile ? `<img src="images/symbol-${tile.ingredient}-v2.png" class="ft-tile__icon" alt="${tile.ingredient}">` : ''}
         ${showTeapotSymbol ? `<img src="images/teapot.png" class="ft-market-teapot-symbol${gateArmed ? ' ft-market-teapot-symbol--armed' : ''}" alt="teapot symbol" title="${symbolTitle}">` : ''}
       </div>
@@ -1712,7 +1716,7 @@ function showSweepOptionsForRow(gameState, row) {
     const count = tiles.filter(t => t && t.colour === colour).length;
     html += `
       <button class="ft-modal__option sweep-option-btn" data-row="${row}" data-col="-1" data-type="colour" data-val="${colour}">
-        <div class="ft-modal__option-colour" style="background-color: ${getColourCSS(colour)};"></div>
+        <div class="ft-modal__option-colour ${getColourClass(colour)}"></div>
         <span style="font-weight: 600;">${colour}</span>
         <span style="font-size: 11px; color: var(--color-text-secondary);">(${count})</span>
       </button>
@@ -1799,7 +1803,7 @@ function showSweepOptionsForCol(gameState, col) {
     const count = tiles.filter(t => t && t.colour === colour).length;
     html += `
       <button class="ft-modal__option sweep-option-btn" data-row="-1" data-col="${col}" data-type="colour" data-val="${colour}">
-        <div class="ft-modal__option-colour" style="background-color: ${getColourCSS(colour)};"></div>
+        <div class="ft-modal__option-colour ${getColourClass(colour)}"></div>
         <span style="font-weight: 600;">${colour}</span>
         <span style="font-size: 11px; color: var(--color-text-secondary);">(${count})</span>
       </button>
@@ -2158,7 +2162,9 @@ function updatePlayerBoards(gameState) {
         if (flavourWarning) tileClass += ' ft-tile--flavour-risk';
       }
 
-      const bgColor = (displayTile && !isBlockedCell) ? `background-color: ${getColourCSS(displayTile.colour)};` : '';
+      // Defect 8. A blocked cell keeps no colour class at all: .ft-tile--blocked
+      // owns its own fill, and stage 4 turns it into the CSS empty plate.
+      if (displayTile && !isBlockedCell) tileClass += ` ${getColourClass(displayTile.colour)}`;
       const imageHtml = isBlockedCell
         ? `<img src="images/empty_plate.png" class="ft-tile__icon" alt="blocked">`
         : (displayTile ? `<img src="images/symbol-${displayTile.ingredient}-v2.png" class="ft-tile__icon" alt="${displayTile.ingredient}">` : '');
@@ -2178,7 +2184,7 @@ function updatePlayerBoards(gameState) {
         : '';
 
       return `
-        <div class="${tileClass}" style="${bgColor}" data-index="${idx}" data-player="${playerIdx}" ${draggableAttr} ${boardTileIndexAttr} ${plateRemoveAttr}>
+        <div class="${tileClass}" data-index="${idx}" data-player="${playerIdx}" ${draggableAttr} ${boardTileIndexAttr} ${plateRemoveAttr}>
           ${imageHtml}${menuBadge}${flavourBadge}
         </div>
       `;
@@ -2206,7 +2212,7 @@ function updatePlayerBoards(gameState) {
           ? `${tile.ingredient} - no room on your board, this one goes back into the bag`
           : tile.ingredient;
         return !isPlaced ? `
-          <div class="ft-tile working-tile${isSelected ? ' working-tile--selected' : ''}${backToBag}" draggable="true" data-tile-index="${idx}" style="background-color: ${getColourCSS(tile.colour)}; cursor: grab; user-select: none; flex-shrink: 0;" title="${title}">
+          <div class="ft-tile working-tile${isSelected ? ' working-tile--selected' : ''}${backToBag} ${getColourClass(tile.colour)}" draggable="true" data-tile-index="${idx}" style="cursor: grab; user-select: none; flex-shrink: 0;" title="${title}">
             <img src="images/symbol-${tile.ingredient}-v2.png" class="ft-tile__icon" style="pointer-events: none;" alt="${tile.ingredient}">
           </div>
         ` : '';
@@ -2689,7 +2695,7 @@ function renderStand(player, opts = {}) {
       const tile = row.tiles[k];
       const filled = k < row.tiles.length;
       const plate = tile
-        ? `<div class="ft-stand__plate ft-stand__plate--filled" style="background-color: ${getColourCSS(tile.colour)};"><img src="images/symbol-${tile.ingredient}-v2.png" class="ft-stand__symbol" alt="${tile.ingredient}"></div>`
+        ? `<div class="ft-stand__plate ft-stand__plate--filled ${getColourClass(tile.colour)}"><img src="images/symbol-${tile.ingredient}-v2.png" class="ft-stand__symbol" alt="${tile.ingredient}"></div>`
         : `<div class="ft-stand__plate ft-stand__plate--empty"></div>`;
       // Cupcake plates (bottom[1], second[1], third[1], top[0]) grant a cupcake
       // when plated onto; mark them on the board whether empty or filled.
@@ -3495,15 +3501,33 @@ function cardSpriteHTML(card, height = null, { extraClass = '', clickable = fals
 // the rules panel, and the phase-bar line shown while a player is one teapot away
 // and choosing which line to sweep.
 
-function getColourCSS(colour) {
-  const colourMap = {
-    yellow: 'var(--tile-yellow)',
-    pink: 'var(--tile-pink)',
-    green: 'var(--tile-green)',
-    blue: 'var(--tile-blue)',
-    orange: 'var(--tile-orange)',
+// DEFECT 8 (10 August). This used to be getColourCSS(), which returned a CSS
+// colour that all six of its callers wrote straight into an inline
+// style="background-color: ...". AN INLINE DECLARATION BEATS ANY STYLESHEET, so
+// the per-colour light and dark stops the painted tile is built from could not
+// be applied from CSS at all: the tile's field, the rim derived from its dark
+// stop and all four state washes would have been overruled by six string
+// templates in this file.
+//
+// It returns a CLASS PAIR now and style.css carries the colour - see "THE TILE
+// COLOUR CLASSES" there, which also records why the alpha-layer alternative is
+// refused and why the selector is at three classes. The rendered colour is
+// unchanged: --mid is an alias of the same --tile-<colour> this map used to
+// name.
+//
+// The bare ft-colour is the marker that buys the specificity; the second class
+// carries the stops. ft-colour-none is not a colour - it is the literal white
+// an empty market cell used to be given inline, and it is also the fallback for
+// an unrecognised colour, which is what the old '#fff' return did.
+function getColourClass(colour) {
+  const classMap = {
+    yellow: 'ft-colour ft-colour-yellow',
+    pink: 'ft-colour ft-colour-pink',
+    green: 'ft-colour ft-colour-green',
+    blue: 'ft-colour ft-colour-blue',
+    orange: 'ft-colour ft-colour-orange',
   };
-  return colourMap[colour] || '#fff';
+  return classMap[colour] || 'ft-colour ft-colour-none';
 }
 
 export function renderGameEnd(container, data) {

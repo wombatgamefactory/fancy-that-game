@@ -124,6 +124,245 @@
   --shadow-card: 0 2px 8px rgba(61, 43, 31, 0.12);
   --shadow-card-hover: 0 4px 12px rgba(61, 43, 31, 0.16);
   --shadow-modal: 0 8px 24px rgba(61, 43, 31, 0.2);
+
+  /* ========================================================================
+     THE TOKEN LAYER - stage 3 of the phone and visual plan, 10 August 2026.
+
+     Every value below is ADDED. Nothing above it changed and nothing in this
+     file consumes any of it yet: the whole acceptance test for this stage is
+     that the screenshot diff against the post-stage-2 build is empty at every
+     band. STAGE 4 IS WHAT WIRES THESE UP.
+
+     Source: ../Web UI/phone-and-visual-plan-2026-08-09-v1.md, sections 7 and
+     8.3 to 8.6 and 8.9, cross-checked against the prototypes in
+     ../Web UI/wayfinder/prototypes/. Where a plan name holds a value that
+     already has a legacy name in this file, BOTH are declared and the hex is
+     written out rather than aliased, so that changing one can never silently
+     move the other. --color-cream is the case that matters: stage 4 reassigns
+     it from the page to the panel, which is exactly why --surface below
+     carries its own literal rather than pointing at it.
+     ======================================================================== */
+
+  /* ---- 8.3 The grounds ---------------------------------------------------
+     The page is the WALL and the board areas sit on the CLOTH, so the game
+     screen composes the way hero.jpg does: wallpaper behind, cloth in front,
+     painted objects on the cloth. Y is relative luminance, and the 22.3 points
+     between the wall and the cloth's lit stop are what make the cloth read as
+     a lit thing in front of a shaded one. */
+  --wall: #E4D7C0;         /* Y 68.9  the page background, carries the floral */
+  --wall-lit: #EBE1D0;     /* Y 76.1  upper left, where the 10 o'clock light lands */
+  --wall-deep: #DCCDB4;    /* Y 62.2  lower right of the one 163deg fall */
+
+  --cloth-lit: #FFF0DB;    /* Y 88.7  the ground of the BOARD AREAS only, */
+  --cloth-mid: #FBE7CE;    /* Y 82.1  three stops on one 163deg fall */
+  --cloth-shade: #EDDCC0;  /* Y 73.0 */
+
+  --surface: #FBF5EC;      /* Y 91.9  panels, sheets, strips */
+  --object: #FFFFFF;       /* Y 100   a goal card face, a tasting menu face, nothing else */
+  --inverse: #3D2B1F;      /* Y 3.0   the one dark surface: the turn bar */
+  --recess: #E9D9BE;       /* Y 70.7  the 5x5 pressed into the cloth. FLAT and OPAQUE */
+  --dent: #E2D3BB;         /* Y 66.3  an empty cell */
+  --near-wall: #DFCEB0;    /*         the recess's 1px inner border */
+
+  /* The recess is flat and opaque and that is a decision, not an oversight:
+     decision 17 is a FLOOR ON A VALUE, and a gradient turns a floor into a
+     range. A flat #E9D9BE makes the yellow tile's guarantee identical in all
+     twenty-five cells. Do not make it a wash. */
+
+  /* ---- The five china stops (8.6, the empty plate) -----------------------
+     Sampled off empty_plate.png, whose filigree renders at 0.39 / 0.32 / 0.29
+     CSS px and whose scallops render at 1.11 / 0.89 / 0.81 - under the 2.00px
+     floor at every size, four times further under it than the almond. Stage 4
+     replaces the image with a CSS plate built from these, at zero bytes. */
+  --china: #F1EADE;        /* Y 82.8  the body's mid stop */
+  --china-lit: #FCF8F0;    /* Y 94.1 */
+  --china-well: #F2EBE0;   /*         the well, drawn as light rather than as a colour */
+  --china-shade: #D9D4CB;  /* Y 66.2 */
+  --china-dk: #A7B1B9;     /* Y 43.2  the rim line: the filigree's own blue-grey */
+
+  /* ---- 8.1 The light -----------------------------------------------------
+     ONE light. Upper left, 10 o'clock in plan, about 60 degrees above the
+     table, never re-lit at any size in any component on any screen.
+
+     THE SHADOW IS NEVER BLACK. Measured across 555 shadow pixels on
+     ingredient_bonus_back.png, the densest cast shadow reads #AAB6BF on
+     #FFF9EB. Held as three channel numbers so it can be used at any alpha:
+     rgba(var(--shadow-ink), .34). */
+  --shadow-ink: 110, 122, 140;
+
+  /* ---- 8.6 The tile: five colours as light / mid / dark triples ----------
+     THE MIDS DO NOT MOVE. They are the printed tile colours and the goal
+     cards' pattern swatches, and web and print may not diverge on the game's
+     own colour language for a screen-only reason - which is why the mid below
+     is an alias of the shipped --tile-<colour> rather than a second hex.
+
+     The dark stop is also the tile's RIM (border: 1px solid var(--<c>-dk)),
+     present at every size from 14 to 60, and it is what repays the separation
+     the warmer cloth costs: yellow falls from dE 22.2 to 15.4 against the
+     ground, and its rim reads 1.92:1 against the lit cloth.
+
+     The dusty blue is refused with a measurement - it scores worse against
+     green at every CVD type - so do not re-propose it. */
+  --yellow-lt: #FBEBA9;  --yellow: var(--tile-yellow);  --yellow-dk: #D2AC4B;
+  --pink-lt:   #FBD2DC;  --pink:   var(--tile-pink);    --pink-dk:   #D07F92;
+  --green-lt:  #C0E4C0;  --green:  var(--tile-green);   --green-dk:  #689F6B;
+  --blue-lt:   #B9E4F3;  --blue:   var(--tile-blue);    --blue-dk:   #529FBD;
+  --orange-lt: #F9C28D;  --orange: var(--tile-orange);  --orange-dk: #CA722D;
+
+  /* ---- 8.4 The inks ------------------------------------------------------
+     Contrast against the nine grounds this screen has, from the plan's table:
+
+                        object  surface  cloth-lit  cloth-shade  wall  wall-deep
+       --ink            13.43   12.39    11.98      9.98         9.45  8.59
+       --ink-soft        7.38    6.81     6.58      5.48         5.19  4.72
+       --accent-deep     6.15    5.67     5.49      4.57         4.33  3.93
+       --accent          3.36    3.10     3.00      2.49 FAILS   2.36  2.15 FAILS
+
+     --accent #C17B5C IS A UI COLOUR. It never carries text and text never sits
+     on it: it keeps every job that is a fill, a rail, a ring, a meter or a
+     border, and by amendment 5 it is not an icon stroke either. --ink bottoms
+     out at 8.59:1 and --ink-soft at 4.72:1, so the tables are the check and
+     judgement is not.
+
+     The rule that keeps this simple: NO TEXT OF ANY KIND SITS ON THE WALL. */
+  --ink: #3D2B1F;          /* = the legacy --color-text-primary */
+  --ink-soft: #6B5040;     /* = the legacy --color-text-secondary, deepened by stage 1 */
+  --ink-inverse: #FBF5EC;  /* on --inverse, at 12.39:1 */
+  --accent: #C17B5C;       /* = the legacy --color-accent */
+  /* --accent-deep #8E5239 is declared at the top of this block; stage 1 added
+     it for defect 1 and it needs no second definition. It is the token that
+     stage 4 item 9 puts under .ft-setup__toggle-btn.active, which is white on
+     --color-accent at 3.36:1 today - a live text failure no defect list named.
+     White on --accent-deep is 6.15:1, so the token supports it as it stands. */
+
+  /* THE PRIMARY BUTTON'S HOVER IS INVERTED AND THIS IS THE TOKEN THAT FIXES IT.
+     Stage 1 moved .ft-btn--primary's fill to --accent-deep #8E5239 (defect 1),
+     but .ft-btn--primary:hover still goes to --color-accent-hover #A0624A,
+     which is LIGHTER than the base it is meant to deepen and drops white from
+     6.15:1 to 4.84:1 on hover. Plan section 8.4 ruling 2 settles it in one
+     phrase: --color-accent-hover "retires into" --accent-deep. It supplies no
+     deeper stop for the new base, so the hover stops being a colour change and
+     the button's hover feedback is the --shadow-card lift it already carries.
+
+     Defined here, wired in stage 4, so this stage stays invisible. It is an
+     alias rather than a new hex on purpose: inventing a deeper brown would be
+     a design act and this stage executes rather than designs. Recorded as a
+     plan defect in the stage 3 ticket. */
+  --accent-deep-hover: var(--accent-deep);
+
+  /* 8.5. --rule keeps exactly two jobs: separating rows inside a table, and
+     the single edge where a persistent strip meets content. Every panel border
+     dies in stage 4. Distinct from the legacy --color-border #E8D5B7. */
+  --rule: #E0D2BC;
+
+  /* ---- 8.9 Seat colour ---------------------------------------------------
+     Four hues DELIBERATELY OFF THE TILE WHEEL, because today's four seat tints
+     are four of the five tile hues and that stops working the moment the tile
+     field is painted. All four clear 3:1 against every ground, 4.5:1 on the
+     surface and the cloth, and carry white text at 5.8 to 7.3:1.
+
+     Seat colour is a MARK, not a wash: a 4px rule, a 10px dot and an outline
+     ring, all at zero layout width. It never fills a seat's ground and it
+     never tints the cloth, a tile, the recess or a dent. */
+  --seat-1: #9B3F4F;  /* claret: 6.02 on surface, 4.59 on wall, white 6.53 */
+  --seat-2: #2C6E78;  /* teal:   5.37 on surface, 4.10 on wall, white 5.82 */
+  --seat-3: #4E6B3A;  /* moss:   5.55 on surface, 4.24 on wall, white 6.02 */
+  --seat-4: #6B4A7C;  /* plum:   6.69 on surface, 5.10 on wall, white 7.25 */
+
+  /* ---- 8.5 Typography ----------------------------------------------------
+     Eleven roles and that is the whole list. Fraunces is the voice of the
+     game and is never uppercase, never letterspaced and never below 15px;
+     Inter is the voice of the interface. No third face, no italic, and NO NEW
+     WEBFONT WEIGHTS, so the type system costs zero bytes.
+
+     The scale does not change by band except the two display roles, which drop
+     below the M band - the override is in the max-width: 1149px block.
+
+       token             px   face      weight  line   role
+       --type-display    28   Fraunces  700     1.15   screen title, end-screen winner
+       --type-title      20   Fraunces  600     1.2    a sheet title, and only that
+       --type-heading    15   Fraunces  600     1.3    sentence case, L and XL only
+       --type-figure     22   Fraunces  700     1      a number that is the point, tabular
+       --type-figure-sm  16   Fraunces  700     1      the same figure inside a rail chip
+       --type-body       14   Inter     400     1.5    sentences
+       --type-body-sm    13   Inter     400     1.45   dense or secondary prose
+       --type-label      13   Inter     600     1.2    buttons, chips, control labels
+       --type-caption    12   Inter     400     1.4    the caption under a figure
+       --type-micro      11   Inter     500     1.3    table headers, seat names, chip labels
+       --type-stamp      10   Inter     700     1.15   +0.08em, uppercase. THE ONLY uppercase role */
+  --type-display: 28px;
+  --type-title: 20px;
+  --type-heading: 15px;
+  --type-figure: 22px;
+  --type-figure-sm: 16px;
+  --type-body: 14px;
+  --type-body-sm: 13px;
+  --type-label: 13px;
+  --type-caption: 12px;
+  --type-micro: 11px;
+  --type-stamp: 10px;
+
+  /* ---- 7. The motion vocabulary -----------------------------------------
+     Four movements, three easing curves, and nothing exceeds 300ms: the
+     gather's worst case is 200ms of travel plus four 20ms stagger steps, which
+     is 280ms exactly. The count is the one thing allowed past it, because it
+     blocks nothing.
+
+     Three curves and no more. TRAVEL decelerates hard, because a thing that
+     stops is a thing you can look at; ENTER is a rise; EXIT accelerates,
+     because a dismissal should not be read twice. */
+  --ft-dur-gather: 200ms;      /* a swept tile, market cell to swept tray */
+  --ft-dur-settle: 160ms;      /* a tile landing on a cell of your own board */
+  --ft-dur-plate: 240ms;       /* a claimed tile, board to cake stand */
+  --ft-dur-dissolve: 180ms;    /* the claimed card, leaving for good */
+  --ft-stagger: 20ms;          /* per tile in a gather */
+  --ft-stagger-cap: 4;         /* ...capped at four steps, which is what holds 280ms */
+
+  --ft-dur-bar: 180ms;         /* the phase bar, one step */
+  --ft-dur-sheet-in: 220ms;    /* a sheet rising from the bottom edge */
+  --ft-dur-sheet-out: 160ms;   /* ...and leaving, faster */
+  --ft-dur-log: 180ms;         /* the log line arriving */
+  --ft-dur-ring: 1600ms;       /* the gold ring's breath, infinite */
+
+  /* The count is a rAF tween in JS rather than a CSS animation, but its
+     numbers belong with the rest of the vocabulary: 25ms per point, clamped. */
+  --ft-count-per-point: 25ms;
+  --ft-dur-count-min: 300ms;
+  --ft-dur-count-max: 700ms;
+
+  --ft-ease-travel: cubic-bezier(.2, 0, 0, 1);
+  --ft-ease-enter: cubic-bezier(.05, .7, .1, 1);
+  --ft-ease-exit: cubic-bezier(.4, 0, 1, 1);
+}
+
+/* REDUCED MOTION IS A DIFFERENT SET OF NUMBERS, NOT AN OFF SWITCH (section
+   7.3). No browser auto-skips a view transition, so the branch has to be
+   written, and every one of these keeps the information the movement carried:
+   the gather keeps its STAGGER, because five things arriving one after another
+   is a count and a count is information; the settle keeps its arrival and its
+   position; the count still counts.
+
+   TWO VALUES HERE ARE THE PLAN'S RATHER THAN THE PROTOTYPE'S. The plan's 7.3
+   table says the plating reduces to a 120ms cross-fade with THE DISSOLVE
+   UNCHANGED, so --ft-dur-dissolve stays at 180ms; the prototype CSS at
+   ../Web UI/wayfinder/prototypes/motion-vocabulary-v1.css drops it to 120 and
+   the plan outranks the prototype. The sheet's exit is the prototype's 100ms,
+   which the plan does not state either way.
+
+   The gold ring is NOT a duration change: with motion off the outer ring is
+   HELD at the middle of its own range at opacity .45, so a gold thing still
+   has two rings and an accent thing one. Stage 8 writes that rule. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ft-dur-gather: 120ms;
+    --ft-dur-settle: 100ms;
+    --ft-dur-plate: 120ms;
+    --ft-stagger: 15ms;
+    --ft-dur-bar: 120ms;
+    --ft-dur-sheet-in: 120ms;
+    --ft-dur-sheet-out: 100ms;
+    --ft-dur-count-max: 350ms;
+  }
 }
 
 * {
@@ -1647,6 +1886,62 @@ a .ft-icon {
   border: 2px dashed var(--color-accent);
   background: rgba(193, 123, 92, 0.06);
   cursor: pointer;
+}
+
+/* ======= THE TILE COLOUR CLASSES (defect 8, stage 3, 10 August) =======
+
+   board.js used to write a tile's colour as an inline background-color at six
+   sites, and AN INLINE DECLARATION BEATS ANY STYLESHEET. Stage 4's per-colour
+   light and dark stops - the tile's field, and the rim derived from its dark
+   stop - could therefore not be applied from CSS at all. getColourClass() in
+   board.js now emits a class and the colour lives here instead.
+
+   The rejected alternative was alpha layers over the inline colour via
+   background-image, which is a different property and would have layered over
+   background-color untouched at zero code. It is refused by the plan because
+   it costs the per-colour DARK STOP, and the rim is derived from it. Do not
+   revisit it.
+
+   THREE THINGS A LATER STAGE MUST NOT UNDO.
+
+   1. The selector is deliberately at three classes. Four rules in this file
+      set a background on a state that a COLOURED tile can be in at the same
+      time - .ft-tile--removable:hover, .ft-tile--movable:hover,
+      .ft-tile.drag-over, and the hover:none block's transparent versions of
+      the first two - and all four are two classes' worth of specificity. The
+      inline declaration beat every one of them, so matching it exactly is what
+      keeps this stage's screenshot diff empty. Anything less and a removable
+      tile would pick up a danger tint on hover that it has never had.
+   2. ft-colour-none is not a colour. It is the literal `background-color:
+      white` an EMPTY MARKET CELL carried inline, and it has to go on beating
+      .ft-tile--symbol (#FFFCF5) and .ft-tile--symbol-armed (a gold wash) the
+      way the inline declaration did, or the five teapot cells visibly change
+      in a stage that adds nothing. STAGE 4 RETIRES IT: an empty market cell
+      becomes the dent, and the teapot cells become dents with the teapot
+      printed into them.
+   3. --lt / --mid / --dk are the names stage 4 is written against
+      (`border: 1px solid var(--dk)`). The MID is an alias of the shipped
+      --tile-<colour> and does not move: it is the printed tile colour and the
+      goal cards' pattern swatch, and web and print may not diverge on the
+      game's own colour language. Only --lt and --dk are new. */
+.ft-colour-yellow { --lt: var(--yellow-lt); --mid: var(--yellow); --dk: var(--yellow-dk); }
+.ft-colour-pink   { --lt: var(--pink-lt);   --mid: var(--pink);   --dk: var(--pink-dk); }
+.ft-colour-green  { --lt: var(--green-lt);  --mid: var(--green);  --dk: var(--green-dk); }
+.ft-colour-blue   { --lt: var(--blue-lt);   --mid: var(--blue);   --dk: var(--blue-dk); }
+.ft-colour-orange { --lt: var(--orange-lt); --mid: var(--orange); --dk: var(--orange-dk); }
+/* No --lt and no --dk on purpose: an empty cell has no fondant and therefore
+   no stops, and a white rim would be worse than an obviously missing one. */
+.ft-colour-none   { --mid: #FFFFFF; }
+
+.ft-tile.ft-colour.ft-colour-yellow,
+.ft-tile.ft-colour.ft-colour-pink,
+.ft-tile.ft-colour.ft-colour-green,
+.ft-tile.ft-colour.ft-colour-blue,
+.ft-tile.ft-colour.ft-colour-orange,
+.ft-tile.ft-colour.ft-colour-none,
+.ft-stand__plate.ft-colour,
+.ft-modal__option-colour.ft-colour {
+  background-color: var(--mid);
 }
 
 /* The touch-hygiene block that neutralises :hover lives at the VERY END of this
@@ -4317,6 +4612,13 @@ select:focus {
     --tile-size-opp: 14px;
     --card-height: 170px;
     --stand-plate: 28px;
+
+    /* THE ONLY TWO TYPE ROLES THAT CHANGE BY BAND (plan section 8.5). The
+       scale is otherwise identical everywhere, and this block is "below M"
+       exactly. Added by stage 3 with the rest of the token layer; nothing
+       consumes either token until stage 4. */
+    --type-display: 24px;
+    --type-figure: 20px;
   }
 
   /* .ft-centre and .ft-centre-table dissolve so their children become items of
