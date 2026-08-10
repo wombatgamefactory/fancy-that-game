@@ -7793,3 +7793,54 @@ select:focus {
     display: none;
   }
 }
+
+/* ===========================================================================
+   A FOURTH max-width: 1149px QUERY, and the last block in the file for the same
+   reason the two above it sit where they do: @media contributes no specificity,
+   so source order is what lets this override them without a single !important.
+
+   THE MARKET IS PINNED WHILE THE SWEEP STEP IS ASKING FOR IT (10 August, Dean's
+   iPhone report, third pass).
+
+   THE SYMPTOM, IN HIS WORDS: "when the page first opens the top of the tile
+   market is displayed correctly, but after the first time you scroll, the top of
+   the tile market disappears under the floating menu."
+
+   THE TWO FIXES BEFORE THIS ONE BOTH TREATED IT AS A SCROLL POSITION - reset the
+   page at mount, put the market back when the step begins - and neither could be
+   right, because the page is 1,245px against a 739px viewport on his phone and
+   the market's top goes under a fixed dock on ANY scroll at all. There is no
+   scroll position to find. The market has to stop being scrollable-under while
+   it is the thing being asked for.
+
+   SO IT STICKS, and only during the step where it IS the decision. The gutter
+   chips are the tap targets of the sweep and they live in the market's top and
+   left edges, so a covered market is not merely hard to read - a column sweep
+   is unreachable. Pinned at exactly --pm-dock-top, flush under the rail, so no
+   sliver of scrolling content shows between the two.
+
+   WHY THE SECTION AND NOT .ft-market-wrap: a sticky element travels only inside
+   its own containing block, and the wrap's is the 331px section, which is 41px
+   of travel and useless. The section's parents are display:contents, so ITS
+   containing block is .ft-game - the whole page - and it can hold the top for
+   the entire scroll. Measured: no ancestor of either has overflow other than
+   visible, which is the other thing that silently kills a sticky element.
+
+   z-index: 3 CLEARS THE STATIC CONTENT THAT SCROLLS UNDER IT AND NOTHING ELSE.
+   The docks are 890 and 900 and the sheets 880, so a sheet still rises over the
+   pinned market exactly as it does over everything else, and the sweep dialog is
+   appended to document.body rather than inside the section, so it cannot be
+   trapped in a stacking context this creates.
+
+   IT IS THE SWEEP STEP ONLY, and that is a budget rather than a preference. The
+   market is 290px of a 568px canvas; pinning it through the place step would
+   stand it over the board while the board is part of the decision, which is the
+   one geometric law the phone model is built on.
+   =========================================================================== */
+@media (max-width: 1149px) {
+  body[data-pm-step="sweep"] .ft-section--tiles {
+    position: sticky;
+    top: var(--pm-dock-top);
+    z-index: 3;
+  }
+}

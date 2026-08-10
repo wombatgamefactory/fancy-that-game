@@ -2360,9 +2360,17 @@ function applyPhoneSheets(gameState) {
     // is stage 7's and goes the same way, for the same reason.
     if (open) closeSheetNow();
     if (document.body.getAttribute('data-pm-opp')) closeOppSheet();
+    document.body.removeAttribute('data-pm-step');
     lastSheetPhase = phase;
     return;
   }
+
+  // THE SWEEP STEP PINS THE MARKET (style.css, .ft-section--tiles in the third
+  // phone block). One attribute, written from the engine's own state on every
+  // render, exactly as data-pm-sheet is - so a resumed game needs no bookkeeping
+  // and there is no second copy of "whose turn, which step" to keep in step.
+  if (human && phase === 'sweep') document.body.setAttribute('data-pm-step', 'sweep');
+  else document.body.removeAttribute('data-pm-step');
 
   // RULE (a)'s single exception, and the only auto-open in the model.
   const needsStand = human && phase === 'claim' && Array.isArray(ui.destinationChoices);
