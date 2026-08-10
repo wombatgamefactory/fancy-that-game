@@ -7,6 +7,18 @@ import { BOARD_SIZE, REWARD_CARDS } from '../engine/tiles.js';
 // asked it a question here was the objectives panel.
 import { getPatternMatches, getLegalDestinations, getMoveCost, canDealCards, canBuyExtraTile, canReserveCard, canRemovePlate, canClaimMore, getExtraClaimCupcakeCost, getMaxExtraTilesPerTurn, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, RESERVE_CUPCAKE_COST, RESERVE_LIMIT, getSweepPlacementCount, getVisibleTeapotSymbols, getStartingCupcakes, isTastingMenuInPlay, getAvailableMenus, getMenuDeficit, getMenuIngredients, satisfiesMenu, TASTING_MENU_VP, TASTING_MENUS, isFlavourInPlay, getFlavourCount, getFlavourLeaders, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
 
+// THE MOTION VOCABULARY AND THE SOUND WORLD (stage 8, plan sections 7 and 13).
+// board.js owns exactly two of the seven movement sites - the settle, which fires
+// when ui.placementMap gains a key rather than at the batch commit, and the
+// sheet, which is a view transition because a transform on a fixed sheet would
+// make it the containing block for its own fixed descendants. The other five sit
+// in main.js, at the actions that cause them.
+import {
+  runTransition, flyClone, tileClone, boardCell, haptic, gatePassed, capRings,
+  watchOpponent, paintLine, currentLine, timings, countShown, isHumanTurn,
+} from './motion.js';
+import { playCue, soundEnabled, setSoundEnabled } from './sound.js';
+
 // Ingredient names as they appear in copy. The engine's INGREDIENTS are lowercase
 // keys that double as image filenames (images/symbol-<ingredient>-v3.png), and a
 // sentence should not be the place that discovers that.
@@ -420,9 +432,45 @@ export function showRulesModal() {
   });
 };
 
-export function renderSetupScreen(container, onStart) {
+// THE RESUME CARD (stage 8, plan section 10, decision 4)
+//
+// ONE CONDITIONAL BLOCK inside .ft-landing, before .ft-landing__main, and its two
+// handlers. Nothing else in renderSetupScreen changes, so THE LANDING PAGE IS
+// BYTE-FOR-BYTE UNCHANGED WHEN THERE IS NO SAVE - a first-time visitor, a
+// publisher opening the pitch link and a marketing arrival all see exactly the
+// page they see today.
+//
+// ABOVE THE HERO rather than at the top of .ft-play, because style.css:339
+// stacks the columns on a phone and the play column is a full screen below the
+// fold, where a returning player would never find it.
+//
+// AUTOMATIC RESTORE IS REFUSED, and the reason has nothing to do with taste: THE
+// GAME SCREEN HAS NO EXIT. Back to Setup exists only on the end screen, so an
+// automatic restore would make the setup screen unreachable for anybody holding
+// a save - and a publisher opening the pitch link on a shared device would land
+// inside somebody else's half-played game with no way out but finishing it.
+//
+// It is a card in the flow rather than a modal, and a modal on arrival is the
+// popup stage 6's model forbids twice over.
+function resumeCardHTML(resume) {
+  if (!resume) return '';
+  return `
+      <section class="ft-resume">
+        <h2 class="ft-resume__title">You have a game in progress.</h2>
+        <p class="ft-resume__position">${resume.position}</p>
+        <p class="ft-resume__when">${resume.when}</p>
+        <p class="ft-resume__note">A game resumes at the start of a turn, so a turn that was
+           interrupted is played again from the beginning.</p>
+        <div class="ft-resume__actions">
+          <button id="discardSaveBtn" class="ft-btn ft-btn--secondary">Discard</button>
+          <button id="resumeGameBtn" class="ft-btn ft-btn--primary">Resume game</button>
+        </div>
+      </section>`;
+}
+
+export function renderSetupScreen(container, onStart, resume = null) {
   container.innerHTML = `
-    <div class="ft-landing">
+    <div class="ft-landing">${resumeCardHTML(resume)}
       <div class="ft-landing__main">
         <div class="ft-landing__col">
           <header class="ft-hero">
@@ -577,6 +625,31 @@ export function renderSetupScreen(container, onStart) {
     }
     onStart(playerConfigs);
   });
+
+  // DISCARD TAKES TWO TAPS, IN PLACE. A mis-tap next to Resume would destroy a
+  // game in progress with no undo, and the alternative - a confirm dialog on the
+  // landing screen - is the popup the model forbids. One line of state, no new
+  // component, and the label reverts after a few seconds.
+  const resumeBtn = document.getElementById('resumeGameBtn');
+  const discardBtn = document.getElementById('discardSaveBtn');
+  if (resumeBtn && resume) resumeBtn.addEventListener('click', () => resume.onResume());
+  if (discardBtn && resume) {
+    let armed = false;
+    let revert = null;
+    discardBtn.addEventListener('click', () => {
+      if (!armed) {
+        armed = true;
+        discardBtn.textContent = 'Tap again to discard';
+        revert = window.setTimeout(() => {
+          armed = false;
+          discardBtn.textContent = 'Discard';
+        }, 4000);
+        return;
+      }
+      window.clearTimeout(revert);
+      resume.onDiscard();
+    });
+  }
 }
 
 // THE SEAT MARKER: THE ICON ALONE, AT 12, WITH THE WORD DELETED (stage 2, plan
@@ -747,6 +820,18 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
                  icon target in a 48px turn bar (stage 6), so the accessible
                  name has to be stated rather than inferred from a span that is
                  not always rendered. The icon is never the name of anything. -->
+            <!-- THE MUTE (plan section 13.6). 44px, at the RIGHT END OF THE TURN
+                 BAR on a phone and beside How to Play on desktop, where there is
+                 no dock. It cannot go on the rail: five 72px chips are exactly
+                 360px at 360, and a scrolling rail is refused (decision 22).
+                 The state is carried by SHAPE rather than by colour - two arcs
+                 against a cross - and the accessible name says which way it
+                 goes, because the icon is never the name of anything. -->
+            <button id="soundToggle" class="ft-sound-btn" title="Sound"
+                    aria-pressed="${soundEnabled() ? 'true' : 'false'}"
+                    aria-label="${soundEnabled() ? 'Sound on' : 'Sound off'}">
+              ${icon(soundEnabled() ? 'sound' : 'sound-off', 16)}
+            </button>
             <button id="gameRulesButton" class="ft-btn-howto" title="How to play" aria-label="How to Play">
               ${icon('book', 16)}
               <span class="ft-btn-howto__label">How to Play</span>
@@ -972,10 +1057,28 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
     gameRulesButton.addEventListener('click', showRulesModal);
   }
 
+  bindSoundToggle();
   bindSummaryRail();
   bindOpponentStrip();
   setupDragAndDrop(gameState);
   setupTapToPlace(gameState);
+}
+
+// THE MUTE, bound once per game on an element renderGameScreen emits once and
+// never rewrites. The preference lives in localStorage['ft-sound'] and is NEVER
+// in the save blob: it is a preference rather than game state, so it is not
+// discarded with a save and it survives a version bump. The tap is itself a
+// gesture, which is what builds the audio graph if the player has just unmuted.
+function bindSoundToggle() {
+  const btn = document.getElementById('soundToggle');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const on = !soundEnabled();
+    setSoundEnabled(on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.setAttribute('aria-label', on ? 'Sound on' : 'Sound off');
+    btn.innerHTML = icon(on ? 'sound' : 'sound-off', 16);
+  });
 }
 
 // WHY THE GAME ENDED, in one sentence, for the end screen. New on 4 August: the
@@ -1005,7 +1108,7 @@ function endGameReasonText(gameState) {
   return `${reason} Play then continued until everyone had taken the same number of turns.`;
 }
 
-export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup, gameStats) {
+export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup, gameStats, endOpts = {}) {
   const playerResults = gameState.players.map(player => {
     const breakdown = getScoreBreakdown(player, gameState);
     return { player, breakdown, totalScore: breakdown.total };
@@ -1099,6 +1202,8 @@ export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup
 
         <div class="ft-end-screen__stats">
           <h3>Game Statistics</h3>
+          ${endOpts.resumed ? `<p class="ft-end-screen__stats-note">Turns Played covers the whole game.
+             The other figures cover play since this game was resumed.</p>` : ''}
           <div class="ft-end-screen__stats-grid">
             <div class="ft-stat-box">
               <div class="ft-stat-label">Turns Played</div>
@@ -1297,6 +1402,15 @@ export function updateGameDisplay(gameState) {
   // LAST, because it reads the phase bar it may have just added a button to and
   // the destination choices updateStats has just rendered targets for.
   applyPhoneSheets(gameState);
+
+  // ---- STAGE 8: the three things a render owes the motion vocabulary --------
+  // None of them STARTS a movement. capRings only decides which element carries
+  // a breath that is already drawn; watchOpponent diffs the position and flies
+  // CLONES, which cost no names and cannot truncate anything; paintLine re-asserts
+  // the one-line log into a phase bar this render has just rebuilt underneath it.
+  capRings();
+  watchOpponent(gameState);
+  paintLine();
 }
 
 function updateMarket(gameState) {
@@ -1874,6 +1988,41 @@ function isPhoneBand() {
   return window.matchMedia(PHONE_BAND).matches;
 }
 
+// THE SHEET'S OWN MOTION IS A VIEW TRANSITION, AND THE CONSTRAINT IS WHAT FORCES
+// IT (plan section 7.7, item 1). With no scrim, the sheet's motion is the only
+// thing that says a layer arrived - but the sheet is revealed by `visibility`
+// precisely because a transform on a fixed sheet makes it the containing block
+// for its own fixed descendants, and #cupcakeSupply1 inside #playerScore1 is one.
+// A view transition NEVER TRANSFORMS THE REAL ELEMENT: it replaces it with a
+// snapshot in the transition layer and moves that, so the constraint and the
+// motion are compatible rather than in conflict. 220ms in, 160ms out, one name.
+//
+// EVERY SHEET RISES FROM THE BOTTOM EDGE and nothing else in the model moves
+// vertically, so "up from the bottom" always means the same thing.
+const SHEET_SELECTOR = {
+  fill: '#cardProgress', tea: '#teaOption', menus: '#tastingMenuPanel',
+  stand: '#playerScore1', flavour: '#flavourPanel', spend: '#cupcakeSupply1',
+};
+function sheetEl(id) {
+  const sel = SHEET_SELECTOR[id];
+  return sel ? document.querySelector(sel) : null;
+}
+
+// The one wrapper both ways round: opening has a NEW and no OLD, closing has an
+// OLD and no NEW, and the runner claims the name either way.
+function sheetMove(fromId, toId, mutate) {
+  runTransition({
+    kind: 'sheet',
+    bar: false,
+    travel: [{
+      name: 'ft-sheet',
+      old: () => (fromId ? sheetEl(fromId) : null),
+      neu: () => (toId ? sheetEl(toId) : null),
+    }],
+    mutate,
+  });
+}
+
 function openSheet(id) {
   document.body.setAttribute('data-pm-sheet', id);
   // THE SPEND SHEET IS THE ONE YOU ACT THROUGH, so the board is scrolled into
@@ -1891,13 +2040,25 @@ function openSheet(id) {
   }
 }
 
-function closeSheet() {
+function closeSheetNow() {
   document.body.setAttribute('data-pm-sheet', '');
 }
 
+// NOTHING IS EVER STARTED BY A RE-RENDER (plan section 7, the build rule).
+// applyPhoneSheets runs at the end of every updateGameDisplay and opens or closes
+// a sheet from the engine's own state, so it calls openSheet/closeSheetNow, which
+// write the attribute and nothing else. The two functions below are the GESTURE
+// paths - a chip, Close, Escape, a swipe - and those are the ones that move.
+function closeSheet() {
+  const open = document.body.getAttribute('data-pm-sheet');
+  if (!open) { closeSheetNow(); return; }
+  sheetMove(open, null, closeSheetNow);
+}
+
 function toggleSheet(id) {
-  if (document.body.getAttribute('data-pm-sheet') === id) closeSheet();
-  else openSheet(id);
+  const open = document.body.getAttribute('data-pm-sheet');
+  if (open === id) { closeSheet(); return; }
+  sheetMove(open || null, id, () => openSheet(id));
 }
 
 // A vertical drag of more than 40px closes the sheet. Bound per sheet rather
@@ -1967,7 +2128,7 @@ function applyPhoneSheets(gameState) {
     // the attribute rather than leaving it stale means a resize back down does
     // not re-open a sheet the player closed three widths ago. The opponent sheet
     // is stage 7's and goes the same way, for the same reason.
-    if (open) closeSheet();
+    if (open) closeSheetNow();
     if (document.body.getAttribute('data-pm-opp')) closeOppSheet();
     lastSheetPhase = phase;
     return;
@@ -1978,13 +2139,13 @@ function applyPhoneSheets(gameState) {
   if (needsStand && open !== 'stand') {
     openSheet('stand');
   } else if (!needsStand && open === 'stand' && lastSheetPhase === 'claim' && phase !== 'claim') {
-    closeSheet();
+    closeSheetNow();
   }
 
   // The spend sheet belongs to the step that offers it. When the step is skipped
   // the pair - button and sheet - simply never appears; nothing opens or closes.
   const spendable = human && (phase === 'spend' || canBuyExtraTile(gameState));
-  if (open === 'spend' && !spendable) closeSheet();
+  if (open === 'spend' && !spendable) closeSheetNow();
 
   lastSheetPhase = phase;
 }
@@ -2075,6 +2236,60 @@ function summaryRailHTML() {
 // what a change is measured against; `lit` is the thresholds the player has not
 // yet tapped through; `mark` is the ordinals as at the end of your last turn.
 const railState = { ord: {}, lit: {}, said: {}, mark: {}, wasYours: null, first: true };
+
+// ---------------------------------------------------------------------------
+// THE TEN NUMBERS OF UI STATE THE SAVE CARRIES (stage 8, plan section 10)
+//
+// Five booleans and five integers, and they are the ONLY UI state in the blob,
+// because a turn boundary leaves everything else at its default. They are saved
+// rather than recomputed and the distinction matters: three of the five
+// thresholds are standing conditions that could be re-evaluated from the state,
+// but the flavour's is a TRANSITION and is not visible in a single state at all,
+// and a rail the player already tapped would re-light, which turns an
+// acknowledgement into a nag. ACKNOWLEDGEMENT IS NOT IN THE ENGINE STATE, so it
+// has to be in the save. The ordinals are the PREVIOUS snapshot - the half that
+// makes a delta, and the half that is not recomputable.
+//
+// Stage 7's Resolution reads these as session state that should stay out of the
+// blob. The plan says the opposite, its reason is that a reload is the largest
+// instance of looking away that exists, and the map's authority order puts the
+// plan above a stage write-up. Recorded here rather than followed silently.
+export function getRailSaveState() {
+  const thresholds = {};
+  const ordinals = {};
+  for (const c of RAIL_CHIPS) {
+    thresholds[c.id] = !!railState.lit[c.id];
+    ordinals[c.id] = railState.ord[c.id] === undefined ? null : railState.ord[c.id];
+  }
+  return { thresholds, ordinals };
+}
+
+export function resetRailState() {
+  railState.ord = {};
+  railState.lit = {};
+  railState.said = {};
+  railState.mark = {};
+  railState.wasYours = null;
+  railState.first = true;
+}
+
+export function restoreRailSaveState(ui) {
+  resetRailState();
+  if (!ui) return;
+  for (const c of RAIL_CHIPS) {
+    railState.lit[c.id] = !!(ui.thresholds && ui.thresholds[c.id]);
+    // `said` is set for every chip, acknowledged or not, so the first render
+    // after a resume ANNOUNCES NOTHING: a threshold the player already tapped
+    // must not re-light, and one they have not tapped is already lit and does not
+    // need announcing a second time. The rail is painted in its static form.
+    railState.said[c.id] = true;
+    const ord = ui.ordinals ? ui.ordinals[c.id] : null;
+    if (ord !== null && ord !== undefined) railState.mark[c.id] = ord;
+  }
+  // Not null: `false` is what makes the next render "arriving", so the catch-up
+  // badges are diffed against the marks above rather than being thrown away.
+  railState.wasYours = false;
+}
 
 // THE FIVE READINGS (plan section 4.7). Every reading has an ordinal and either
 // has a threshold or does not - that is the whole of the shared content model,
@@ -2180,8 +2395,15 @@ function updateSummaryRail(gameState) {
       markEl.dataset.pmKey = r.mark;
       markEl.innerHTML = r.mark;
     }
+    // THE YOU CHIP READS THE COUNT, NOT THE TRUTH (stage 8). Every other chip
+    // prints its engine figure the instant it changes; the score is one of the
+    // four movements and the chip is where the score is now read, so the chip
+    // shows what the count has reached and the count's own rAF loop carries it
+    // the rest of the way. Writing the true value here would snap it back on the
+    // next of the 38 renders a turn.
     const figEl = btn.querySelector('[data-pm-fig]');
-    if (figEl.textContent !== r.fig) figEl.textContent = r.fig;
+    const shownFig = c.id === 'stand' && countShown(0) !== undefined ? String(countShown(0)) : r.fig;
+    if (figEl.textContent !== shownFig) figEl.textContent = shownFig;
     const fig2El = btn.querySelector('[data-pm-fig2]');
     if (r.fig2 == null) {
       fig2El.hidden = true;
@@ -2211,10 +2433,13 @@ function updateSummaryRail(gameState) {
     else btn.removeAttribute('data-pm-threshold');
 
     // GRADE 1, the tick. Suppressed on the first render, because a value has to
-    // have been seen before it can be seen to move.
+    // have been seen before it can be seen to move - AND SUPPRESSED ON THE YOU
+    // CHIP ALTOGETHER (stage 8). Stage 7 gave it a wash like the other four; the
+    // score already counts at 25ms a point and one event may not be announced
+    // twice, so on this chip the count IS the tick.
     const was = railState.ord[c.id];
     if (arrived) announceChip(btn, 'threshold', live, r.say);
-    else if (!first && was != null && r.ord != null && r.ord !== was) announceChip(btn, 'tick');
+    else if (!first && c.id !== 'stand' && was != null && r.ord != null && r.ord !== was) announceChip(btn, 'tick');
 
     // GRADE 3, the badge itself.
     if (arriving && railState.mark[c.id] != null && r.ord != null && r.ord !== railState.mark[c.id]) {
@@ -3209,11 +3434,61 @@ function commitPlacement(gameState, tileIndex, boardIndex) {
   if (!isEmptyCell(gameState, boardIndex) || isCellPending(boardIndex)) return false;
 
   if (!ui.placementMap) ui.placementMap = {};
+
+  // MOVEMENT TWO, THE SETTLE (plan sections 7.1 and 13.1). It fires HERE, on the
+  // provisional map gaining a key, and not at the batch commit: onPlacementSubmit
+  // writes the engine's board seconds later and silently, and a cue that arrives
+  // then is a cue that lies about what happened. Watching the provisional map is
+  // also what MAKES THE TAP-BACK SILENT FOR FREE - unplaceTile deletes a key
+  // rather than setting one, so there is nothing here to suppress.
+  //
+  // The source rect has to be read BEFORE the map is written, because the render
+  // two frames from now removes the tray tile the flight starts from.
+  const srcEl = document.querySelector(`#workingArea1 .working-tile[data-tile-index="${tileIndex}"]`);
+  const srcRect = srcEl ? srcEl.getBoundingClientRect() : null;
+
   ui.placementMap[tileIndex] = boardIndex;
   // Deferred so the drop event finishes before the board is torn down and
   // rebuilt underneath it.
   requestAnimationFrame(() => updateGameDisplay(gameState));
+  settle(gameState, tileIndex, boardIndex, srcRect);
   return true;
+}
+
+// FLIP, ZERO NAMES. The settle is the most finger-heavy movement in the game -
+// up to five in a row, fast, with the finger still on the glass - and hit testing
+// is redirected to the document element for the whole of a view transition. It is
+// also the only one of the four movements with no exit: both ends are live nodes,
+// which is the one case where FLIP is strictly cheaper.
+//
+// TWO CHANNELS, ONE EVENT. The buzz and the cue sit on the same two lines,
+// through the same 120ms gate, because on Android haptic success cannot be
+// detected and a build that suppressed one where it believed the other had fired
+// would silently lose both.
+function settle(gameState, tileIndex, boardIndex, srcRect) {
+  if (!srcRect || !isHumanTurn(gameState)) return;
+  const tile = gameState.pendingSweepTiles[tileIndex];
+  if (!tile) return;
+  const colourClass = getColourClass(tile.colour);
+  // Two frames: commitPlacement queues its own render on the next one, so the
+  // destination cell exists on the one after that.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const destEl = boardCell(0, boardIndex);
+    if (!destEl) return;
+    flyClone(srcRect, destEl.getBoundingClientRect(), {
+      node: tileClone(tile, colourClass),
+      duration: timings().settle,
+    });
+    // The destination fades up under the arriving clone. A CSS ANIMATION RATHER
+    // THAN JS-DRIVEN OPACITY, which stage 7 established and which is load-bearing
+    // twice over: an animation ends where the stylesheet says, so a re-render
+    // mid-flight simply reveals the cell rather than leaving it stuck invisible;
+    // and the screenshot harness freezes CSS animations to their END state, so a
+    // timed carrier can never make a capture depend on when it was taken. It
+    // reuses `fade-in` rather than adding a fifth keyframe set.
+    destEl.classList.add('ft-tile--settling');
+    if (gatePassed()) { haptic('land'); playCue('settle'); }
+  }));
 }
 
 // The same idea for the cupcake move: one commit, shared by drag and (from
@@ -4007,7 +4282,28 @@ function updatePhaseControls(gameState) {
 
   const player = gameState.players[gameState.currentPlayerIndex];
   if (!player.isHuman) {
-    controls.classList.add('ft-hidden');
+    // THE ONE-LINE LOG TAKES THE BAR (stage 8, plan section 7.5). Motion cannot
+    // say WHICH, and the single most important fact of an opponent's sweep is
+    // the declaration - pink, or lemon - which no flight carries. The bar was
+    // hidden outright on a bot's turn, so this is the slot the line was always
+    // meant to have: it is addressed to a player who has nothing to do, it
+    // carries no controls, and IT COSTS NO PAGE HEIGHT - below 1400 the bar is
+    // position: fixed on its own dock reserve, and above it the column is
+    // already sized for the bar it shows on your own turn. It persists until the
+    // next action replaces it rather than timing out, so a player who looked
+    // away can still read it, and it never speaks on your own turn.
+    const line = currentLine();
+    if (!line) {
+      controls.classList.add('ft-hidden');
+      return;
+    }
+    controls.classList.remove('ft-hidden');
+    controls.innerHTML = `
+      <div class="ft-phase-bar">
+        <div class="ft-phase-bar__text">
+          <div class="ft-phase-bar__instruction"></div>
+        </div>
+      </div>`;
     return;
   }
 

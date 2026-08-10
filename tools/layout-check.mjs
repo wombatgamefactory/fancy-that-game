@@ -329,6 +329,30 @@ const freezeAnimations = page => page.addStyleTag({ content: `
   }
 ` });
 
+// A MOVEMENT MUST BE ALLOWED TO LAND BEFORE A CAPTURE (stage 8, plan section 7).
+//
+// freezeAnimations above is enough for a CSS animation - it pins one to its end
+// state, which is why stage 7 made both of the rail's timed carriers CSS rather
+// than JS-driven opacity. The motion vocabulary adds two kinds of movement that
+// deliberately cannot be CSS: the FLIP clone, which is a WAAPI animation on a
+// node appended to document.body, and the view transition, whose pseudo-elements
+// are not matched by `*`. Neither is frozen, so a capture taken inside one shows
+// a tile in mid-flight and no two runs can agree.
+//
+// This waited state is the honest equivalent of the freeze: the harness measures
+// the position a movement ARRIVES at, which is the position a player reads. The
+// figures for what the movements cost while they run are measured separately.
+const quiesceMotion = async (page) => {
+  try {
+    await page.waitForFunction(
+      () => !document.querySelector('.ft-flip')
+        && !(window.__ftMotion && window.__ftMotion.isRunning()),
+      null, { timeout: 5000 },
+    );
+  } catch { /* a build without the vocabulary has neither to wait for */ }
+  await page.waitForTimeout(80);
+};
+
 // ---------------------------------------------------------------------------
 // Driving a game
 // ---------------------------------------------------------------------------
@@ -1081,6 +1105,7 @@ console.log(`\nFancy That! layout check - mode: ${MODE}\n`);
   for (const width of SWEEP_WIDTHS) {
     await page.setViewportSize({ width, height: heightFor(width) });
     await page.waitForTimeout(200);
+    await quiesceMotion(page);
     await page.screenshot({ path: path.join(outDir, `landing-${width}.png`), fullPage: true });
     if (MODE === 'baseline') continue;
 
@@ -1136,6 +1161,7 @@ console.log(`\nFancy That! layout check - mode: ${MODE}\n`);
   for (const width of SWEEP_WIDTHS) {
     await page.setViewportSize({ width, height: heightFor(width) });
     await page.waitForTimeout(200);
+    await quiesceMotion(page);
     await page.screenshot({ path: path.join(outDir, `open-${width}.png`), fullPage: true });
     if (MODE !== 'baseline') {
       await checkHorizontal(page, width);
@@ -1163,6 +1189,7 @@ console.log(`\nFancy That! layout check - mode: ${MODE}\n`);
   for (const width of SWEEP_WIDTHS) {
     await page.setViewportSize({ width, height: heightFor(width) });
     await page.waitForTimeout(200);
+    await quiesceMotion(page);
     await page.screenshot({ path: path.join(outDir, `mid-${width}.png`), fullPage: true });
     // The mid-game page is the taller one - four boards carrying tiles, not four
     // empty grids - so it is the worst case the phone band has to survive, and
@@ -1187,6 +1214,7 @@ console.log(`\nFancy That! layout check - mode: ${MODE}\n`);
   await blockThirdParty(page);
   await startGame(page, { players: 4, humanSeat0: true });
   await playHumanTurn(page, { mode: 'drag', stopAfterPlacement: true });
+  await quiesceMotion(page);
   await page.screenshot({ path: path.join(outDir, 'place-768x920.png'), fullPage: true });
   if (MODE !== 'baseline') {
     await checkVertical(page);

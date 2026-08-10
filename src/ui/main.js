@@ -1,5 +1,12 @@
 import { createGame, sweep, takeBonusTile, declineBonusTile, dealCards, canDealCards, takeExtraTile, canBuyExtraTile, place, claim, skipClaim, skipSpend, refill, moveTile, removePlate, canRemovePlate, getMoveCost, reserveCard, canReserveCard, canClaimMore, getValidSweeps, getValidPlacements, getPatternMatches, getWinningPlayers, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
-import { renderSetupScreen, renderGameScreen, updateGameDisplay, setThinkingState, setThinkingProgress, renderEndScreen, showToast } from './board.js';
+import { renderSetupScreen, renderGameScreen, updateGameDisplay, setThinkingState, setThinkingProgress, renderEndScreen, showToast, getRailSaveState, restoreRailSaveState, resetRailState } from './board.js';
+import {
+  runTransition, predictSweep, tileName, marketCell, trayTileFor, boardCell,
+  standPlate, cardEl, haptic, gatePassed, resetCount, startMotion, clearLine,
+  onIdle, isHumanTurn, setCountListener,
+} from './motion.js';
+import { playCue, armAudioUnlock } from './sound.js';
+import { readSave, writeSave, clearSave, describeSave } from './save.js';
 
 // ---------------------------------------------------------------------------
 // THE THREE MODULES THE LANDING PAGE CANNOT USE (9 August, stage 1, plan
@@ -63,9 +70,62 @@ let autoPlayMode = false;
 let lastPlayerIndex = -1;
 let undoStack = [];
 
+// ---------------------------------------------------------------------------
+// SAVE AND RESUME (stage 8, plan section 10)
+// ---------------------------------------------------------------------------
+// One write per turn boundary, whoever's turn it is, plus one at setup. The
+// trigger is a single test - gameState.stats.turnsPlayed differs from the turn
+// last written - which moves exactly once per turn inside refill(), so it fires
+// on the first render after every rotation and at no other time. It is robust to
+// the two irregular paths the step model names, which is the whole reason to test
+// the counter rather than the phase: a locked player rotates into `spend` rather
+// than `sweep`, and autoSkipEmptyClaim can carry a turn through the claim step
+// without a tap. Neither needs a special case.
+//
+// BOT TURNS GET A WRITE TOO. Three bots play between your turns on a phone you
+// are not watching; if only human turn starts were written, an interruption
+// during that lap would rewind past bot moves the player had already watched and
+// the bots would re-decide them, so the game would come back different from the
+// one they left. Writing every rotation means THE MOST THAT CAN EVER BE
+// RE-ROLLED IS THE ONE BOT TURN IN FLIGHT.
+//
+// NO pagehide AND NO visibilitychange HANDLER. It would exist only to capture a
+// mid-turn state, which is the one thing this refuses to store, and it would
+// quietly reintroduce the problem the turn boundary was chosen to avoid.
+let lastSavedTurn = null;
+let resumedThisGame = false;
+
+function saveNow() {
+  if (!gameState) return;
+  lastSavedTurn = gameState.stats ? gameState.stats.turnsPlayed : 0;
+  writeSave(gameState, getRailSaveState(), { resumed: resumedThisGame });
+}
+
+// AFTER THE RENDER RETURNS AND NEVER INSIDE A startViewTransition CALLBACK. The
+// boundary's largest movements run in that callback and it is on the animation's
+// critical path; onIdle runs the write immediately when nothing is in flight and
+// on `finished` when something is. A write costs 0.022ms against a 24 to 27ms
+// render either way, so the deferral is about honesty rather than about cost.
+function maybeSave() {
+  if (!gameState || gameState.gameOver) return;
+  const turn = gameState.stats ? gameState.stats.turnsPlayed : 0;
+  if (turn === lastSavedTurn) return;
+  onIdle(saveNow);
+}
+
 function init() {
   const app = document.getElementById('app');
-  renderSetupScreen(app, onGameStart);
+  // The fingerprint and the parse run once, here, before anything is rendered.
+  // A load is ALL OR NOTHING: either a resume card appears or there is no save.
+  const env = readSave();
+  const resume = env
+    ? {
+      ...describeSave(env),
+      onResume: () => resumeGame(env),
+      onDiscard: () => { clearSave(); init(); },
+    }
+    : null;
+  renderSetupScreen(app, onGameStart, resume);
 }
 
 function snapshotGameState() {
@@ -96,6 +156,10 @@ function undoAction() {
     window._gameUI.extraTileMode = false;
     window._gameUI.reserveMode = false;
   }
+  // THE UNDO SNAPS, and the count snaps with it: every tile object in the game is
+  // new after the round trip, so a count left mid-tween would be counting a seat
+  // that no longer exists towards a number that has already gone.
+  resetCount();
   updateDisplay();
 }
 
@@ -146,6 +210,13 @@ async function onGameStart(playerConfigs) {
 
 async function startGame(playerConfigs) {
   undoStack.length = 0;
+  // A NEW GAME IS A DISCARD CASE (plan section 10, decision 6), and the rail's
+  // memory, the count and the log line all belong to the game that is ending.
+  resetRailState();
+  resetCount();
+  clearLine();
+  resumedThisGame = false;
+  lastSavedTurn = null;
   // Normally already resolved: the import fired at window.load and the player
   // has spent seconds on the seat screen since. See loadDeferredModules.
   const deferred = await loadDeferredModules();
@@ -154,6 +225,23 @@ async function startGame(playerConfigs) {
   gameState = createGame(playerConfigs, statsCollector);
   autoPlayMode = playerConfigs.every(p => !p.isHuman);
 
+  mountGameScreen();
+  // AT SETUP, immediately after createGame, so a player interrupted during the
+  // very first turn resumes into the opening rather than losing the game
+  // entirely. Stated as a rule: the start of the game IS a turn boundary. It is
+  // an overwrite rather than a clear, so there is no window in which a started
+  // game is unsaved.
+  saveNow();
+  updateDisplay();
+
+  if (autoPlayMode) {
+    autoPlayGame();
+  }
+}
+
+// The one place the game screen is mounted, so the new game and the resume
+// cannot drift apart in what they hand renderGameScreen.
+function mountGameScreen() {
   const app = document.getElementById('app');
   renderGameScreen(app, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick, {
     onExtraTile,
@@ -163,12 +251,104 @@ async function startGame(playerConfigs) {
     onRemovePlate,
     onReserveToggle,
   });
+  startMotion();
+}
 
-  updateDisplay();
+// THE RESUME, AND ITS THREE TRAPS, ALL OF WHICH FAIL SILENTLY
+//
+// 1. window._gameUI.gameState MUST BE THE SAME OBJECT as this module's
+//    gameState. A resume that hands renderGameScreen one object while main.js
+//    keeps another gives a UI rendering a state nobody is mutating, and nothing
+//    throws. mountGameScreen passes the module's own binding, which is why the
+//    assignment below happens BEFORE it.
+// 2. collector.bindTo(state) OR NO METRICS. metrics() returns null unless
+//    collector.owner === gameState (game.js:866-870). Undo gets away with
+//    Object.assign into the SAME object, so ownership survives; a resume builds
+//    a NEW object, so it has to be bound. It fails by recording nothing rather
+//    than by erroring.
+// 3. autoPlayGame() MUST BE RESTARTED when the resumed turn belongs to a bot, or
+//    the game sits still and looks frozen. It dispatches on gamePhase, so it
+//    restarts from any turn boundary without special-casing.
+//
+// THE FIRST RENDER AFTER A RESUME IS PLAIN, WITH ZERO VIEW TRANSITION NAMES.
+// Nothing travels, because there is no previous position for anything to travel
+// from; a resume renders the entire game at once, and naming a whole board was
+// measured at 456ms of frozen main thread. The threshold rails are painted on
+// that first render in their static form.
+async function resumeGame(env) {
+  if (starting) return;
+  starting = true;
+  try {
+    undoStack.length = 0;
+    const deferred = await loadDeferredModules();
+    bots = deferred;
+    statsCollector = deferred.createStatsCollector();
 
-  if (autoPlayMode) {
-    autoPlayGame();
+    gameState = env.state;                       // trap 1: this exact object
+    statsCollector.bindTo(gameState);            // trap 2
+    gameState.statsCollector = statsCollector;
+
+    autoPlayMode = gameState.players.every(p => !p.isHuman);
+    resumedThisGame = true;
+    lastSavedTurn = env.turn;
+
+    // Every tile in the game is a new object after a JSON round trip, so the
+    // count starts from the truth rather than counting a stale seat up from
+    // whatever the last game left, and the log line from before the reload is
+    // not a thing that just happened.
+    resetCount();
+    clearLine();
+
+    mountGameScreen();
+    // AFTER the mount, because renderGameScreen does not touch the rail's memory
+    // and updateSummaryRail reads it on the first render that follows.
+    restoreRailSaveState(env.ui);
+    updateDisplay();
+
+    const current = gameState.players[gameState.currentPlayerIndex];
+    if (!current.isHuman) autoPlayGame();        // trap 3
+  } finally {
+    starting = false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// MOVEMENT ONE, THE GATHER (plan sections 7.1 and 13.1)
+// ---------------------------------------------------------------------------
+// Tiles travelling from market cells to the swept tray. A VIEW TRANSITION,
+// because tiles LEAVE the market - an exit, which FLIP has to clone its way
+// around - and because it is the movement the game is named after, so it is the
+// one a player is most meant to follow.
+//
+// FIVE NAMES AT MOST, one per swept tile, plus the phase bar. THE VACATED MARKET
+// CELLS ARE DELIBERATELY NOT NAMED: they cross-fade inside the root snapshot for
+// nothing, and naming them would double the count to say the same thing twice.
+//
+// The names are minted BEFORE the mutation, from the engine's own six-line
+// matcher, because a name has to be on the live node when the old snapshot is
+// taken. Identity is the tile OBJECT, not its data - the bag holds five shallow
+// copies of each of twenty-five value objects, so a name derived from
+// {colour, ingredient} would collide and a collision drops the whole transition.
+function gatherPlan(indices, run) {
+  const tiles = indices.map(i => gameState.market[i]).filter(Boolean);
+  if (!tiles.length) { run(); return; }
+  const snapshot = gameState;
+  runTransition({
+    kind: 'gather',
+    bar: true,
+    scrollTo: () => document.getElementById('playerPanel1'),
+    travel: tiles.map((tile, k) => ({
+      name: tileName(tile),
+      old: () => marketCell(indices[k]),
+      neu: () => trayTileFor(snapshot, tile),
+    })),
+    mutate: run,
+  });
+  // ONE GRAIN OF CHINA PER TILE, at the movement's own stagger. The cue begins
+  // when the movement begins - not when it lands - because on Android the buzz
+  // and the cue are the same event in two channels and two channels 160ms apart
+  // read as two events. The gather has no buzz, so it takes the gate alone.
+  if (gatePassed()) playCue('gather', { n: Math.min(5, tiles.length) });
 }
 
 function onMarketClick(rowOrCol, isRow, declaration, declarationType) {
@@ -176,17 +356,22 @@ function onMarketClick(rowOrCol, isRow, declaration, declarationType) {
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   if (!currentPlayer.isHuman) return;
 
-  try {
-    pushUndoSnapshot();
-    sweep(gameState, rowOrCol, isRow, declaration, declarationType);
-    updateDisplay();
+  const run = () => {
+    try {
+      pushUndoSnapshot();
+      sweep(gameState, rowOrCol, isRow, declaration, declarationType);
+      updateDisplay();
 
-    if (!gameState.bonusTileAvailable) {
-      checkAutoAdvance();
+      if (!gameState.bonusTileAvailable) {
+        checkAutoAdvance();
+      }
+    } catch (e) {
+      showToast(e.message);
     }
-  } catch (e) {
-    showToast(e.message);
-  }
+  };
+
+  if (gameState.bonusTileAvailable) { run(); return; }
+  gatherPlan(predictSweep(gameState, rowOrCol, isRow, declaration, declarationType), run);
 }
 
 function onBonusTile(marketIndex) {
@@ -194,14 +379,20 @@ function onBonusTile(marketIndex) {
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   if (!currentPlayer.isHuman) return;
 
-  try {
-    pushUndoSnapshot();
-    takeBonusTile(gameState, marketIndex);
-    updateDisplay();
-    checkAutoAdvance();
-  } catch (e) {
-    showToast(e.message);
-  }
+  const run = () => {
+    try {
+      pushUndoSnapshot();
+      takeBonusTile(gameState, marketIndex);
+      updateDisplay();
+      checkAutoAdvance();
+    } catch (e) {
+      showToast(e.message);
+    }
+  };
+  // The free line-clear bonus tile and the paid extra tile are the same movement
+  // from a different source, so they are the same cue - the grain count tells one
+  // from the other for free.
+  gatherPlan([marketIndex], run);
 }
 
 function onPlacementSubmit(placements) {
@@ -215,15 +406,72 @@ function onPlacementSubmit(placements) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// MOVEMENT THREE, THE PLATING (plan sections 7.1 and 13.1)
+// ---------------------------------------------------------------------------
+// A claim is not one movement. It moves a TILE from your board to a cake-stand
+// plate, and it takes a CARD off the row which is never drawn again - claimed
+// cards are counted, not rendered.
+//
+// ONE FLIGHT AND ONE DISSOLVE, and which is which is not arbitrary: A FLIGHT HAS
+// TO END SOMEWHERE THE EYE CAN LAND. The tile has a destination the player has
+// just chosen, so the tile flies; the card's destination is a number, so the card
+// dissolves in place while the score counts up. THE COUNT IS THE CARD'S RECEIPT,
+// and it is the reason movement four exists at all.
+//
+// THREE NAMES. THE CARDS THAT REFLOW ALONG THE ROW ARE NOT NAMED, and that is a
+// measurement rather than a preference: naming them makes the row close up rather
+// than jump, which is nicer, and it was inside the count budget at ten names -
+// but it measured 286ms to `ready` at 4x throttle against 111ms for the same
+// claim with three. A card is a sprite crop at device pixel ratio 3, so eight of
+// them cost more than twenty-five tiles would. THE BUDGET IS REALLY AREA AND THE
+// COUNT IS ITS PROXY: twelve holds for tile-sized things.
+//
+// This one wrapper catches the whole claim, because the claim's third step goes
+// through commitClaimDestination (board.js) with the destination in hand.
 function onClaimSubmit(cardId, removedBoardIndex, destination) {
-  try {
-    pushUndoSnapshot();
-    claim(gameState, cardId, removedBoardIndex, destination);
-    updateDisplay();
-    checkAutoAdvance();
-  } catch (e) {
-    showToast(e.message);
+  const run = () => {
+    try {
+      pushUndoSnapshot();
+      claim(gameState, cardId, removedBoardIndex, destination);
+      updateDisplay();
+      checkAutoAdvance();
+    } catch (e) {
+      showToast(e.message);
+    }
+  };
+
+  if (!isHumanTurn(gameState)) { run(); return; }
+
+  const p = gameState.currentPlayerIndex;
+  const tile = gameState.players[p].board[removedBoardIndex];
+  const isRow = destination && destination.type === 'row';
+  const rowIndex = isRow ? destination.rowIndex : null;
+  const snapshot = gameState;
+
+  const travel = [];
+  if (tile && isRow) {
+    travel.push({
+      name: tileName(tile),
+      old: () => boardCell(p, removedBoardIndex),
+      neu: () => standPlate(snapshot, p, rowIndex),
+    });
   }
+
+  runTransition({
+    kind: 'plate',
+    bar: true,
+    scrollTo: () => document.getElementById('playerScore1'),
+    travel,
+    dissolve: [{ name: `ft-card-${cardId}`, old: () => cardEl(cardId) }],
+    mutate: run,
+  });
+
+  // TWO CHANNELS, ONE EVENT, on the same two lines and through the same gate.
+  // TWO CONTACTS in the cue and TWO TICKS in the buzz - `[10, 60, 18]` against
+  // the settle's `10` - which is the whole reason an iPhone player can tell a
+  // claim from a placement without looking, and an Android player without either.
+  if (gatePassed()) { haptic('claim'); playCue('plating'); }
 }
 
 function onSkipClaim() {
@@ -297,14 +545,20 @@ function onExtraTile(marketIndex) {
   if (!canBuyExtraTile(gameState)) return;
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   if (!currentPlayer.isHuman) return;
-  try {
-    pushUndoSnapshot();
-    takeExtraTile(gameState, marketIndex);
-    window._gameUI.extraTileMode = false;
-    updateDisplay();
-  } catch (e) {
-    showToast(e.message);
-  }
+  const run = () => {
+    try {
+      pushUndoSnapshot();
+      takeExtraTile(gameState, marketIndex);
+      window._gameUI.extraTileMode = false;
+      updateDisplay();
+    } catch (e) {
+      showToast(e.message);
+    }
+  };
+  // The third site of the gather: one tile, bought, on the same flight as a
+  // swept one. It is also the state that used to put 35 infinite animations on
+  // the page, and now puts one.
+  gatherPlan([marketIndex], run);
 }
 
 function onExtraTileToggle() {
@@ -560,9 +814,15 @@ function updateDisplay() {
     window._gameUI.onConfirmTurn = confirmTurn;
   }
   updateGameDisplay(gameState);
+  // AFTER the render returns. See maybeSave.
+  maybeSave();
 }
 
 function onGameEnd() {
+  // A FINISHED GAME IS NOT A GAME IN PROGRESS, and a player who closes the tab on
+  // the end screen must not be dragged back into it. Cleared BEFORE the end
+  // screen renders, so there is no frame in which a finished game is resumable.
+  clearSave();
   const app = document.getElementById('app');
   const gameStats = statsCollector?.getReport() || {};
   renderEndScreen(
@@ -570,8 +830,56 @@ function onGameEnd() {
     gameState,
     () => init(),
     () => init(),
-    gameStats
+    gameStats,
+    // THE ONE SENTENCE A RESUMED GAME OWES THE PLAYER (plan section 10, decision
+    // 2). The collector is not saved - rehydrating a data blob onto a fresh one
+    // is exactly the half-load a save is written against - so eight of the nine
+    // stat boxes cover play since the resume and one of them, Turns Played, is
+    // engine state and covers the whole game. The result table above them is
+    // computed from engine state and is unaffected.
+    { resumed: resumedThisGame }
   );
 }
+
+// ---------------------------------------------------------------------------
+// WHAT MUST NEVER ANIMATE, and it is the half of the list that is JavaScript
+// ---------------------------------------------------------------------------
+// Eight handlers in this file are deliberately NOT wrapped, and this comment is
+// the record of that rather than an oversight:
+//
+//   onUndo            snapshotGameState round-trips through JSON, so after an
+//                     undo every tile object is new and every name would change
+//                     at once: an animated undo reads as "the whole board was
+//                     replaced". An undo should snap.
+//   onConfirmTurn     a fresh pot of tea returns up to 25 market tiles to the
+//                     bag, deals 25 more and cuts the card row back to three -
+//                     about 58 elements at a turn boundary, more than twice the
+//                     budget. IT IS ONE GESTURE, NOT 58 FLIGHTS: the market
+//                     cross-fades as a block inside the root snapshot, for zero
+//                     names. It is also where the save is written.
+//   onPlacementSubmit a batch commit, and not where a placement is seen. The
+//                     visible moment is commitPlacement in board.js.
+//   onSkipClaim,      nothing travels and nothing is worth a sound: a step that
+//   onSkipMove        was skipped is not an event.
+//   onDealCards,      the row changes under the player's own tap and the change
+//   onReserveCard,    is the picture. A cue here would be a fifth cue, and the
+//   onRemovePlate     vocabulary has four.
+//
+// And the tap-back is silent BY CONSTRUCTION rather than by rule: unplaceTile
+// deletes a key from ui.placementMap rather than setting one, and the settle
+// watches for a key being added.
+
+armAudioUnlock();
+
+// THE COUNT'S OWN CUE, registered rather than imported, because motion does not
+// depend on sound. A TONE, NOT AN OBJECT - nothing travels during a count, so
+// nothing is struck - and it sounds only for YOUR score and only as a claim's
+// receipt. Every other score change in the game counts up in silence, including
+// all four seats at the end and every point a bot ever scores.
+setCountListener((seat, delta, ms) => {
+  if (seat !== 0 || delta <= 0) return;
+  if (!isHumanTurn(gameState)) return;
+  playCue('count', { ms });
+});
 
 init();

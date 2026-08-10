@@ -26,7 +26,16 @@
      rather than a literal because plan section 8.7 puts every icon stroke on it
      too, and stage 3's token layer will not re-add it. */
   --accent-deep: #8E5239;
-  --color-accent-gold: #D4AF37;
+  /* GOLD IS #C9A227 - Dean's decision 5 of 10/08/2026, applied by stage 8. The
+     project shipped #D4AF37 while the motion prototype used #C9A227 and the
+     plan never named a hex; the prototype's value wins, because it is what the
+     motion work was judged against, it is deeper and less brassy, and it reads
+     2.14:1 on cream against 1.90:1. It is a REPLACEMENT rather than a second
+     gold, so this declaration and the 28 rgba() literals derived from it move
+     together - four of those literals are stage 4's, written before the fork
+     was settled. Contrast is not load-bearing here: decision 15's gold is
+     carried by COUNT, two concentric rings against the accent's one. */
+  --color-accent-gold: #C9A227;
   /* THE FLAVOUR OF THE DAY's colour (6 August), and it is the last free slot on
      the meters rail: the tea gauge owns gold, the Tasting Menus own the green
      family, and a fourth panel that borrowed either would read as belonging to
@@ -635,6 +644,60 @@ a .ft-icon {
   padding: var(--spacing-2xl) var(--spacing-xl) 0;
 }
 
+/* ==========================================================================
+   THE RESUME CARD (stage 8, plan section 10, decision 4)
+
+   ABOVE THE HERO, and emitted only when a valid save exists - so with no save
+   the landing page is byte-for-byte what it is today, and a publisher opening
+   the pitch link never sees this. It is a CARD IN THE FLOW rather than a modal,
+   the same shape the rotate card takes, because a modal on arrival is the popup
+   the phone model forbids twice over.
+
+   Two buttons, 44px, DISMISSIVE TO THE LEFT OF CONFIRMING - Discard, then Resume
+   game - which is the model's own reading of Material and the same order the
+   sheets use.
+   ========================================================================== */
+.ft-resume {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--accent-deep);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-xl);
+}
+
+.ft-resume__title {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: var(--type-title);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.ft-resume__position {
+  font-size: var(--type-body);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.ft-resume__when,
+.ft-resume__note {
+  font-size: var(--type-caption);
+  color: var(--color-text-secondary);
+  margin-top: var(--spacing-xs);
+}
+
+.ft-resume__actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+
+.ft-resume__actions .ft-btn {
+  min-height: 44px;
+}
+
 /* --- Hero --- */
 
 .ft-hero {
@@ -1069,28 +1132,25 @@ a .ft-icon {
        lifts. That is the moment of "yes, this one".
      - Nothing moves the layout. transform and box-shadow only, so every button
        still points at exactly the row or column it sweeps. */
+/* REWRITTEN ONTO THE SHARED RING (stage 8, plan section 7.2). `sweep-ready` was
+   an INFINITE animation on `background` and `box-shadow` - two paint properties
+   - running on up to TEN buttons at once, and it was the whole of the shipped
+   build's ten infinite animations at rest. It becomes the ring vocabulary's
+   "you may act here": a DASHED accent ring, 2px, told apart from the other three
+   meanings by being dashed rather than by moving, and it does not breathe.
+   That is what takes the resting cost from ten to nought. */
 .ft-btn--sweep.is-awaiting {
   cursor: pointer;
   font-weight: 700;
   background: var(--color-card);
   border-color: var(--color-accent);
   color: var(--color-accent-hover);
-  animation: sweep-ready 1.8s ease-in-out infinite;
-}
-
-@keyframes sweep-ready {
-  0%, 100% {
-    background: var(--color-card);
-    box-shadow: 0 0 0 rgba(193, 123, 92, 0);
-  }
-  50% {
-    background: #F7E6DC;
-    box-shadow: 0 0 10px rgba(193, 123, 92, 0.55);
-  }
+  outline: 2px dashed var(--color-accent);
+  outline-offset: 1px;
 }
 
 .ft-btn--sweep.is-awaiting:hover:not(:disabled) {
-  animation: none;
+  outline: none;
   background: var(--color-accent);
   border-color: var(--color-accent-hover);
   color: #FFFFFF;
@@ -1098,16 +1158,10 @@ a .ft-icon {
   box-shadow: 0 0 0 3px rgba(193, 123, 92, 0.3), 0 3px 10px rgba(61, 43, 31, 0.3);
 }
 
-/* Motion is an accessibility concern and this one repeats forever. Anyone who
-   has asked their system for less of it keeps the full resting cue and the full
-   hover response - only the breathing stops. */
-@media (prefers-reduced-motion: reduce) {
-  .ft-btn--sweep.is-awaiting {
-    animation: none;
-    background: #F7E6DC;
-    box-shadow: 0 0 0 2px rgba(193, 123, 92, 0.35);
-  }
-}
+/* The reduced-motion branch this rule used to need is GONE with the animation
+   it turned off (stage 8). The dashed ring above is identical in both branches,
+   because it never moved: reduced motion is a different set of numbers, and a
+   signal with no numbers has nothing to change. */
 
 /* ======= Game Screen ======= */
 
@@ -1517,12 +1571,12 @@ a .ft-icon {
 .ft-stand__row--legal {
   cursor: pointer;
   border-color: var(--color-accent-gold);
-  background: rgba(212, 175, 55, 0.12);
-  box-shadow: 0 0 8px rgba(212, 175, 55, 0.4);
+  background: rgba(201, 162, 39, 0.12);
+  box-shadow: 0 0 8px rgba(201, 162, 39, 0.4);
 }
 
 .ft-stand__row--legal:hover {
-  background: rgba(212, 175, 55, 0.25);
+  background: rgba(201, 162, 39, 0.25);
 }
 
 .ft-stand__lock {
@@ -1646,12 +1700,12 @@ a .ft-icon {
 .ft-stand__crumbs--legal {
   cursor: pointer;
   border-color: var(--color-accent-gold);
-  background: rgba(212, 175, 55, 0.12);
-  box-shadow: 0 0 8px rgba(212, 175, 55, 0.4);
+  background: rgba(201, 162, 39, 0.12);
+  box-shadow: 0 0 8px rgba(201, 162, 39, 0.4);
 }
 
 .ft-stand__crumbs--legal:hover {
-  background: rgba(212, 175, 55, 0.25);
+  background: rgba(201, 162, 39, 0.25);
 }
 
 /* THE ROW LOCK, SAID AT THE MOMENT IT BINDS (defect 17, 9 August).
@@ -2220,7 +2274,7 @@ a .ft-icon {
    like. */
 .ft-market-teapot-symbol--armed {
   opacity: 1;
-  filter: drop-shadow(0 0 3px rgba(212, 175, 55, 0.9));
+  filter: drop-shadow(0 0 3px rgba(201, 162, 39, 0.9));
 }
 
 /* DRAG-OVER - the cell a dragged tile is currently over. A ring and a wash. */
@@ -2235,7 +2289,7 @@ a .ft-icon {
   cursor: grab;
   outline: 2px solid var(--color-accent-gold);
   outline-offset: 1px;
-  box-shadow: inset 0 0 0 999px rgba(212, 175, 55, 0.16), var(--form-edges);
+  box-shadow: inset 0 0 0 999px rgba(201, 162, 39, 0.16), var(--form-edges);
 }
 
 .ft-tile--movable:active {
@@ -2246,7 +2300,7 @@ a .ft-icon {
 .ft-tile--move-target {
   outline: 2px solid var(--color-accent-gold);
   outline-offset: 1px;
-  box-shadow: inset 0 0 0 999px rgba(212, 175, 55, 0.16), var(--dent-edges);
+  box-shadow: inset 0 0 0 999px rgba(201, 162, 39, 0.16), var(--dent-edges);
   cursor: crosshair;
 }
 
@@ -2696,7 +2750,7 @@ a .ft-icon {
   /* The one dark surface in the layout. It gives the column a top edge with real
      weight, and makes "whose turn is it" readable from across the table. */
   background: linear-gradient(135deg, #4A3527 0%, #3D2B1F 100%);
-  box-shadow: inset 0 -2px 0 rgba(212, 175, 55, 0.5);
+  box-shadow: inset 0 -2px 0 rgba(201, 162, 39, 0.5);
 }
 
 .ft-centre-head__turn {
@@ -2763,6 +2817,44 @@ a .ft-icon {
 /* ---- The How to Play button ---------------------------------------------
    The only control in this column, so it is FILLED rather than outlined and it
    says what it does. On the dark bar it reads as the obvious next click. */
+/* ==========================================================================
+   THE MUTE (stage 8, plan section 13.6)
+
+   Beside How to Play, in the turn bar's right group, at every band. On a phone
+   the turn bar IS the dock and this is its right end; above 1149 there is no
+   dock and the bar is the panel's own title row, which is why one rule serves
+   both.
+
+   IT IS 28px HIGH AT DESKTOP AND 44 IN THE TOUCH BAND, and the number is not a
+   choice: the rule that governs it is 44px for anything a FINGER taps, and the
+   band where a finger taps is the band where the phone rules below give it 44.
+   Above that it matches the button beside it to the pixel, because a taller
+   control in this row would raise the whole title bar and the page-height
+   ratchet only ever permits a number to fall.
+
+   TRANSPARENT AND BORDERLESS AT DESKTOP, so the row still has exactly one filled
+   control in it - a second gold button beside How to Play would read as a second
+   primary action, and this is a preference rather than an action.
+   ========================================================================== */
+.ft-sound-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-inverse);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.ft-sound-btn:hover {
+  background: rgba(251, 245, 236, 0.14);
+}
+
 .ft-btn-howto {
   display: inline-flex;
   align-items: center;
@@ -3015,22 +3107,20 @@ a .ft-icon {
 /* A market tile that the armed extra-tile purchase can lift. Deliberately the
    same visual language as the free line-clear bonus tile, because it is the same
    operation at a price. (Deleted 8 August with the rule, restored 9 August.) */
+/* REWRITTEN ONTO THE SHARED RING (stage 8). `ft-buyable-pulse` ran on up to 25
+   market tiles at once - 25 infinite box-shadow animations, which is not a
+   signal, it is a field. It becomes the gold DOUBLE ring, and the breath is
+   capped to one by capRings() in motion.js. */
 .ft-tile--buyable {
-  outline: 2px solid var(--color-accent-gold, #C9A227);
+  outline: 2px solid var(--color-accent-gold);
   outline-offset: -2px;
-  animation: ft-buyable-pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes ft-buyable-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(201, 162, 39, 0.55); }
-  50%      { box-shadow: 0 0 0 5px rgba(201, 162, 39, 0); }
 }
 
 /* A long row is a standing invitation to order a fresh pot of tea (the only
    thing that cuts it back), so it is worth flagging rather than just counting. */
 .ft-card-row__count--long {
   color: var(--color-accent-gold);
-  background: rgba(212, 175, 55, 0.14);
+  background: rgba(201, 162, 39, 0.14);
   border-radius: var(--radius-sm);
   padding: 1px var(--spacing-sm);
 }
@@ -3051,9 +3141,11 @@ a .ft-icon {
   animation: notice-flash 0.45s ease;
 }
 
+/* SURVIVES, MINUS ITS BACKGROUND STEP (stage 8). The 35% keyframe animated
+   `background`, a paint property, for one frame of a 450ms arrival that the
+   opacity and the 4px rise already carry. Only transform and opacity animate. */
 @keyframes notice-flash {
   0% { opacity: 0; transform: translateY(-4px); }
-  35% { background: rgba(192, 57, 43, 0.28); }
   100% { opacity: 1; transform: translateY(0); }
 }
 
@@ -3141,10 +3233,15 @@ a .ft-icon {
    .ft-card--reservable:hover) - there is deliberately no blanket .ft-card:hover
    any more, because it lifted cards that do nothing. */
 
+/* THE CARD TAKES THE GOLD DOUBLE RING (stage 8, and decision 15 answered by
+   COUNT rather than by substitution). `pulse-gold-strong` DIES: it put a
+   scale(1.01) wobble and two animated box-shadow glows on every claimable card,
+   up to eight at once. What is left is the same two rings every gold thing in
+   the game has - the 5px border is the inner one - and the outer ring is the
+   ::before, breathing on the one surviving keyframe set. */
 .ft-card--claimable {
   border: 5px solid var(--color-accent-gold);
-  box-shadow: 0 0 20px rgba(212, 175, 55, 0.6), 0 0 40px rgba(212, 175, 55, 0.4);
-  animation: pulse-gold-strong 1.2s ease-in-out infinite;
+  box-shadow: 0 0 20px rgba(201, 162, 39, 0.6), 0 0 40px rgba(201, 162, 39, 0.4);
   position: relative;
 }
 
@@ -3157,13 +3254,13 @@ a .ft-icon {
   bottom: -8px;
   border: 2px solid var(--color-accent-gold);
   border-radius: var(--radius-md);
-  opacity: 0.6;
-  animation: pulse-ring 1.2s ease-in-out infinite;
+  opacity: 0.55;
+  animation: ft-ring-breathe var(--ft-dur-ring) var(--ft-ease-travel) infinite;
   pointer-events: none;
 }
 
 .ft-card--claimable:hover {
-  box-shadow: 0 0 30px rgba(212, 175, 55, 0.8), 0 0 50px rgba(212, 175, 55, 0.5);
+  box-shadow: 0 0 30px rgba(201, 162, 39, 0.8), 0 0 50px rgba(201, 162, 39, 0.5);
   border-color: var(--color-accent-gold);
 }
 
@@ -3174,24 +3271,132 @@ a .ft-icon {
    deleted rather than rewritten, because the ruling it breaks would have to be
    answered before it could be used and there is nothing to answer it for. */
 
-@keyframes pulse-gold-strong {
-  0%, 100% {
-    box-shadow: 0 0 20px rgba(212, 175, 55, 0.6), 0 0 40px rgba(212, 175, 55, 0.4);
-    transform: scale(1);
-  }
-  50% {
-    box-shadow: 0 0 30px rgba(212, 175, 55, 0.8), 0 0 60px rgba(212, 175, 55, 0.5);
-    transform: scale(1.01);
+/* ==========================================================================
+   THE SHARED RING (stage 8, plan section 7.2 and 7.3)
+
+   ELEVEN KEYFRAME SETS BECOME FOUR, AND THIS IS THE ONE THEY COLLAPSE ONTO.
+   `pulse-ring` is promoted: it was already on `opacity`, which is one of the two
+   properties allowed to animate, and it is now THE ONE PULSE IN THE BUILD.
+   `cupcake-pulse` and `pulse-symbol` had already gone with the elements they
+   styled; `pulse-gold-strong` and `slide-in` die here; `sweep-ready`,
+   `ft-buyable-pulse` and `pulse-forced` are rewritten onto the ring vocabulary
+   above and below. What survives beside this: `notice-flash`, `fade-in`,
+   `toast-in`.
+
+   THE PULSE IS THE OUTER RING BREATHING rather than a second mechanism, which is
+   what makes reduced motion "the same signal with the travel removed": with
+   motion on the outer ring breathes scale(1) to scale(1.06) and .55 to .18 over
+   1600ms; with motion off it is HELD at the middle of its own range, opacity
+   .45. At every instant, in both branches, A GOLD THING HAS TWO RINGS AND AN
+   ACCENT THING HAS ONE, at zero layout width - which is decision 15 carried by
+   COUNT, and it matters because ticket 09 measured gold and the accent
+   desaturating to the same grey.
+   ========================================================================== */
+@keyframes ft-ring-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.55; }
+  50%      { transform: scale(1.06); opacity: 0.18; }
+}
+
+/* THE PULSE CAP: one pulse per meaning, and where several elements share a
+   meaning the breath moves to the smallest container that holds them all. The
+   RING STAYS ON EVERY MEMBER, because the count is what carries the meaning
+   under desaturation and it must not depend on the pulse; only the breath moves.
+   motion.js decides this per CONTAINER after every group has been counted. */
+.ft-ring--quiet::before,
+.ft-ring--quiet::after { animation: none !important; opacity: 0.45; transform: none; }
+
+.ft-ring-region {
+  position: relative;
+}
+
+/* INSET 0, NOT A NEGATIVE INSET, and the reason is measured rather than
+   aesthetic. #cardMarket is a horizontal scroll container below 1150 and #market
+   sits inside an XL column with 0.6px of horizontal headroom (stage 4), so a
+   ring hung outside either box would either extend a scrollable area or push the
+   page into horizontal scroll. At inset 0 the ring costs nothing anywhere and
+   still reads as drawn around the group rather than around one member. */
+.ft-ring-region::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--color-accent-gold);
+  border-radius: var(--radius-sm);
+  opacity: 0.55;
+  pointer-events: none;
+  animation: ft-ring-breathe var(--ft-dur-ring) var(--ft-ease-travel) infinite;
+}
+
+/* MOTION OFF IS A HOLD, NOT A DELETION, and that is the whole of decision 15's
+   requirement met without motion: the outer ring stays drawn at the middle of
+   its own range, so the ring COUNT is identical in both branches. */
+@media (prefers-reduced-motion: reduce) {
+  .ft-card--claimable::before,
+  .ft-ring-region::after {
+    animation: none;
+    opacity: 0.45;
+    transform: none;
   }
 }
 
-@keyframes pulse-ring {
-  0%, 100% {
-    opacity: 0.6;
-  }
-  50% {
-    opacity: 0.3;
-  }
+/* ==========================================================================
+   THE FLIP CLONE (stage 8, plan section 7.1)
+
+   A tile settling on your own board is FLIP, never a view transition, and the
+   whole of an opponent's turn is FLIP too. Ticket 03's own rule: view
+   transitions for the few named movements a player is meant to follow, FLIP for
+   anything bulk or anything that must not block a finger. Placement is the most
+   finger-heavy movement in the game - up to five in a row with the finger still
+   on the glass - and a view transition redirects hit testing to the document
+   element for its whole duration.
+
+   IT COSTS ZERO NAMES, which is why the budget is never tight.
+   ========================================================================== */
+.ft-flip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  margin: 0;
+  /* Above the canvas and the phase bar's 900, under the toast's 950 and the
+     modals' 1000 (stage 6's stack), so a flight is never drawn over a message
+     and never hidden behind the bar it flies past. */
+  z-index: 940;
+  pointer-events: none;              /* NEVER delays the next input. */
+  will-change: transform;
+  /* Ticket 09: A TILE CASTS ITS OWN SHADOW ONLY WHEN IT LIFTS, because a grid of
+     tiles is lit as one slab with a single region shadow. A travelling tile is a
+     lifted tile, so it carries the cast shadow for the flight and lands flat.
+     That rule is inherited here, not invented. */
+  box-shadow: 2px 3px 6px -1px rgba(var(--shadow-ink), 0.5);
+}
+
+/* ==========================================================================
+   THE ONE-LINE LOG (stage 8, plan section 7.5)
+
+   Motion cannot say WHICH, and the single most important fact of an opponent's
+   sweep is the declaration. The line takes the phase bar's own instruction slot,
+   which on an opponent's turn is addressed to a player who has nothing to do -
+   so IT COSTS NO HEIGHT - and it persists until the next action replaces it
+   rather than timing out, so a player who looked away can still read it.
+
+   It reuses `fade-in` rather than adding a twelfth keyframe set: the eleven come
+   down to four and a new one would put them back to five for an 8px rise.
+   ========================================================================== */
+.ft-motion-log {
+  animation: fade-in var(--ft-dur-log) var(--ft-ease-enter);
+}
+
+/* The cell the settle lands on, fading up under the arriving clone. One class,
+   one existing keyframe set, and it ends at the value the cell already has. */
+.ft-tile--settling {
+  animation: fade-in var(--ft-dur-settle) linear;
+}
+
+/* THE COUNT'S ONE REQUIREMENT. Proportional digits reflow the score line as they
+   change, which turns a count into a shimmer. Tabular figures cost nothing and
+   are the only thing the count needs in CSS. */
+.ft-score-total,
+.pm-chip__fig {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ======= Phase Bar ======= */
@@ -3248,16 +3453,9 @@ a .ft-icon {
    gated on a phase it was never rendered in. Its role is now .ft-cupcake-note,
    beside the buttons. */
 
-@keyframes slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
+/* `slide-in` DELETED (stage 8). Dead code: it was defined here and referenced
+   nowhere, in this stylesheet or in any module. It is the eleventh keyframe set
+   the motion review found, and the one that cost nothing to remove. */
 
 /* ======= Modal ======= */
 
@@ -4007,7 +4205,7 @@ select:focus {
 }
 
 .ft-stats__player-row--winner {
-  background: rgba(212, 175, 55, 0.05);
+  background: rgba(201, 162, 39, 0.05);
   font-weight: 600;
 }
 
@@ -4103,6 +4301,18 @@ select:focus {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-lg);
+}
+
+/* Shown only when the finished game was resumed at least once (stage 8). The
+   stats collector is deliberately not saved, so eight of these nine boxes cover
+   play since the resume and one - Turns Played - is engine state and covers the
+   whole game. The result table above is computed from engine state and is
+   unaffected, so nothing about who won or by how much is touched. */
+.ft-end-screen__stats-note {
+  font-size: var(--type-caption);
+  color: var(--color-text-secondary);
+  margin-top: calc(var(--spacing-lg) * -1 + var(--spacing-xs));
   margin-bottom: var(--spacing-lg);
 }
 
@@ -4204,7 +4414,7 @@ select:focus {
 
 .ft-rules__section--tea {
   --rule-accent: var(--color-accent-gold);
-  --rule-tint: rgba(212, 175, 55, 0.14);
+  --rule-tint: rgba(201, 162, 39, 0.14);
 }
 
 /* .ft-rules__section--objectives stood here, gold to match the objectives panel
@@ -4297,7 +4507,7 @@ select:focus {
   font-size: 14px;
   font-weight: 700;
   color: var(--color-accent);
-  background: rgba(212, 175, 55, 0.12);
+  background: rgba(201, 162, 39, 0.12);
   border: 1px dashed var(--color-accent-gold);
   border-radius: var(--radius-md);
   padding: var(--spacing-sm) var(--spacing-md);
@@ -4361,7 +4571,7 @@ select:focus {
 .ft-tea-option--ready {
   box-shadow:
     inset 3px 0 0 var(--color-accent-gold),
-    inset 0 0 0 999px rgba(212, 175, 55, 0.16);
+    inset 0 0 0 999px rgba(201, 162, 39, 0.16);
 }
 
 /* Not available: the gauge stays perfectly readable, it just stops advertising.
@@ -4373,16 +4583,17 @@ select:focus {
 
 /* Forced (the tile market emptied): no longer an option, so it stops looking
    like one and shouts instead. Danger rail, danger wash, same grammar. */
+/* REWRITTEN ONTO THE RING VOCABULARY (stage 8). `pulse-forced` was an infinite
+   box-shadow animation, and it also fought the two inset shadows on the line
+   above it - the animation's own `box-shadow` replaced them for the whole cycle.
+   The ring vocabulary's fourth meaning, "this is going away", is told apart by
+   WEIGHT rather than by count or by motion: one danger ring at 3px. */
 .ft-tea-option--forced {
   box-shadow:
     inset 3px 0 0 var(--color-danger),
     inset 0 0 0 999px rgba(192, 57, 43, 0.10);
-  animation: pulse-forced 1.4s ease-in-out infinite;
-}
-
-@keyframes pulse-forced {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(192, 57, 43, 0.35); }
-  50% { box-shadow: 0 0 0 6px rgba(192, 57, 43, 0); }
+  outline: 3px solid var(--color-danger);
+  outline-offset: 1px;
 }
 
 /* ---- The gauge AS A SECTION (3 August) -----------------------------------
@@ -4637,8 +4848,8 @@ select:focus {
    chased. */
 .ft-menu--ready {
   border-color: var(--color-accent-gold);
-  background: linear-gradient(135deg, #FBF5EC 0%, rgba(212, 175, 55, 0.30) 100%);
-  box-shadow: 0 0 12px rgba(212, 175, 55, 0.55);
+  background: linear-gradient(135deg, #FBF5EC 0%, rgba(201, 162, 39, 0.30) 100%);
+  box-shadow: 0 0 12px rgba(201, 162, 39, 0.55);
 }
 
 /* TAKEN - struck through, dashed, and carrying the name of whoever took it. The
@@ -5011,7 +5222,7 @@ select:focus {
   }
   .ft-card--claimable:hover {
     border-color: var(--color-accent-gold);
-    box-shadow: 0 0 30px rgba(212, 175, 55, 0.8), 0 0 50px rgba(212, 175, 55, 0.5);
+    box-shadow: 0 0 30px rgba(201, 162, 39, 0.8), 0 0 50px rgba(201, 162, 39, 0.5);
   }
 
   /* The background-only rules. Milder, but a stand row left highlighted after a
@@ -5021,7 +5232,7 @@ select:focus {
      hover backgrounds they were undoing. A tile state is a ring plus a wash and
      does not respond to hover at all. */
   .ft-stand__row--legal:hover,
-  .ft-stand__crumbs--legal:hover { background: rgba(212, 175, 55, 0.12); }
+  .ft-stand__crumbs--legal:hover { background: rgba(201, 162, 39, 0.12); }
   .ft-cupcake-spend-btn:hover:not(:disabled) {
     background: var(--surface);
     border-color: var(--color-border);
@@ -6207,6 +6418,14 @@ select:focus {
     display: none;
   }
 
+  /* TAP TARGET, THE MUTE. 44x44 in the touch band, in the 48px turn bar, at its
+     right end - which is the one place plan section 13.6 allows it, because five
+     72px chips are exactly 360px at 360 and a scrolling rail is refused. */
+  #soundToggle {
+    width: 44px;
+    height: 44px;
+  }
+
   /* ---- 1c. MARKET, BOARD, CARDS: the three that stay ----------------------
      The shipped band already orders market(2), your seat(3), cards(4). The model
      does not reorder it; it EMPTIES THE GAPS. The tasting menus sat between the
@@ -6645,9 +6864,20 @@ select:focus {
     padding-bottom: 0;
   }
 
-  #gameRulesButton {
+  /* THE TOUCH BAND RUNS TO 1399, NOT TO 1149, which is the boundary the tap-
+     target criterion uses and not the one the phone model uses - so both controls
+     carry the 44px floor here. It costs zero page height, measured: the bar is
+     already 44px because of the rules button, the right group does not wrap even
+     with the mute in it (1407 either way at 1280), and the padding above is what
+     pays for both. */
+  #gameRulesButton,
+  #soundToggle {
     height: 44px;
     min-height: 44px;
+  }
+
+  #soundToggle {
+    width: 44px;
   }
 }
 
@@ -6865,12 +7095,17 @@ select:focus {
      reach the figure it is announcing. */
   @keyframes pm-tick {
     0%   { box-shadow: inset 0 0 0 999px rgba(193, 123, 92, 0); }
-    12%  { box-shadow: inset 0 0 0 999px rgba(193, 123, 92, 0.22); }
+    25%  { box-shadow: inset 0 0 0 999px rgba(193, 123, 92, 0.22); }
     100% { box-shadow: inset 0 0 0 999px rgba(193, 123, 92, 0); }
   }
 
+  /* STAGE 8 REPLACES STAGE 7's PLACEHOLDER. 900ms was a number to be going on
+     with and it broke the vocabulary's 300ms ceiling on its own. A tick is one
+     step of change marked, which is exactly what the phase bar's own step change
+     is, so it takes --ft-dur-bar: 180ms. The wash rises over a quarter of that
+     and falls over the rest, which is the same in-and-out shape it always had. */
   .pm-chip[data-pm-news="tick"] {
-    animation: pm-tick 900ms ease-out 1;
+    animation: pm-tick var(--ft-dur-bar) var(--ft-ease-exit) 1;
   }
 
   /* GRADE 2, A THRESHOLD, AND IT IS THE ONE THAT CARRIES THE DESIGN CLAIM. A
@@ -6903,8 +7138,14 @@ select:focus {
     50%      { box-shadow: inset 0 0 0 999px rgba(142, 82, 57, 0.26); }
   }
 
+  /* STAGE 8. Three 600ms pulses was the placeholder. A threshold's arrival IS a
+     breath, and the vocabulary has exactly one number for a breath - the gold
+     ring's 1600ms - so it breathes ONCE, on the ring's own curve. One cycle
+     rather than three, because the persistent rail is the memory and the pulse
+     is only the arrival: repeating it three times is a flash asking to be
+     noticed, which is the thing decision 32 refused. */
   .pm-chip[data-pm-threshold="1"][data-pm-news="threshold"] {
-    animation: pm-threshold 600ms ease-in-out 3;
+    animation: pm-threshold var(--ft-dur-ring) var(--ft-ease-travel) 1;
   }
 
   /* GRADE 3, CATCH-UP. Three bots play between your turns on a phone you are not
@@ -6925,31 +7166,31 @@ select:focus {
     pointer-events: none;
   }
 
+  /* STAGE 8. 2600ms was the placeholder and the badge is two things, not one: a
+     HOLD, which is not a movement at all and takes the ring's own 1600ms - the
+     vocabulary's only number for how long a standing signal stands - and an
+     EXIT, which is a movement and takes the claimed card's own dissolve, 180ms.
+     1780ms total, and the fade is the last 10.1 per cent of it. */
   @keyframes pm-delta {
-    0%, 77% { opacity: 1; }
-    100%    { opacity: 0; }
+    0%, 89.9% { opacity: 1; }
+    100%      { opacity: 0; }
   }
 
   .pm-chip[data-pm-delta="1"] .pm-chip__delta {
-    animation: pm-delta 2600ms ease-out 1 both;
+    animation: pm-delta calc(var(--ft-dur-ring) + var(--ft-dur-dissolve)) var(--ft-ease-exit) 1 both;
   }
 
   /* The reduced-motion substitute is the same signal with the travel removed,
      not silence. Neither wash has travel, so what goes is the ramp: they step to
      their lit value, hold, and step off. The threshold rail is static and is
      untouched. */
+  /* STAGE 8 takes the two 700ms literals out: --ft-dur-bar is already 120ms in
+     this branch and --ft-dur-ring does not move, because a HOLD is not travel
+     and there is nothing in it to remove. What still goes is the ramp - each
+     wash steps to its lit value, holds and steps off. */
   @media (prefers-reduced-motion: reduce) {
-    .pm-chip[data-pm-news="tick"] {
-      animation-duration: 700ms;
-      animation-timing-function: steps(1, end);
-    }
-
-    .pm-chip[data-pm-threshold="1"][data-pm-news="threshold"] {
-      animation-duration: 700ms;
-      animation-iteration-count: 1;
-      animation-timing-function: steps(1, end);
-    }
-
+    .pm-chip[data-pm-news="tick"],
+    .pm-chip[data-pm-threshold="1"][data-pm-news="threshold"],
     .pm-chip[data-pm-delta="1"] .pm-chip__delta {
       animation-timing-function: steps(1, end);
     }
