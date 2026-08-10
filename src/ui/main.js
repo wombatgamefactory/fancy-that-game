@@ -115,6 +115,13 @@ function maybeSave() {
 
 function init() {
   const app = document.getElementById('app');
+  // A RELOAD OPENS AT THE TOP TOO (10 August). The browser's default is to
+  // restore the scroll offset a reload was fired from, and it does so after the
+  // page has laid out - so a player who reloads mid-game gets the setup screen's
+  // or the game's old offset re-applied over whatever we render. There is one
+  // screen and no history to be kind about here; the save is what carries a game
+  // across a reload, not the scroll position.
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   // The fingerprint and the parse run once, here, before anything is rendered.
   // A load is ALL OR NOTHING: either a resume card appears or there is no save.
   const env = readSave();
@@ -239,6 +246,72 @@ async function startGame(playerConfigs) {
   }
 }
 
+// A NEW SCREEN OPENS AT ITS OWN TOP, AND STAYS THERE UNTIL THE PLAYER MOVES IT
+// (10 August, Dean's iPhone report - second pass).
+//
+// THE SYMPTOM: on an iPhone the game opens about 113px down its own page, so the
+// tile market's column buttons and its first row of tiles sit under the 96px top
+// dock while the phase bar says "Sweep a row or column above". Measured off the
+// row chips in Dean's screenshot - 98.7 screen px between them is the 46px tile
+// pitch at a 3x scale, which fixes the CSS width at 430 and row 5 at 113px above
+// where it sits at rest. Flick to the very top and everything is correct, so the
+// dock arithmetic is right and this is only ever about where the page is parked.
+//
+// WHY ONE scrollTo IS NOT ENOUGH, and why the first attempt at this shipped
+// without helping. The app never navigates: the game screen replaces the setup
+// screen's markup inside #app, so nothing resets the scroll on its own. Reaching
+// Start means scrolling the setup screen, which on iOS collapses the browser
+// toolbars and grows the layout viewport. We render, scroll to 0 - and THEN the
+// toolbars come back, the layout viewport shrinks, and WebKit adjusts the scroll
+// offset to hold the visual position. That adjustment lands after our scrollTo
+// and wins.
+//
+// IT CANNOT BE REPRODUCED IN THE HARNESS, and that is the honest reason this is
+// written the way it is. Chromium at 430x932 showed a different bug (the old
+// offset surviving, 272px hidden) that WebKit does not have; WebKit under
+// Playwright settles at 0 by itself, with or without the fix, because it has no
+// browser chrome to collapse - and driving setViewportSize by the toolbar height
+// does not carry the scroll compensation the real thing does. So this does not
+// try to name the mechanism. It HOLDS the top for a short settling window and
+// lets go the instant the player touches the screen, which is correct whatever
+// re-applies the offset and for however many frames it takes to arrive.
+//
+// THE TWO BOUNDS ARE WHAT MAKE IT SAFE TO BE THIS BLUNT:
+//   1. The first touch, wheel or key ENDS it. A player who flicks the page the
+//      moment the game appears is never yanked back, so this can only ever act
+//      on a scroll nobody asked for.
+//   2. It ends on its own after 1.5s. Nothing holds the page hostage if the
+//      first bound never fires.
+// visualViewport's resize is listened for by name because it is the event the
+// toolbars actually fire, and it can arrive later than any frame count.
+function settleToTop() {
+  window.scrollTo(0, 0);
+
+  let done = false;
+  let frames = 0;
+  const vv = window.visualViewport;
+  const RELEASE = ['touchstart', 'wheel', 'keydown', 'pointerdown'];
+
+  const reassert = () => { if (!done && window.scrollY !== 0) window.scrollTo(0, 0); };
+  const release = () => {
+    if (done) return;
+    done = true;
+    RELEASE.forEach(e => window.removeEventListener(e, release));
+    if (vv) vv.removeEventListener('resize', reassert);
+  };
+
+  RELEASE.forEach(e => window.addEventListener(e, release, { passive: true }));
+  if (vv) vv.addEventListener('resize', reassert);
+  setTimeout(release, 1500);
+
+  const tick = () => {
+    if (done) return;
+    reassert();
+    if (++frames < 90) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
 // The one place the game screen is mounted, so the new game and the resume
 // cannot drift apart in what they hand renderGameScreen.
 function mountGameScreen() {
@@ -252,15 +325,7 @@ function mountGameScreen() {
     onRemovePlate,
     onReserveToggle,
   });
-  // A NEW SCREEN OPENS AT ITS OWN TOP (10 August, Dean's iPhone report). The app
-  // never navigates - the game screen replaces the setup screen's markup inside
-  // #app - and a browser has no reason to move the scroll for that. The setup
-  // screen is taller than a phone, so tapping Start means having scrolled to the
-  // bottom of it, and the game inherited that offset: measured at 430x932, turn 0
-  // opened 313px down with the tile market's top 272px underneath the fixed top
-  // dock, which is exactly the screenshot. Resume goes through here too, and
-  // wants the same thing.
-  window.scrollTo(0, 0);
+  settleToTop();
   startMotion();
 }
 
