@@ -252,6 +252,15 @@ function mountGameScreen() {
     onRemovePlate,
     onReserveToggle,
   });
+  // A NEW SCREEN OPENS AT ITS OWN TOP (10 August, Dean's iPhone report). The app
+  // never navigates - the game screen replaces the setup screen's markup inside
+  // #app - and a browser has no reason to move the scroll for that. The setup
+  // screen is taller than a phone, so tapping Start means having scrolled to the
+  // bottom of it, and the game inherited that offset: measured at 430x932, turn 0
+  // opened 313px down with the tile market's top 272px underneath the fixed top
+  // dock, which is exactly the screenshot. Resume goes through here too, and
+  // wants the same thing.
+  window.scrollTo(0, 0);
   startMotion();
 }
 

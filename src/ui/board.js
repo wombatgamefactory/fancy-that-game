@@ -1510,6 +1510,9 @@ export function updateGameDisplay(gameState) {
   // LAST, because it reads the phase bar it may have just added a button to and
   // the destination choices updateStats has just rendered targets for.
   applyPhoneSheets(gameState);
+  // AFTER applyPhoneSheets, because a sheet that has just opened or closed is
+  // part of what is standing over the market.
+  keepMarketInView(gameState);
 
   // ---- STAGE 8: the three things a render owes the motion vocabulary --------
   // None of them STARTS a movement. capRings only decides which element carries
@@ -2203,31 +2206,72 @@ function revealSpendTarget(selector) {
   // is not theory: measured at 390 the first version landed the card row under
   // the phase bar, having reported it clear a frame earlier. One frame later the
   // page is the page the player will actually see.
-  requestAnimationFrame(() => {
-    const el = document.querySelector(selector);
-    if (!el || !el.getBoundingClientRect) return;
-    const r = el.getBoundingClientRect();
-    // The fixed docks are part of the viewport as far as this is concerned: a
-    // target under the phase bar is not visible, whatever its rect says.
-    //
-    // MEASURED OFF THE DOCKS THEMSELVES, not off --pm-dock-top. That property is
-    // a calc() of two others, so getPropertyValue hands back the literal string
-    // "calc(48px + 48px)" and parseFloat makes NaN of it - a silent zero, which
-    // is exactly the bug this test exists to catch. The elements are there to be
-    // measured, and above the touch band they simply are not fixed, so their
-    // contribution is nought without a media query being consulted.
-    const dockDepth = (sel, edge) => {
-      const d = document.querySelector(sel);
-      if (!d) return 0;
-      if (getComputedStyle(d).position !== 'fixed') return 0;
-      const dr = d.getBoundingClientRect();
-      return edge === 'top' ? Math.max(0, dr.bottom) : Math.max(0, window.innerHeight - dr.top);
-    };
-    const top = Math.max(dockDepth('.ft-centre-head', 'top'), dockDepth('.pm-rail', 'top'));
-    const bottom = dockDepth('.ft-seat__controls', 'bottom');
-    const fullyVisible = r.top >= top && r.bottom <= window.innerHeight - bottom;
-    if (!fullyVisible) el.scrollIntoView({ block: 'nearest', behavior: 'auto' });
-  });
+  requestAnimationFrame(() => revealIfHidden(selector));
+}
+
+// THE DOCK-AWARE VISIBILITY TEST, shared by the two things that have to put
+// something in front of the player: the spend that arms a target outside its own
+// sheet, and the sweep step, which asks for a row of a market the page may have
+// been left scrolled away from. Factored out of revealSpendTarget on 10 August
+// so there is ONE definition of "actually on screen" rather than two that can
+// disagree about what the docks cover.
+function revealIfHidden(selector) {
+  const el = document.querySelector(selector);
+  if (!el || !el.getBoundingClientRect) return;
+  const r = el.getBoundingClientRect();
+  // The fixed docks are part of the viewport as far as this is concerned: a
+  // target under the phase bar is not visible, whatever its rect says.
+  //
+  // MEASURED OFF THE DOCKS THEMSELVES, not off --pm-dock-top. That property is
+  // a calc() of two others, so getPropertyValue hands back the literal string
+  // "calc(48px + 48px)" and parseFloat makes NaN of it - a silent zero, which
+  // is exactly the bug this test exists to catch. The elements are there to be
+  // measured, and above the touch band they simply are not fixed, so their
+  // contribution is nought without a media query being consulted.
+  const dockDepth = (sel, edge) => {
+    const d = document.querySelector(sel);
+    if (!d) return 0;
+    if (getComputedStyle(d).position !== 'fixed') return 0;
+    const dr = d.getBoundingClientRect();
+    return edge === 'top' ? Math.max(0, dr.bottom) : Math.max(0, window.innerHeight - dr.top);
+  };
+  const top = Math.max(dockDepth('.ft-centre-head', 'top'), dockDepth('.pm-rail', 'top'));
+  const bottom = dockDepth('.ft-seat__controls', 'bottom');
+  const fullyVisible = r.top >= top && r.bottom <= window.innerHeight - bottom;
+  if (!fullyVisible) el.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+}
+
+// THE SWEEP STEP ASKS FOR A MARKET THAT MAY NOT BE ON SCREEN (10 August, Dean's
+// iPhone report). The phase bar says "Sweep a row or column above" while the top
+// dock stands over the market's gutter row and its first row of tiles - the two
+// things the sentence is pointing at.
+//
+// The cause is that NOTHING RESETS THE SCROLL WHEN THE GAME SCREEN ARRIVES. The
+// setup screen is taller than a phone, so reaching Start means scrolling to the
+// bottom of it; the game then renders into that same offset and opens part-way
+// down its own page. Measured at 430x932 with four players: the scroll survives
+// as 313px and the market's top 272px sit under the dock on turn 0, which is the
+// screenshot. mountGameScreen now scrolls to the top and that is the root fix.
+//
+// This is the guard that keeps it fixed for the rest of the game, because the
+// scroll can drift afterwards too - openSheet('spend') deliberately scrolls to
+// your seat, and a player who was reading the card row when their turn came
+// round is parked below the market. It fires ONCE per entry into the human's
+// sweep step, never mid-step, so it can never fight a scroll the player is
+// making themselves, and it does nothing at all when the market is already
+// wholly in view.
+let lastSweepKey = null;
+function keepMarketInView(gameState) {
+  const human = gameState.currentPlayerIndex === 0 && gameState.players[0]?.isHuman;
+  const key = human && gameState.gamePhase === 'sweep'
+    ? `${gameState.stats?.turnsPlayed ?? 0}:${gameState.currentPlayerIndex}`
+    : null;
+  const entering = key !== null && key !== lastSweepKey;
+  lastSweepKey = key;
+  if (!entering || !isPhoneBand()) return;
+  // One frame later, for the same reason revealSpendTarget waits: this runs at
+  // the end of a render that has just rebuilt the market underneath it.
+  requestAnimationFrame(() => revealIfHidden('.ft-market-wrap'));
 }
 
 // NOTHING IS EVER STARTED BY A RE-RENDER (plan section 7, the build rule).
