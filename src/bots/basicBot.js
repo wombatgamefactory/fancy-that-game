@@ -1039,18 +1039,23 @@ export function decideTeaReserve(gameState) {
 // SPEND 1 CUPCAKE: BUY 1 EXTRA TILE AT THE SWEEP STEP (restored 9 August,
 // unchanged from the 3-8 August version).
 //
-// Returns a market index to buy, or null. Buys ONLY when card-locked, and only
-// when a tile of some colour on the market would unlock a claim worth more than
-// the cupcake - a decision under CERTAINTY, which is what separates it from
-// decideDealCards below.
+// Returns { marketIndex, boardIndex } - the tile to lift and the cell to put it
+// in - or null. Buys ONLY when card-locked, and only when a tile of some colour
+// on the market would unlock a claim worth more than the cupcake: a decision
+// under CERTAINTY, which is what separates it from decideDealCards below.
 //
-// THE TWO ARE NOT COORDINATED, and that is a known limitation of this bot rather
-// than a design statement. This fires at the sweep step; decideDealCards fires
-// later the same turn at the spend step, and it re-tests lock against the board
-// as it then stands - so a turn this unlocks will not also buy cards. A turn it
-// declines still can. What neither does is compare the two BEFORE spending, so
-// the bot cannot express "the tile is the better buy here". Measured spend
-// counts should be read with that in mind.
+// BOTH ARE SPEND-STEP DECISIONS SINCE 10 AUGUST, where before this one fired at
+// the sweep step and that one later the same turn. They are still NOT
+// coordinated - each tests lock against the board and answers for itself, in
+// driver order, so a turn this unlocks will not also buy cards and a turn it
+// declines still can. What neither does is compare the two before spending, so
+// the bot cannot express "the tile is the better buy here". Measured spend counts
+// should be read with that in mind.
+//
+// The move did make them comparable in principle, which it was not before - they
+// now run microseconds apart on the same board state. A future bot that priced
+// the two against each other would be a fair experiment; this one deliberately
+// does not, so that the spend counts stay readable against the 9 August runs.
 // THE SECOND-TILE REACH (9 August, second revision). Which market COLOUR is
 // worth buying when no single tile unlocks anything, or null.
 //
@@ -1072,7 +1077,7 @@ export function decideTeaReserve(gameState) {
 // GATED ON THE LIVE RULE, deliberately: under a cap of 1 it returns null at once,
 // so the BASELINE arm of an A/B behaves exactly as it did before this function
 // existed and cannot waste a cupcake on a first tile it may not follow up.
-function colourTowardMultiTileUnlock(player, projected, spots, candidateCards, marketColours) {
+function colourTowardMultiTileUnlock(player, board, spots, candidateCards, marketColours) {
   const cap = getMaxExtraTilesPerTurn();
   if (cap !== null && cap < 2) return null;
   if (player.cupcakes < 2 * EXTRA_TILE_CUPCAKE_COST) return null;
@@ -1088,7 +1093,7 @@ function colourTowardMultiTileUnlock(player, projected, spots, candidateCards, m
   let targetMissing = Infinity;
   let targetNet = 0;
   for (const card of candidateCards) {
-    const missing = minMissingForCard(projected, card);
+    const missing = minMissingForCard(board, card);
     // 0 is not locked and 1 is the single-tile branch's business; this is only
     // ever about the boards that branch is structurally blind to.
     if (missing < 2 || missing === Infinity) continue;
@@ -1105,11 +1110,16 @@ function colourTowardMultiTileUnlock(player, projected, spots, candidateCards, m
   // Any colour on the market that, dropped in any free cell, shortens that card.
   // Only a strict improvement counts - a wrong colour can invalidate the window
   // it lands in and push the count the other way.
+  //
+  // THE CELL COMES BACK WITH THE COLOUR (10 August). The scan always knew which
+  // cell it was testing and used to throw it away, because the caller only had
+  // to name a market tile and the placement step chose where it went. The tile is
+  // placed as it is bought now, so the answer is a pair.
   for (const [colour] of marketColours) {
     for (const cellIndex of spots) {
-      const trial = [...projected];
+      const trial = [...board];
       trial[cellIndex] = { colour, ingredient: null };
-      if (minMissingForCard(trial, target) < targetMissing) return colour;
+      if (minMissingForCard(trial, target) < targetMissing) return { colour, cellIndex };
     }
   }
   return null;
@@ -1119,29 +1129,23 @@ export function decideExtraTile(gameState) {
   if (!canBuyExtraTile(gameState)) return null;
   const player = gameState.players[gameState.currentPlayerIndex];
 
-  // The board as it WILL BE once this turn's swept tiles are placed. Buying
-  // happens before placement, so testing against the bare board would miss every
-  // unlock the sweep itself is about to create - and claim double-count them.
-  const projected = [...player.board];
+  // THE BOARD, NOT A PROJECTION OF IT (10 August). This function used to run at
+  // the sweep step, before the swept tiles were down, so it had to simulate
+  // decidePlacements and test against the board as it WOULD BE - a projection
+  // that could disagree with what the placement step actually did, and the source
+  // of the one bug worth remembering here (`plan[i] >= 0` is true for null, so a
+  // trimmed tile silently wrote to projected['null'] and stopped the projection
+  // dead). The spend step is after placement, so the board is simply the board.
+  const board = player.board;
   const candidateCards = [...gameState.cardMarket, ...player.reservedCards]
     .filter(c => c.id !== gameState.reservedCardIdThisTurn);
 
-  // Already claimable once the sweep lands? Then we are not locked and there is
-  // nothing here to buy. Simulate the placements decidePlacements would make.
-  const plan = gameState.pendingSweepTiles.length > 0 ? decidePlacements(gameState) : [];
-  for (let i = 0; i < plan.length; i++) {
-    // NULL means "back into the bag" under the 6 August trim rule, and it must be
-    // tested for explicitly: `null >= 0` is TRUE in JavaScript, so the old
-    // `plan[i] >= 0` guard would write the tile to projected['null'] and quietly
-    // stop projecting the board at all.
-    if (plan[i] === null || plan[i] === undefined) continue;
-    projected[plan[i]] = gameState.pendingSweepTiles[i];
-  }
+  // Already claimable? Then we are not locked and there is nothing here to buy.
   for (const card of candidateCards) {
-    if (getPatternMatches(projected, card.pattern).length > 0) return null; // not locked
+    if (getPatternMatches(board, card.pattern).length > 0) return null;
   }
 
-  const spots = getValidPlacements(projected);
+  const spots = getValidPlacements(board);
   if (spots.length === 0) return null;
 
   const marketColours = new Map(); // colour -> market indices holding it
@@ -1153,10 +1157,11 @@ export function decideExtraTile(gameState) {
   }
 
   let bestColour = null;
+  let bestCell = null;
   let bestVp = -Infinity;
   for (const [colour] of marketColours) {
     for (const cellIndex of spots) {
-      const trial = [...projected];
+      const trial = [...board];
       trial[cellIndex] = { colour, ingredient: null };
       for (const card of candidateCards) {
         if (getPatternMatches(trial, card.pattern).length === 0) continue;
@@ -1164,6 +1169,7 @@ export function decideExtraTile(gameState) {
         if (vp > bestVp) {
           bestVp = vp;
           bestColour = colour;
+          bestCell = cellIndex;
         }
       }
     }
@@ -1172,9 +1178,10 @@ export function decideExtraTile(gameState) {
   // the question - see colourTowardMultiTileUnlock, which asks whether two or
   // three of them would. Under a cap of 1 it returns null and nothing changes.
   if (bestColour === null) {
-    const reach = colourTowardMultiTileUnlock(player, projected, spots, candidateCards, marketColours);
+    const reach = colourTowardMultiTileUnlock(player, board, spots, candidateCards, marketColours);
     if (reach === null) return null;
-    return pickMarketIndexOfColour(gameState, player, marketColours.get(reach));
+    const marketIndex = pickMarketIndexOfColour(gameState, player, marketColours.get(reach.colour));
+    return marketIndex === null ? null : { marketIndex, boardIndex: reach.cellIndex };
   }
   // Worth the cupcakes at all? The unlocked claim must beat what else they buy,
   // priced the same way the reserve decision prices them.
@@ -1188,7 +1195,11 @@ export function decideExtraTile(gameState) {
   // coincidence is exactly what hid the bug the first time.
   if (bestVp < EXTRA_TILE_CUPCAKE_COST * RESERVE_CUPCAKE_VALUE) return null;
 
-  return pickMarketIndexOfColour(gameState, player, marketColours.get(bestColour));
+  // A PAIR SINCE 10 AUGUST: which market tile to lift, and which cell it goes in.
+  // The cell is the one the scan above proved unlocks the card - the tile is
+  // placed as it is bought now, so the two cannot be decided apart.
+  const marketIndex = pickMarketIndexOfColour(gameState, player, marketColours.get(bestColour));
+  return marketIndex === null ? null : { marketIndex, boardIndex: bestCell };
 }
 
 // WHICH tile of the chosen colour to lift. Prefer one on a teapot cell, then one

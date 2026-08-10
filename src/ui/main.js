@@ -245,6 +245,7 @@ function mountGameScreen() {
   const app = document.getElementById('app');
   renderGameScreen(app, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick, {
     onExtraTile,
+    onExtraTilePlace,
     onExtraTileToggle,
     onDealCards,
     onReserveCard,
@@ -534,25 +535,48 @@ function onCupcakeClick() {
 }
 
 // SPEND 1 CUPCAKE: TAKE 1 EXTRA TILE (3 August; deleted 8 August, restored
-// 9 August). Offered at the sweep step, once the sweep has resolved and before
-// the swept tiles are placed - the bought tile joins them, so the placement UI
-// must see it. Reuses the bonus-tile click path.
+// 9 August; MOVED TO THE SPEND STEP 10 August). Offered at the spend step now,
+// alongside the other four cupcake options, because one currency asked for at
+// two different moments in a turn is what made it confusing - see takeExtraTile
+// in the engine for the full argument and for what it cost in balance.
 //
-// TWO CLICKS, unlike the deal below: the button ARMS the market, then the player
-// picks the tile. extraTileMode is that armed state and board.js clears it the
-// moment the purchase stops being legal.
+// THREE TAPS, and the middle one is this function: the chip ARMS the market
+// (onExtraTileToggle), a market tile is LIFTED here, and a board cell COMMITS
+// the purchase (onExtraTilePlace). It has to be three, because the tile is
+// bought and placed in a single engine call and the player chooses both halves.
+//
+// NOTHING IS SPENT HERE. The lift is pure UI state, so a mis-aimed tap is
+// undone by Cancel without touching the game - which is why the undo snapshot is
+// taken by onExtraTilePlace and not by this.
 function onExtraTile(marketIndex) {
+  if (!canBuyExtraTile(gameState)) return;
+  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  if (!currentPlayer.isHuman) return;
+  window._gameUI.extraTilePending = marketIndex;
+  window._gameUI.extraTileMode = false;
+  updateDisplay();
+}
+
+// The second half: the cell is named, so the purchase can be made. The gather
+// animation fires here rather than on the lift, because this is the moment the
+// tile actually leaves the market.
+function onExtraTilePlace(marketIndex, boardIndex) {
   if (!canBuyExtraTile(gameState)) return;
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   if (!currentPlayer.isHuman) return;
   const run = () => {
     try {
       pushUndoSnapshot();
-      takeExtraTile(gameState, marketIndex);
+      takeExtraTile(gameState, marketIndex, boardIndex);
+      window._gameUI.extraTilePending = null;
       window._gameUI.extraTileMode = false;
       updateDisplay();
     } catch (e) {
+      // The cell was refused (occupied, or a plate). Keep the tile in hand so the
+      // player can simply choose another one; dropping it here would make a
+      // mis-aimed tap look like it had cost them a cupcake.
       showToast(e.message);
+      updateDisplay();
     }
   };
   // The third site of the gather: one tile, bought, on the same flight as a
@@ -723,28 +747,33 @@ async function autoPlayGame() {
           // reached, because an overflow ended the game.)
           setThinkingState(currentPlayer.name, true);
           updateDisplay();
-          // Buy an extra tile FIRST: it is a sweep-step option and the tile it
-          // buys is placed with the swept tiles, so the placement decision has to
-          // see it. (Deleted 8 August, restored 9 August; the paid 2-card deal is
-          // a spend-step action and is taken in the 'spend' branch below.)
-          //
-          // A LOOP SINCE 9 AUGUST (second revision): the extra tile is uncapped,
-          // so the bot is asked again after each purchase and stops when it
-          // answers null. The engine's purse and free-cell gates are what end it;
-          // the counter here is a runaway stop only.
-          let botExtraTiles = 0;
-          while (botExtraTiles < 25) {
-            const extraIndex = bot.decideExtraTile ? bot.decideExtraTile(gameState) : null;
-            if (extraIndex === null || extraIndex === undefined) break;
-            takeExtraTile(gameState, extraIndex);
-            botExtraTiles++;
-          }
+          // The extra tile used to be bought HERE, before the placements were
+          // chosen, because it was a sweep-step option whose tile joined the pile
+          // about to be placed. It is a spend-step action since 10 August and is
+          // bought in the 'spend' branch below, onto a board that is already
+          // final.
           const placements = await bot.decidePlacements(gameState, currentPlayer.aiDifficulty);
           setThinkingState(currentPlayer.name, false);
           updateDisplay();
 
           place(gameState, placements);
         } else if (gameState.gamePhase === 'spend') {
+          // Buy extra tiles FIRST of the five spends (moved here 10 August), the
+          // same relative order the purchase had when it sat a phase earlier.
+          //
+          // A LOOP SINCE 9 AUGUST (second revision): the extra tile is uncapped,
+          // so the bot is asked again after each purchase and stops when it
+          // answers null. The engine's purse and free-cell gates are what end it;
+          // the counter here is a runaway stop only. The decision is a PAIR now -
+          // the tile and the cell it goes in - because the two are one action.
+          let botExtraTiles = 0;
+          while (botExtraTiles < 25) {
+            const extra = bot.decideExtraTile ? bot.decideExtraTile(gameState) : null;
+            if (extra === null || extra === undefined) break;
+            takeExtraTile(gameState, extra.marketIndex, extra.boardIndex);
+            botExtraTiles++;
+          }
+          if (botExtraTiles > 0) updateDisplay();
           // Cupcake move: relocate one tile (1) if it completes a card we could
           // not otherwise claim this turn.
           const moveDecision = bot.decideMove ? await bot.decideMove(gameState, currentPlayer.aiDifficulty) : null;

@@ -548,7 +548,8 @@ function isCupcakePlate(rowIndex, plateIndex) {
 // Relocate one TILE on your own board. Unchanged price, and now the ONLY thing
 // the move action can relocate - see moveTile and getMoveCost.
 export const MOVE_TILE_CUPCAKE_COST = 1;
-// Take 1 extra tile from ANYWHERE on the market board, at the sweep step.
+// Take 1 extra tile from ANYWHERE on the market board, at the spend step
+// (moved there from the sweep step on 10 August - see takeExtraTile).
 //
 // PRICE HISTORY, kept because the sign has moved twice. It was 1 from 3 August,
 // went to 2 on the 3rd's second revision, and came back to 1 on 7 August: at 2
@@ -1183,12 +1184,14 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     // plate, or paying to reserve. What each one forbids is doing that SAME
     // thing twice. All five reset in advanceToNextTurn alongside claimsThisTurn.
     //
-    // THEY DO NOT ALL SIT AT THE SAME STEP, and since 9 August they cannot. The
-    // extra tile is bought at the SWEEP step, because it changes what you place;
-    // every other spend is taken at the SPEND step with the board already in
-    // front of you. For one day (8 August) the extra tile was deleted and the
-    // turn had a single cupcake moment; restoring it gives that back up on
-    // purpose - see the cupcake spend menu block near the top of this file.
+    // THEY ALL SIT AT THE SAME STEP AGAIN (10 August). The extra tile was the
+    // exception: it was bought at the SWEEP step, because it changes what you
+    // place. That was true and it cost the turn its shape - a player mid-sweep
+    // with a live cupcake button, then a separate step later in the same turn
+    // headed "spend cupcakes". One currency now means one moment, and the tile is
+    // placed as it is bought. See takeExtraTile for what the move cost in
+    // balance; the summary is that a cupcake buys more than it used to, because
+    // it is now spent with the board finished rather than projected.
     //
     // moveUsedThisTurn covers the TILE move only. It used to cover the
     // empty-plate move too - one allowance at two prices - but plates are no
@@ -1484,45 +1487,54 @@ export function declineBonusTile(gameState) {
   return gameState;
 }
 
-// SPEND 1 CUPCAKE: TAKE 1 EXTRA TILE (3 August; deleted 8 August, RESTORED
-// 9 August unchanged). The load-bearing change of the 3 August set - see
-// EXTRA_TILE_CUPCAKE_COST for the measured effect on card lock, and the cupcake
-// spend menu block for why it now sits alongside dealCards rather than instead
-// of it.
+// SPEND 1 CUPCAKE: TAKE 1 EXTRA TILE (3 August; deleted 8 August, restored
+// 9 August; MOVED TO THE SPEND STEP 10 August). The load-bearing change of the
+// 3 August set - see EXTRA_TILE_CUPCAKE_COST for the measured effect on card
+// lock, and the cupcake spend menu block for why it sits alongside dealCards
+// rather than instead of it.
 //
-// WHEN: at the SWEEP STEP, after the sweep (and any line-clear bonus tile) has
-// resolved but before the swept tiles are placed - i.e. the 'place' phase, with
-// pendingSweepTiles still in hand. It belongs here rather than at the spend step
-// precisely because it changes WHAT YOU PLACE.
+// WHEN: at the SPEND STEP, alongside the tile move, the plate removal, the
+// reserve and the 2-card deal - and before the claim step, like all of them.
+//
+// IT USED TO LIVE AT THE SWEEP STEP, in the 'place' phase with pendingSweepTiles
+// still in hand, on the reasoning that it changes WHAT YOU PLACE. That reasoning
+// was sound and the shape it produced was not (10 August, Dean): a player mid-
+// placement had a live Cupcakes button, opened it, bought a tile, closed it, and
+// was then met by a separate step whose whole heading is "spend cupcakes". One
+// currency, two moments, and the second one arrives after the first has been
+// used - which reads as the interface asking the same question twice.
+//
+// THE PRICE OF MOVING IT IS ONE REAL RULE CHANGE, and it is worth stating rather
+// than burying: the tile is now bought AFTER the swept tiles are down, so the
+// player buys knowing exactly how their board finished rather than projecting
+// it. The option gets strictly better information, and the bot's projection of
+// its own pending placements - the whole `projected` layer in decideExtraTile -
+// stops being needed at all. Re-measure the card-lock rate after any change to
+// this function; it is the metric this spend exists to move.
 //
 // WHAT: 1 tile from ANYWHERE on the market board - any colour, any ingredient,
 // any cell, regardless of what was swept or declared. "From anywhere" is what
-// produces the measured 37.9-39.4% unlock rate; restricting it to the swept line
-// does not. It is the same operation as the line-clear bonus tile, so it reuses
-// that code path: lift the tile and add it to pendingSweepTiles.
+// produced the measured 37.9-39.4% unlock rate; restricting it to the swept line
+// did not.
+//
+// AND IT IS PLACED AS IT IS BOUGHT. This is the structural consequence of the
+// move: at the spend step there is no pending pile to add to, so the purchase
+// takes a marketIndex AND a boardIndex and resolves in one call - lift, pay,
+// place. That also removes the one way the old shape could waste a cupcake (buy
+// a tile the placement step then sends back to the bag), which is why the old
+// "room for one more than is pending" gate becomes the simpler "there is an
+// empty cell".
 //
 // AS OFTEN AS YOU CAN PAY (9 August, second revision - was ONCE PER TURN). Each
 // purchase costs the same flat EXTRA_TILE_CUPCAKE_COST; MAX_EXTRA_TILES_PER_TURN
-// is null, so nothing here counts down. Still illegal if you have no legal
-// placement - which here means the board must have room for this tile ON TOP OF
-// everything already pending, and that gate is now what stops a rich player
-// emptying the market into a board that cannot hold it. Only 0.4-3.8% of card
-// locks are structurally unbuyable this way (board full).
-//
-// THAT GATE SURVIVES 6 AUGUST UNCHANGED, and deliberately. The excess of a sweep
-// now goes back into the bag rather than ending the game, so an unplaceable extra
-// tile would no longer be a catastrophe - but it would be a player paying a
-// cupcake to put a tile straight back in the bag, which is not a decision worth
-// offering. Refusing it is the honest answer.
+// is null, so nothing here counts down.
 //
 // NOTE: taking the tile CAN uncover a teapot symbol, exactly as a sweep can, so
-// it can be what fires this turn's pot of tea. That is intended.
-export function takeExtraTile(gameState, marketIndex) {
-  if (gameState.gamePhase !== 'place') {
-    throw new Error('An extra tile can only be bought at the sweep step, before placing');
-  }
-  if (gameState.bonusTileAvailable) {
-    throw new Error('Resolve the line-clear bonus tile first');
+// it can be what fires this turn's pot of tea - refill() counts the symbols at
+// the end of the turn either way. That is intended and survives the move.
+export function takeExtraTile(gameState, marketIndex, boardIndex) {
+  if (gameState.gamePhase !== 'spend') {
+    throw new Error('An extra tile can only be bought at the spend step');
   }
   const cap = getMaxExtraTilesPerTurn();
   if (cap !== null && (gameState.extraTilesBoughtThisTurn || 0) >= cap) {
@@ -1533,16 +1545,24 @@ export function takeExtraTile(gameState, marketIndex) {
   if (player.cupcakes < EXTRA_TILE_CUPCAKE_COST) {
     throw new Error(`Not enough cupcakes for an extra tile (costs ${EXTRA_TILE_CUPCAKE_COST}, you have ${player.cupcakes})`);
   }
-  if (gameState.market[marketIndex] === null || gameState.market[marketIndex] === undefined) {
+  const tile = gameState.market[marketIndex];
+  if (tile === null || tile === undefined) {
     throw new Error('No tile at selected position');
   }
-  // Room for one MORE tile than is already pending, else the tile just bought
-  // would go straight back into the bag at the placement step.
-  if (getValidPlacements(player.board).length <= gameState.pendingSweepTiles.length) {
-    throw new Error('No legal placement for an extra tile');
+  // The destination is part of the purchase, not a separate step that could be
+  // skipped: a bought tile with nowhere to go is the one outcome this spend must
+  // never produce.
+  if (boardIndex === null || boardIndex === undefined) {
+    throw new Error('An extra tile must be placed as it is bought');
+  }
+  if (boardIndex < 0 || boardIndex >= BOARD_SIZE * BOARD_SIZE) {
+    throw new Error('Invalid board position');
+  }
+  if (player.board[boardIndex] !== null) {
+    throw new Error('Cell already occupied or blocked');
   }
 
-  gameState.pendingSweepTiles.push(gameState.market[marketIndex]);
+  player.board[boardIndex] = tile;
   gameState.market[marketIndex] = null;
   player.cupcakes -= EXTRA_TILE_CUPCAKE_COST;
   gameState.extraTilesBoughtThisTurn = (gameState.extraTilesBoughtThisTurn || 0) + 1;
@@ -1556,12 +1576,14 @@ export function takeExtraTile(gameState, marketIndex) {
 // shared predicate for drivers, bots and the UI, so none of the three
 // re-implements takeExtraTile's gate and then disagrees with it.
 export function canBuyExtraTile(gameState) {
-  if (gameState.gamePhase !== 'place' || gameState.bonusTileAvailable) return false;
+  if (gameState.gamePhase !== 'spend') return false;
   const cap = getMaxExtraTilesPerTurn();
   if (cap !== null && (gameState.extraTilesBoughtThisTurn || 0) >= cap) return false;
   const player = gameState.players[gameState.currentPlayerIndex];
   if (player.cupcakes < EXTRA_TILE_CUPCAKE_COST) return false;
-  if (getValidPlacements(player.board).length <= gameState.pendingSweepTiles.length) return false;
+  // One empty cell is the whole requirement now that the tile is placed as it is
+  // bought - there is no pending pile for it to queue behind.
+  if (getValidPlacements(player.board).length === 0) return false;
   return gameState.market.some(t => t !== null && t !== undefined);
 }
 

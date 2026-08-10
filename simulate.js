@@ -103,25 +103,37 @@ function runGame(playerConfigs, botStrategy) {
         // back into the bag. (This used to say the engine had already resolved an
         // overflow before the phase was reached, because overflow ended the game.)
         //
-        // SPEND 1 CUPCAKE: TAKE 1 EXTRA TILE is resolved HERE, before the
-        // placements are chosen - it is a sweep-step option, and the tile it buys
-        // is placed with the rest of the swept tiles, so the placement decision
-        // has to see it. (Deleted 8 August, restored 9 August; the paid 2-card
-        // deal that briefly replaced it is a spend-step action and stays in the
-        // 'spend' case below. Both are on the menu now.)
+        // THE EXTRA TILE HAS LEFT THIS CASE (10 August). It was resolved here,
+        // before the placements were chosen, because it was a sweep-step option
+        // whose tile joined the pending pile and so had to be visible to the
+        // placement decision. It is a spend-step action now and lives in the
+        // 'spend' case below, where the board it is buying into is already final.
+        const placements = strategy.decidePlacements(gameState);
+        gameState = place(gameState, placements);
+        break;
+      }
+      case 'spend': {
+        // SPEND 1 CUPCAKE: TAKE 1 EXTRA TILE, moved here from the 'place' case on
+        // 10 August. It runs FIRST of the five spends, which is the same relative
+        // order it had when it sat a phase earlier - so a turn that unlocks with a
+        // tile still declines the 2-card deal below for the same reason it always
+        // did, and the spend counts stay comparable with the 9 August runs.
         //
-        // A LOOP SINCE 9 AUGUST (second revision), because the rule is now
-        // unlimited purchases at a flat price. The bot is asked again after every
-        // purchase and stops when it answers null - which it does as soon as the
-        // lock clears, the purse empties or the board runs out of room. The
-        // MAX_BUYS guard is a runaway stop, not a rule: the engine's own gates
-        // are what actually end the loop.
+        // A LOOP SINCE 9 AUGUST (second revision), because the rule is unlimited
+        // purchases at a flat price. The bot is asked again after every purchase
+        // and stops when it answers null - which it does as soon as the lock
+        // clears, the purse empties or the board runs out of room. The MAX_BUYS
+        // guard is a runaway stop, not a rule: the engine's own gates are what
+        // actually end the loop.
+        //
+        // The decision is a PAIR now - which market tile, and which cell it goes
+        // in - because the tile is placed as it is bought.
         let boughtThisTurn = 0;
         const MAX_BUYS = 25;
         while (boughtThisTurn < MAX_BUYS) {
-          const extraIdx = strategy.decideExtraTile ? strategy.decideExtraTile(gameState) : null;
-          if (extraIdx === null || extraIdx === undefined) break;
-          gameState = takeExtraTile(gameState, extraIdx);
+          const extra = strategy.decideExtraTile ? strategy.decideExtraTile(gameState) : null;
+          if (extra === null || extra === undefined) break;
+          gameState = takeExtraTile(gameState, extra.marketIndex, extra.boardIndex);
           boughtThisTurn++;
         }
         if (boughtThisTurn > 0) {
@@ -130,11 +142,6 @@ function runGame(playerConfigs, botStrategy) {
           extraTileTurns.dist[boughtThisTurn] = (extraTileTurns.dist[boughtThisTurn] || 0) + 1;
           if (boughtThisTurn > extraTileTurns.most) extraTileTurns.most = boughtThisTurn;
         }
-        const placements = strategy.decidePlacements(gameState);
-        gameState = place(gameState, placements);
-        break;
-      }
-      case 'spend': {
         // Cupcake move: relocate one tile (1) when it completes an otherwise
         // unclaimable card this turn.
         const moveDecision = strategy.decideMove ? strategy.decideMove(gameState) : null;

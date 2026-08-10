@@ -161,8 +161,8 @@
        fill none, one pixel of clear margin so the live area is 14 x 14, and
        every stroke centre on the quarter grid so an edge lands on a device
        pixel boundary at DPR 2 or 3. The stroke scales with the icon: 2.25 at
-       24, 1.5 at 16, 1.13 at 12. Below 12px an icon is not drawn but chosen,
-       and only `cupcake` goes to 10.
+       24, 1.5 at 16, 1.13 at 12. Nothing here is drawn below 12px any more -
+       the one glyph that went to 10 was `cupcake`, and it has left the set.
 
        THREE THINGS ABOUT THIS BLOCK ARE LOAD-BEARING.
 
@@ -186,10 +186,19 @@
        is ever the accessible name of anything.
 
        Thirteen became FIFTEEN at stage 8: `sound` and `sound-off` are the mute's
-       two states (plan section 13.7). Every one of the fifteen is now wired -
-       cake-stand, grid and card were drawn here by stage 2 and taken up by stage
-       7's rail chips, which is what stopped that stage inventing a second
-       family. -->
+       two states (plan section 13.7). Every one of them is wired - cake-stand,
+       grid and card were drawn here by stage 2 and taken up by stage 7's rail
+       chips, which is what stopped that stage inventing a second family.
+
+       FIFTEEN BECAME FOURTEEN ON 10 AUGUST: `cupcake` is gone from the set. It
+       was the only member that stood for an OBJECT rather than for an action or
+       a category, the game already had painted art for that object in the supply
+       header, and drawing the same thing two ways is what a player actually
+       notices. All six of its sites now use cupcakeMark() in board.js, which
+       serves images/cupcake-v2.png. The line set is for interface; the currency
+       is a component, and it is drawn as one. Do NOT re-add a cupcake glyph
+       here - if a monochrome cupcake is ever wanted again, the question to
+       answer first is why the painted one is not right in that place. -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
     <symbol id="i-close" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
       <path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5"/>
@@ -222,11 +231,6 @@
     <symbol id="i-crumb-tray" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
       <path d="M2 9.25h12l-1.7 4.25h-8.6z"/>
       <path d="M5.5 6.6h.01"/><path d="M10.5 6.6h.01"/>
-    </symbol>
-    <symbol id="i-cupcake" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M4.9 8.9h6.2l-.9 4.6H5.8z"/>
-      <path d="M7 9.5v3.3M9 9.5v3.3"/>
-      <path d="M4.5 8.9a3.5 3.5 0 0 1 7 0"/>
     </symbol>
     <symbol id="i-cake-stand" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
       <path d="M5.25 5.6c.5 1.4 4.5 1.4 5 0"/>

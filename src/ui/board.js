@@ -16,6 +16,7 @@ import { getPatternMatches, getLegalDestinations, getMoveCost, canDealCards, can
 import {
   runTransition, flyClone, tileClone, boardCell, haptic, gatePassed, capRings,
   watchOpponent, paintLine, currentLine, timings, countShown, isHumanTurn,
+  reduced,
 } from './motion.js';
 import { playCue, soundEnabled, setSoundEnabled } from './sound.js';
 
@@ -67,10 +68,66 @@ function ingredientPhrase(ingredient) {
 // `size` is omitted only for the sweep arrows, whose 12-at-XL / 16-in-the-touch
 // -band sizing has to come from CSS. Everywhere else the size is fixed and the
 // attribute is the honest place for it.
+// THE SPEND MENU'S CUPCAKE IS THE BIG ONE (10 August, Dean). Every other cupcake
+// on the screen is a unit beside a count - 12 in the rail and on an opponent's
+// row, 10 on a stand plate - and is read as "cupcakes" once and then ignored. In
+// the spend menu it is the CURRENCY SYMBOL on a price list, the thing being
+// compared down a column of six, and it was drawn at 14: smaller than the words
+// beside it and, at that size, unidentifiable.
+//
+// 20 IS AS LARGE AS THE CHIP CAN HOLD. The chip is 24px tall - 1px of border and
+// 4px of padding each side - so a 20px mark clears the border by 2px and needs
+// the negative margin in .ft-spend-chip__price .ft-icon to stop it setting the
+// chip's height. Anything larger reopens the page-height budget at 2181, which
+// is the constraint that ended the first attempt at this.
+// The size and the ART are one change: a monochrome glyph was tried at 18 and 20
+// first and stayed unreadable, because what fails at this scale is the drawing
+// and not the pixels. See cupcakeMark below.
+const SPEND_CUPCAKE_ICON = 20;
+
 function icon(name, size, extraClass = '') {
   const dims = size ? ` width="${size}" height="${size}"` : '';
   const cls = extraClass ? `ft-icon ${extraClass}` : 'ft-icon';
   return `<svg class="${cls}"${dims} aria-hidden="true" focusable="false"><use href="#i-${name}"/></svg>`;
+}
+
+// ---------------------------------------------------------------------------
+// ONE CUPCAKE, EVERYWHERE (10 August, Dean's question, and it was the right one)
+//
+// There were two. The painted cupcake sat in the supply header - "Cupcakes [art]
+// 2" - and a monochrome icon stood for the same object in five other places: the
+// rail chip, an opponent's stat row, a stand plate marker, the phone's Cupcakes
+// button and every price in the spend menu. Nothing distinguished the two roles.
+// The nearest thing to a rationale was "art for the thing you have, a glyph for
+// the unit you are counting", and no player has ever been told that; what they
+// see is a game that draws its own currency two ways.
+//
+// THE ART WINS AND THE GLYPH IS DELETED, on three grounds:
+//   - IT IS THE ONE ICON IN THE SET THAT IS AN OBJECT rather than a piece of
+//     interface. A cupcake is a component players will hold in a prototype. Every
+//     other glyph here (close, undo, arrows, book, person, bot) stands for an
+//     action or a category and belongs to the line set; this one stands for a
+//     thing on the table.
+//   - COLOUR IDENTIFIES IT AT SIZES WHERE SHAPE CANNOT. At 10 and 12px neither
+//     drawing is identifiable as a cupcake - the whole mark is a dozen pixels -
+//     but the painted one is identifiable as ITSELF, by its purple case, which is
+//     what a player is really doing when they read a price at that size.
+//   - IT ALREADY COSTS NOTHING. The header loaded it on every screen already, so
+//     the five new sites are the same file and no new request.
+//
+// It is `images/cupcake-v2.png`: the same art, trimmed of its transparent margin,
+// squared, and exported at 64px - which covers the largest use (20px) at device
+// pixel ratio 3, in 5.3KB against the original's 25KB at 512px. The original
+// stays in images/ under its old name, unreferenced, per the -v2/-v3 convention
+// the ingredient symbols already use.
+//
+// It carries `ft-icon` so it takes that class's baseline alignment and the spend
+// chip's negative margin without a second set of rules, and it is aria-hidden
+// with an empty alt, exactly like the glyphs: no icon in this build is ever the
+// accessible name of anything, and every site that uses this one already says
+// "cupcake" in words nearby or in its own aria-label.
+function cupcakeMark(size) {
+  return `<img src="images/cupcake-v2.png" class="ft-icon ft-cupcake-mark" width="${size}" height="${size}" alt="" aria-hidden="true">`;
 }
 
 // ---------------------------------------------------------------------------
@@ -236,11 +293,12 @@ export function showRulesModal() {
     ? '<strong>One card per turn.</strong>'
     : `<strong>Your first claim is free. Each further one costs ${extraClaimCost} cupcake${extraClaimCost === 1 ? '' : 's'}.</strong>`;
 
-  // Four spends live at step 3; the extra tile at step 1 and the further claim
-  // at step 4 sit outside it. Counted rather than typed for the same reason.
+  // FIVE spends live at step 3 since 10 August - the extra tile moved in from
+  // step 1 - and only the further claim at step 4 sits outside it. Counted rather
+  // than typed for the same reason the rules above are.
   const spendCount = extraClaimCost === null
-    ? 'One more spend sits outside this step: the extra tile at step 1. Five in all.'
-    : 'Two more spends sit outside this step: the extra tile at step 1, and a further claim at step 4. Six in all.';
+    ? 'All five cupcake spends are here.'
+    : 'One more spend sits outside this step: a further claim at step 4. Six in all.';
 
   const modal = document.createElement('div');
   modal.className = 'ft-modal';
@@ -280,7 +338,6 @@ export function showRulesModal() {
             <div class="ft-rules__step-title">1. Sweep</div>
             <div class="ft-rules__text">Pick a row or column of the market and declare a colour or an ingredient. Take every tile in that line matching your declaration.</div>
             <div class="ft-rules__text">Clear the whole line and take 1 free extra tile from anywhere on the market.</div>
-            <div class="ft-rules__text"><strong>${EXTRA_TILE_CUPCAKE_COST} cupcake:</strong> take 1 extra tile from anywhere on the market, ${extraTileRule}. At this step only - each one is placed with your swept tiles.</div>
           </div>
 
           <div class="ft-rules__step">
@@ -291,11 +348,12 @@ export function showRulesModal() {
 
           <div class="ft-rules__step">
             <div class="ft-rules__step-title">3. Spend Cupcakes (optional)</div>
+            <div class="ft-rules__text"><strong>${EXTRA_TILE_CUPCAKE_COST}:</strong> take 1 extra tile from anywhere on the market and place it on your board, ${extraTileRule}.</div>
             <div class="ft-rules__text"><strong>${MOVE_TILE_CUPCAKE_COST}:</strong> move one of your tiles to an empty cell.</div>
             <div class="ft-rules__text"><strong>${REMOVE_PLATE_CUPCAKE_COST}:</strong> return one empty plate from your board to the box, freeing that cell.</div>
             <div class="ft-rules__text"><strong>${RESERVE_CUPCAKE_COST}:</strong> reserve a card from the market. You may hold ${RESERVE_LIMIT}, and you cannot claim it on the turn you reserve it. A reserved card is safe from the tea flush.</div>
             <div class="ft-rules__text"><strong>${DEAL_CARDS_CUPCAKE_COST}:</strong> deal ${CARDS_PER_DEAL} new cards onto the card row. <strong>You may claim one of them this turn.</strong> Not available if the row has no room for both.</div>
-            <div class="ft-rules__text">Each of these four is once per turn. ${spendCount}</div>
+            <div class="ft-rules__text">All of these are once per turn except the extra tile, which is ${extraTileRule}. ${spendCount}</div>
           </div>
 
           <div class="ft-rules__step">
@@ -385,7 +443,7 @@ export function showRulesModal() {
                with 3 - a drift the interpolation now makes impossible. -->
           <div class="ft-rules__text">Starting cupcakes, by seat: <strong>2 players</strong> ${getStartingCupcakes(2).join(' / ')}, <strong>3 players</strong> ${getStartingCupcakes(3).join(' / ')}, <strong>4 players</strong> ${getStartingCupcakes(4).join(' / ')}.</div>
           <div class="ft-rules__text">Gain ${TEA_POT_REWARD} when a pot of tea is brewed on your turn, and 1 for plating a tile onto a cupcake plate.</div>
-          <div class="ft-rules__text">Spend: <strong>${EXTRA_TILE_CUPCAKE_COST}</strong> extra tile <em>(step 1)</em> · <strong>${DEAL_CARDS_CUPCAKE_COST}</strong> deal ${CARDS_PER_DEAL} new cards · <strong>${MOVE_TILE_CUPCAKE_COST}</strong> move a tile · <strong>${REMOVE_PLATE_CUPCAKE_COST}</strong> remove a plate · <strong>${RESERVE_CUPCAKE_COST}</strong> reserve a card.</div>
+          <div class="ft-rules__text">Spend: <strong>${EXTRA_TILE_CUPCAKE_COST}</strong> extra tile · <strong>${DEAL_CARDS_CUPCAKE_COST}</strong> deal ${CARDS_PER_DEAL} new cards · <strong>${MOVE_TILE_CUPCAKE_COST}</strong> move a tile · <strong>${REMOVE_PLATE_CUPCAKE_COST}</strong> remove a plate · <strong>${RESERVE_CUPCAKE_COST}</strong> reserve a card.</div>
           <div class="ft-rules__text">Cupcakes score no points. They break ties.</div>
         </div>
 
@@ -697,7 +755,12 @@ function seatMarker(player) {
 //   - seats 2-4 are opponents: display-only, gated on the player count, and
 //     tagged .ft-seat--opp, which is the hook sections 5 and 6 of the plan both
 //     hang off (shrunken tiles, hidden symbols, the single-column strip);
-//   - an unoccupied seat is .ft-seat--absent rather than an inline display:none;
+//   - an unoccupied seat is .ft-seat--absent rather than an inline display:none.
+//     Since 10 August renderGameScreen does not ASK for one - the strip filters
+//     the opponents by player count - so this branch is a guard rather than a
+//     path anything takes. It stays because a seat that renders itself as
+//     present when it has no player behind it is a worse failure than a class
+//     nobody sets;
 //   - the panel tint stays keyed to the seat number, not the player.
 function seatHTML(playerIdx, gameState) {
   const n = playerIdx + 1;
@@ -984,7 +1047,28 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
             </div>
             <p class="ft-section__note">Make these patterns in your player area. VP shown on each card.</p>
             <div id="cardRowNotice" class="ft-card-row__notice ft-hidden"></div>
-            <div id="cardMarket" class="ft-card-grid"></div>
+            <!-- THE SCROLLER'S OWN EDGES (10 August). Below 1150 the row stops
+                 wrapping and scrolls sideways instead - "scroll, do not shrink",
+                 because the card art carries the pattern and must not be made
+                 smaller. What that band never had was a way of SAYING SO. An
+                 overflow scrollbar is a hairline that most desktop browsers hide
+                 until you touch the strip and that iOS hides always, so three
+                 cards on a 390px screen read as a complete row of three, and the
+                 row's length is strategic information (it is the running cost of
+                 nobody ordering a fresh pot).
+                 This wrapper is the frame the cue hangs on, because the cue
+                 cannot hang on the scroller itself: anything absolutely
+                 positioned inside an overflow container either scrolls away with
+                 the content or extends the scrollable area. It is inert until
+                 syncCardScrollCue sets data-scroll-prev / data-scroll-next on it,
+                 which it only ever does when the row genuinely overflows - so at
+                 XL and L, where the row wraps and everything is on screen, this
+                 is one div and nothing else. -->
+            <div class="ft-card-scroll" id="cardScroll">
+              <div id="cardMarket" class="ft-card-grid"></div>
+              <button type="button" class="ft-card-scroll__nudge ft-card-scroll__nudge--prev" data-card-scroll="-1" aria-label="Show the cards to the left">${icon('arrow-left', 16)}</button>
+              <button type="button" class="ft-card-scroll__nudge ft-card-scroll__nudge--next" data-card-scroll="1" aria-label="Show the cards to the right">${icon('arrow-right', 16)}</button>
+            </div>
           </section>
       </div>
 
@@ -1005,11 +1089,22 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
            and a stray one closes the string - which is exactly how it broke the
            first time.
 
-           DOM order stays 3, 2, 4, which is what the XL markup used. -->
+           DOM order stays 3, 2, 4, which is what the XL markup used.
+
+           AN EMPTY SEAT IS NOT EMITTED AT ALL (10 August). It used to be: every
+           game rendered four seats and the unoccupied ones carried
+           .ft-seat--absent, which is display:none at file scope. That held for
+           four bands and then failed in the fifth - the phone band's collapsed
+           opponent row sets display:flex on .ft-seat--opp at a higher
+           specificity, so in a two-player game on a phone Players 3 and 4 came
+           back as two empty 44px rows, each one a tap target that opened a sheet
+           about a player who is not in the game.
+           A seat nothing ever writes to has no reason to be in the document, and
+           leaving it there means every future rule that touches a seat has to
+           remember it. The class survives as the belt to this braces - see
+           .ft-seat--absent, which the phone band no longer overrides. -->
       <div class="ft-opp-strip">
-        ${seatHTML(2, gameState)}
-        ${seatHTML(1, gameState)}
-        ${seatHTML(3, gameState)}
+        ${[2, 1, 3].filter(i => i < gameState.players.length).map(i => seatHTML(i, gameState)).join('')}
       </div>
     </div>
   `;
@@ -1025,6 +1120,7 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
     onCupcakeClick,
     onDealCards: spendHandlers.onDealCards,
     onExtraTile: spendHandlers.onExtraTile,
+    onExtraTilePlace: spendHandlers.onExtraTilePlace,
     onExtraTileToggle: spendHandlers.onExtraTileToggle,
     onReserveCard: spendHandlers.onReserveCard,
     onRemovePlate: spendHandlers.onRemovePlate,
@@ -1048,6 +1144,12 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
     // card click reserves rather than claims. (The paid 2-card deal has no mode
     // of its own - its button deals the cards itself.)
     extraTileMode: false,
+    // THE BOUGHT-BUT-NOT-YET-PLACED TILE (10 August). The extra tile is a spend-
+    // step action now, so there is no pending pile for it to join and no
+    // placement step to follow: the purchase is "this market tile, into that
+    // cell" and it is not committed until both are named. This holds the market
+    // index between the two taps. Null means nothing is in hand.
+    extraTilePending: null,
     reserveMode: false,
     lastPlayerIndex: -1,
   };
@@ -1343,6 +1445,7 @@ export function updateGameDisplay(gameState) {
   if (ui.lastPlayerIndex !== gameState.currentPlayerIndex) {
     ui.cupcakeMode = false;
     ui.extraTileMode = false;
+    ui.extraTilePending = null;
     ui.reserveMode = false;
     ui.selectedTileIndex = null;
     ui.cupcakeSource = null;
@@ -1350,7 +1453,12 @@ export function updateGameDisplay(gameState) {
   }
   // A spend mode can only be live in the phase that offers it, so drop it as soon
   // as the phase moves on rather than leaving a stale armed click behind.
-  if (!canBuyExtraTile(gameState)) ui.extraTileMode = false;
+  if (!canBuyExtraTile(gameState)) {
+    ui.extraTileMode = false;
+    // A tile in hand with no legal purchase left cannot be placed either - the
+    // engine would refuse it - so the hand is emptied with the mode.
+    ui.extraTilePending = null;
+  }
   if (!canReserveCard(gameState)) ui.reserveMode = false;
   // The same rule for the tap path's selections. A tile index only means anything
   // during `place`, and an armed cupcake source only during cupcake mode.
@@ -1459,13 +1567,21 @@ function updateMarket(gameState) {
   // .ft-tile--buyable class.)
   const ui = window._gameUI;
   const buyingTile = ui && ui.extraTileMode && canBuyExtraTile(gameState);
+  // The tile the player has LIFTED and not yet put down. It stays in the market
+  // until the purchase completes - nothing is paid for until a cell is named -
+  // so it has to be marked, or "choose where this tile goes" names a tile the
+  // player cannot see.
+  const heldTile = ui && ui.extraTilePending !== null && ui.extraTilePending !== undefined
+    ? ui.extraTilePending : null;
 
   market.innerHTML = gameState.market.map((tile, idx) => {
     const isEmpty = !tile;
     const isBonusAvailable = tile && gameState.bonusTileAvailable;
     const isBuyable = tile && buyingTile;
+    const isHeld = tile && heldTile === idx;
     let tileClass = isEmpty ? 'ft-tile ft-tile--empty' : 'ft-tile ft-tile--placed';
     if (isBuyable) tileClass += ' ft-tile--buyable';
+    if (isHeld) tileClass += ' ft-tile--held';
     // A market tile is only ever clickable in two situations: the free
     // line-clear bonus tile, and the paid extra tile. Everywhere else you sweep
     // a whole LINE with the row/column buttons and an individual tile does
@@ -1503,8 +1619,10 @@ function updateMarket(gameState) {
   if (gameState.bonusTileAvailable && player.isHuman) {
     setupBonusUI(gameState);
   } else if (buyingTile && player.isHuman) {
-    // Extra-tile mode: any occupied cell buys. Handlers are attached to the
-    // freshly-rendered nodes above, so there is nothing stale to remove.
+    // Extra-tile mode: any occupied cell TAKES the tile into hand. It is not
+    // bought yet - the purchase completes when a board cell is named, because
+    // since 10 August the tile is placed as it is bought. See onExtraTile in
+    // main.js and the extraTilePending branch of the board's tap router.
     market.querySelectorAll('.market-tile').forEach(el => {
       const idx = parseInt(el.dataset.index);
       if (!gameState.market[idx]) return;
@@ -1908,9 +2026,18 @@ function setupMarketSelectButtons(gameState, enabled) {
     </button>
   `).join('');
 
+  // THE ARROW POINTS INTO THE MARKET, NOT AWAY FROM IT (10 August). These ten
+  // buttons sit in the two gutters - the column buttons ALONG THE TOP and the row
+  // buttons DOWN THE LEFT SIDE - and each arrow's job is to say which line of
+  // tiles the button underneath your finger is about to gather. The column
+  // buttons already do it: `arrow-down`, sitting above the grid, points down the
+  // column it sweeps. The row buttons carried `arrow-left` while sitting to the
+  // LEFT of the grid, so they pointed off the board at nothing, which reads as
+  // "back" or "previous" rather than as this row. Right, from the left gutter, is
+  // the same statement the column buttons make in the other axis.
   marketRowButtons.innerHTML = Array.from({ length: gameState.marketSize }, (_, row) => `
     <button class="ft-btn ft-btn--sweep market-row-btn${awaitingClass}" data-row="${row}" ${disabledAttr} style="width: var(--market-gutter-w); height: var(--tile-size); display: flex; align-items: center; justify-content: center; gap: 2px; flex-shrink: 0; padding: 0;">
-      ${icon('arrow-left')}
+      ${icon('arrow-right')}
       <span style="font-weight: 600;">${row + 1}</span>
     </button>
   `).join('');
@@ -2411,7 +2538,7 @@ function updateSummaryRail(gameState) {
       fig2El.hidden = false;
       if (fig2El.dataset.pmKey !== r.fig2) {
         fig2El.dataset.pmKey = r.fig2;
-        fig2El.innerHTML = `${icon('cupcake', 12)}<span>${r.fig2}</span>`;
+        fig2El.innerHTML = `${cupcakeMark(12)}<span>${r.fig2}</span>`;
       }
     }
     btn.setAttribute('aria-expanded', String(c.id === open));
@@ -2942,6 +3069,76 @@ function showCardRowNotice(text) {
 // to match against their board, so the panel grows in height rather than the
 // cards shrinking. A long row costs page height, never legibility.
 
+// ---- THE CARD ROW'S OVERFLOW CUE ------------------------------------------
+// Below 1150 the row scrolls sideways instead of wrapping (see #cardMarket in
+// the touch band). Three things say so, and they are deliberately redundant
+// because each one fails on a different device:
+//
+//   1. A FADE at whichever edge has more behind it. A hard-cut card edge reads
+//      as a card that has been cropped by the panel; a card dissolving into the
+//      panel ground reads as a card continuing past it. This is the only part of
+//      the cue that works while a finger is mid-swipe.
+//   2. A NUDGE BUTTON over that fade. The fade alone is honest but passive - it
+//      says "there is more" without saying "and you can get at it", which is
+//      exactly the gap a hidden scrollbar leaves. One tap moves the strip by one
+//      card, so a player who never thinks to swipe still sees the whole row.
+//   3. The COUNT already in the section head ("6 cards on offer"), which is the
+//      only one of the three a screen reader gets, and is why the nudges carry
+//      real labels rather than being decoration.
+//
+// EVERY PART OF IT IS DRIVEN OFF MEASUREMENT, not off a breakpoint. The two data
+// attributes are set from scrollWidth against clientWidth, so the cue appears
+// only when something is genuinely off-screen and disappears at each end of the
+// travel - at XL and L, where the row wraps, neither attribute is ever set and
+// the whole thing costs one div and two display:none buttons.
+const CARD_SCROLL_EPS = 4;
+
+// The window listener outlives the game screen - a new game replaces #app and
+// with it the wrapper, so a flag on the wrapper would re-add it every time
+// somebody played again. The element lookups inside the handler are by id, so
+// the one listener always finds whichever row is current.
+let cardCueResizeWired = false;
+
+function syncCardScrollCue() {
+  const grid = document.getElementById('cardMarket');
+  const wrap = document.getElementById('cardScroll');
+  if (!grid || !wrap) return;
+
+  const max = grid.scrollWidth - grid.clientWidth;
+  const scrollable = max > CARD_SCROLL_EPS;
+  wrap.dataset.scrollPrev = scrollable && grid.scrollLeft > CARD_SCROLL_EPS ? '1' : '0';
+  wrap.dataset.scrollNext = scrollable && grid.scrollLeft < max - CARD_SCROLL_EPS ? '1' : '0';
+
+  // WIRED ONCE, AND NOT IN renderGameScreen. updateCardMarket runs on every
+  // render and #cardMarket keeps its identity across all of them (only its
+  // children are replaced), so a flag on the wrapper is enough to keep this to
+  // one set of listeners for the life of the game screen.
+  if (wrap.dataset.cueWired === '1') return;
+  wrap.dataset.cueWired = '1';
+
+  grid.addEventListener('scroll', syncCardScrollCue, { passive: true });
+  if (!cardCueResizeWired) {
+    cardCueResizeWired = true;
+    window.addEventListener('resize', syncCardScrollCue);
+  }
+
+  wrap.querySelectorAll('[data-card-scroll]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      // ONE CARD PER TAP, measured off a real card rather than off a constant:
+      // the card is sized from --card-height and the sheet's aspect ratio, so no
+      // number written here would stay true. Falling back to most of the strip
+      // covers the empty row, where there is nothing to measure.
+      const card = grid.querySelector('.card-market-sprite');
+      const gap = parseFloat(getComputedStyle(grid).columnGap) || 0;
+      const step = card ? card.getBoundingClientRect().width + gap : grid.clientWidth * 0.8;
+      grid.scrollBy({
+        left: Number(btn.dataset.cardScroll) * step,
+        behavior: reduced() ? 'auto' : 'smooth',
+      });
+    });
+  });
+}
+
 function updateCardMarket(gameState) {
   const cardMarket = document.getElementById('cardMarket');
   if (!cardMarket) return;
@@ -3070,6 +3267,11 @@ function updateCardMarket(gameState) {
       });
     }
   }
+
+  // The row's length changes under the player - a card is added at the end of
+  // every turn and taken by every claim - so the cue is re-measured after each
+  // render rather than only on scroll and resize.
+  syncCardScrollCue();
 }
 
 function updatePlayerBoards(gameState) {
@@ -3097,7 +3299,13 @@ function updatePlayerBoards(gameState) {
       // offered as a source if this player can actually afford to move it.
       const isMovableInCupcakeMode = isInCupcakeMode && tile !== null
         && player.cupcakes >= (getMoveCost(player, idx) ?? Infinity);
-      const isMoveTarget = isInCupcakeMode && tile === null;
+      // AN EMPTY CELL IS A TARGET FOR TWO GESTURES NOW, and they share the class
+      // because to the player they are the same instruction: "put it here". One
+      // is the cupcake move's destination, the other is the cell an extra tile
+      // just lifted off the market is about to land in.
+      const isHoldingExtraTile = isCurrentPlayer && player.isHuman
+        && ui.extraTilePending !== null && ui.extraTilePending !== undefined;
+      const isMoveTarget = (isInCupcakeMode || isHoldingExtraTile) && tile === null;
       // An empty plate is no longer a MOVE source (getMoveCost returns null for
       // one); it is a REMOVAL target, clicked rather than dragged. canRemovePlate
       // covers price, phase and the once-per-turn allowance in one call.
@@ -3573,6 +3781,16 @@ function setupTapToPlace(gameState) {
     const boardIndex = boardIndexFromEvent(e);
     if (boardIndex === null) return;
 
+    // A TILE IN HAND BEATS EVERY OTHER READING OF A BOARD TAP (10 August). The
+    // player has bought nothing yet and the only thing they can do with it is put
+    // it down, so this branch runs before the cupcake move and before the
+    // placement path - and an occupied cell is simply not a destination, which
+    // the highlighted empty cells already say.
+    if (ui.extraTilePending !== null && ui.extraTilePending !== undefined) {
+      ui.onExtraTilePlace?.(ui.extraTilePending, boardIndex);
+      return;
+    }
+
     if (ui.cupcakeMode) {
       // Source first, then destination. The source has to be a tile the engine
       // would actually let move, which is exactly what data-board-tile-index
@@ -3818,7 +4036,7 @@ function renderStand(player, opts = {}) {
       // and cupcake is the only drawing asked to go there: its wrapper flutes
       // are what identify it and they survive.
       const cupcakeMarker = isCupcakePlate
-        ? `<span class="ft-stand__cupcake-plate" title="Cupcake plate - plating here gains 1 cupcake">+${icon('cupcake', 10)}</span>`
+        ? `<span class="ft-stand__cupcake-plate" title="Cupcake plate - plating here gains 1 cupcake">+${cupcakeMark(10)}</span>`
         : '';
       slots += `
         <div class="ft-stand__slot">
@@ -4054,7 +4272,7 @@ function updateStats(gameState) {
       return `
       <div class="pm-seat-row">
         <span class="pm-seat-row__stat pm-seat-row__stat--score"><span class="ft-sr-only">Score </span>${bd.total}</span>
-        <span class="pm-seat-row__stat">${icon('cupcake', 12)}<span class="ft-sr-only">cupcakes </span>${bd.cupcakes}</span>
+        <span class="pm-seat-row__stat">${cupcakeMark(12)}<span class="ft-sr-only">cupcakes </span>${bd.cupcakes}</span>
         <span class="pm-seat-row__stat">${icon('grid', 12)}<span class="ft-sr-only">board filled </span>${filled}/${p.board.length}</span>
         ${onOrder ? `<span class="pm-seat-row__stat">${icon('card', 12)}<span class="ft-sr-only">cards on order </span>${onOrder}</span>` : ''}
         <span class="pm-seat-row__more" aria-hidden="true">${icon('arrow-right', 12)}</span>
@@ -4128,6 +4346,20 @@ function updateStats(gameState) {
     // and a permanently disabled one would be a lie. It is a chip that states a
     // price, which is the one thing about it a player cannot see anywhere else.
     const extraClaimCost = getExtraClaimCupcakeCost();
+    // A FURTHER CLAIM IS ONLY IN PLAY ONCE ONE CLAIM HAS BEEN MADE (10 August,
+    // Dean). The chip states a price nobody is being asked to pay until then -
+    // the first claim of every turn is free - and it was drawn at full strength
+    // beside five chips that grey themselves out when they are unavailable, so
+    // it read as the one live option in a menu where nothing was live.
+    //
+    // The engine's own two conditions, not a proxy for them: claim() leaves the
+    // phase at 'claim' only while a further claim can still be BOUGHT, and drops
+    // to 'refill' the moment the player cannot pay for one. So "claims made and
+    // still in the claim step" is exactly "you may buy another right now", and
+    // the chip lights for precisely as long as that is true.
+    const extraClaimLive = isCurrentPlayer
+      && gameState.claimsThisTurn > 0
+      && gameState.gamePhase === 'claim';
     // The price is drawn as an aria-hidden cupcake and a numeral, so the
     // accessible name has to say it in words - no icon in this set is ever the
     // accessible name of anything, and "Clear an empty plate 3" is not a price.
@@ -4136,7 +4368,7 @@ function updateStats(gameState) {
                     ${id ? `id="${id}"` : ''} type="button" ${live ? '' : 'disabled'}
                     aria-label="${name} - ${cupcakePrice(price)}" title="${title}">
               <span class="ft-spend-chip__name">${name}</span>
-              <span class="ft-spend-chip__price">${icon('cupcake', 14)}<span class="ft-spend-chip__n">${price}</span></span>
+              <span class="ft-spend-chip__price">${cupcakeMark(SPEND_CUPCAKE_ICON)}<span class="ft-spend-chip__n">${price}</span></span>
             </button>`;
 
     const extraTilesBought = gameState.extraTilesBoughtThisTurn || 0;
@@ -4159,7 +4391,7 @@ function updateStats(gameState) {
         <div class="ft-cupcake-header">
           <span class="ft-cupcake-label">Cupcakes</span>
           <span class="ft-cupcake-count">
-            <img src="images/cupcake.png" class="ft-cupcake-count__icon" alt="" />
+            ${cupcakeMark(18)}
             <strong>${cupcakeCount}</strong>
           </span>
         </div>
@@ -4173,7 +4405,7 @@ function updateStats(gameState) {
                           title: 'At the spend step, once per turn: return one empty plate from your board to the box, freeing that cell.' })}
             ${spendChip({ id: 'buyExtraTileBtn', name: 'Extra market tile', price: EXTRA_TILE_CUPCAKE_COST,
                           live: canBuyTile, armed: ui.extraTileMode,
-                          title: 'While you are placing, as often as you can pay: take any one tile from the market and place it with your swept tiles.' })}
+                          title: 'At the spend step, as often as you can pay: take any one tile from the market and place it on your board.' })}
             ${spendChip({ id: 'dealCardsBtn', name: `Deal ${CARDS_PER_DEAL} new cards`, price: DEAL_CARDS_CUPCAKE_COST,
                           live: canDeal, armed: false,
                           title: `At the spend step, once per turn: deal ${CARDS_PER_DEAL} new cards onto the card row. You may claim one of them this turn.` })}
@@ -4181,11 +4413,11 @@ function updateStats(gameState) {
                           live: canReserve, armed: ui.reserveMode,
                           title: `Take one card from the market into your reserve. You may not claim it this turn, and your reserve holds ${RESERVE_LIMIT} card.` })}
             ${extraClaimCost === null ? '' : `
-            <span class="ft-cupcake-spend-btn ft-spend-chip ft-spend-chip--note"
-                  aria-label="Another card - ${cupcakePrice(extraClaimCost)}"
+            <span class="ft-cupcake-spend-btn ft-spend-chip ft-spend-chip--note${extraClaimLive ? ' is-live' : ''}"
+                  aria-label="Complete another card - ${cupcakePrice(extraClaimCost)}"
                   title="At the claim step: your first claim is free, and each further one costs ${cupcakePrice(extraClaimCost)}. Taken by tapping the card.">
-              <span class="ft-spend-chip__name">Another card</span>
-              <span class="ft-spend-chip__price">${icon('cupcake', 14)}<span class="ft-spend-chip__n">${extraClaimCost}</span></span>
+              <span class="ft-spend-chip__name">Complete another card</span>
+              <span class="ft-spend-chip__price">${cupcakeMark(SPEND_CUPCAKE_ICON)}<span class="ft-spend-chip__n">${extraClaimCost}</span></span>
             </span>`}
           </div>
           ${spendState}` : ''}
@@ -4229,9 +4461,22 @@ function updateStats(gameState) {
 
     // The extra tile ARMS the market and waits for a second click (onExtraTile),
     // which is why it needs a toggle at all.
+    //
+    // AND IT CLOSES THE SHEET BEHIND IT (10 August). On the phone this panel IS a
+    // sheet, and the thing this chip arms - the tile market - is at the top of
+    // the page, underneath it. Leaving the sheet open would recreate, one step
+    // later, exactly the friction that moved this spend here in the first place:
+    // arm the option, then work out for yourself that the menu is in the way.
+    // The other four spends do not need this - two of them target your own board,
+    // which the half-sheet cap deliberately leaves visible, and two are complete
+    // the moment they are tapped. closeSheet() is a no-op above 1149, where there
+    // is no sheet and the panel is a rail.
     if (canBuyTile && ui.onExtraTileToggle) {
       const btn = statsEl.querySelector('#buyExtraTileBtn');
-      if (btn) btn.addEventListener('click', () => ui.onExtraTileToggle());
+      if (btn) btn.addEventListener('click', () => {
+        closeSheet();
+        ui.onExtraTileToggle();
+      });
     }
     // No toggle and no armed mode: unlike the other spend buttons here, this one
     // IS the action - there is nothing for the player to pick afterwards.
@@ -4354,7 +4599,7 @@ function updatePhaseControls(gameState) {
   // instruction beside it already reads "Spend cupcakes (optional)".
   const spendable = gameState.gamePhase === 'spend' || canBuyExtraTile(gameState);
   const spendSheetBtn = spendable
-    ? `<button id="openSpendSheet" type="button" class="ft-btn ft-btn--secondary ft-btn--small ft-btn--sheet" aria-label="Spend cupcakes" title="Spend cupcakes">${icon('cupcake', 16)}<span class="ft-btn__label"> Cupcakes</span></button>`
+    ? `<button id="openSpendSheet" type="button" class="ft-btn ft-btn--secondary ft-btn--small ft-btn--sheet" aria-label="Spend cupcakes" title="Spend cupcakes">${cupcakeMark(16)}<span class="ft-btn__label"> Cupcakes</span></button>`
     : '';
   let html = '';
 
@@ -4452,7 +4697,22 @@ function updatePhaseControls(gameState) {
       ? `You've used your move for this turn`
       : `Spend cupcakes (optional)`;
 
-    html = `
+    // A TILE IN HAND TAKES OVER THE BAR (10 August). The extra tile is bought and
+    // placed in one action at this step, so between the two taps the player is
+    // holding something, and the one thing the bar must say is where it goes. It
+    // borrows the claim step's destination wording for the same situation, and
+    // Cancel is offered because a market tile lifted by mistake must be
+    // droppable - nothing has been paid for until the cell is named.
+    const holdingExtraTile = ui.extraTilePending !== null && ui.extraTilePending !== undefined;
+
+    html = holdingExtraTile ? `
+      <div class="ft-phase-bar">
+        ${barText('Choose where this tile goes', `<div class="ft-phase-bar__status success">${clickVerb()} a lit cell on your board</div>`)}
+        <div class="ft-phase-bar__controls">
+          <button id="cancelExtraTile" class="ft-btn ft-btn--secondary ft-btn--small">Cancel</button>
+        </div>
+      </div>
+    ` : `
       <div class="ft-phase-bar">
         ${barText(moveOptions)}
         <div class="ft-phase-bar__controls">
@@ -4610,6 +4870,17 @@ function updatePhaseControls(gameState) {
   const movePhaseNextBtn = controls.querySelector('#movePhaseNext');
   if (movePhaseNextBtn && gameState.gamePhase === 'spend') {
     movePhaseNextBtn.addEventListener('click', () => window._gameUI.onSkipMove?.());
+  }
+
+  // Putting the lifted tile back. Nothing has been paid for at this point - the
+  // charge happens in takeExtraTile, which needs the cell - so cancelling is a
+  // pure state reset and the market tile is still sitting where it was.
+  const cancelExtraTileBtn = controls.querySelector('#cancelExtraTile');
+  if (cancelExtraTileBtn && gameState.gamePhase === 'spend') {
+    cancelExtraTileBtn.addEventListener('click', () => {
+      window._gameUI.extraTilePending = null;
+      updateGameDisplay(gameState);
+    });
   }
 }
 

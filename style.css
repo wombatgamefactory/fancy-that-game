@@ -167,6 +167,11 @@
   --cloth-shade: #EDDCC0;  /* Y 73.0 */
 
   --surface: #FBF5EC;      /* Y 91.9  panels, sheets, strips */
+  --surface-rgb: 251, 245, 236; /* the same colour as three channels, for the one
+                                   place that needs it at an alpha: the card
+                                   row's edge fades. Held the way --shadow-ink is
+                                   rather than faded to `transparent`, which is
+                                   transparent BLACK and greys the fall. */
   --object: #FFFFFF;       /* Y 100   a goal card face, a tasting menu face, nothing else */
   --inverse: #3D2B1F;      /* Y 3.0   the one dark surface: the turn bar */
   --recess: #E9D9BE;       /* Y 70.7  the 5x5 pressed into the cloth. FLAT and OPAQUE */
@@ -1506,15 +1511,14 @@ a .ft-icon {
   padding: var(--spacing-sm) var(--spacing-xs) var(--spacing-md);
   /* THE STAND TRAY IS A BOARD AREA (plan section 8.5's container table), so it
      takes the cloth: the same three stops on the same 163deg fall, the same
-     grain at full strength, the same one contact shadow, radius 10, no border.
+     upper-left highlight, the same one contact shadow, radius 10, no border.
      It keeps its OWN padding rather than taking the cloth ring - the ring is
      specified for the board region, and at XL the score column this sits in is
-     content-sized with no width to give. */
+     content-sized with no width to give.
+     No grain here either - see the note on .ft-cloth. */
   background:
-    url('images/grain-v1.png') repeat,
     radial-gradient(150% 110% at 18% 4%, rgba(255, 255, 255, 0.80), rgba(255, 255, 255, 0) 62%),
     linear-gradient(163deg, var(--cloth-lit) 0%, var(--cloth-mid) 52%, var(--cloth-shade) 100%);
-  background-size: 128px 128px, auto, auto;
   border: none;
   border-radius: 10px;
   box-shadow:
@@ -1886,11 +1890,17 @@ a .ft-icon {
   color: var(--ink, var(--color-text-primary));
 }
 
-.ft-cupcake-count__icon {
-  width: 18px;
-  height: 18px;
+/* THE ONE CUPCAKE (10 August). This replaces .ft-cupcake-count__icon, which
+   styled the supply header's painted cupcake alone while five other places drew
+   the same object as a line glyph. There is one mark now, emitted by
+   cupcakeMark() in board.js at whatever size its site asks for, so the size
+   belongs on the element and not in here.
+   It carries .ft-icon as well, which is where its baseline alignment, its
+   flex-shrink and its pointer-events come from - an <img> in that class behaves
+   the same as an <svg> in it, and inheriting rather than duplicating is what
+   keeps the spend chip's negative margin working for both. */
+.ft-cupcake-mark {
   object-fit: contain;
-  pointer-events: none;
 }
 
 .ft-cupcake-points {
@@ -1922,21 +1932,28 @@ a .ft-icon {
 }
 
 /* ======= THE CLOTH (plan section 8.6, tickets 06 and 10) ===================
-   The ground of the BOARD AREAS ONLY. Four things on it and nothing else: the
+   The ground of the BOARD AREAS ONLY. Three things on it and nothing else: the
    three sampled stops on one 163 degree fall, a broad soft highlight at the
-   upper left, the shared grain, and a contact shadow down and to the right. No
-   border, no four-sided drop shadow, no printed pattern, no lace, no hem, no
-   depicted weave, no folds.
+   upper left, and a contact shadow down and to the right. No border, no
+   four-sided drop shadow, no printed pattern, no lace, no hem, no depicted
+   weave, no folds.
 
-   THE GRAIN IS A BACKGROUND LAYER AT FULL STRENGTH, not an overlay at 42 or 55
-   per cent (plan section 17, amendment 1, decision 24). grain-v1.png carries its
-   own alpha at a mean of 7/255 and a peak of 22/255, so at full strength it
-   shifts a cream ground by at most 13.7 levels - the same order as the wallpaper
-   at the 12 per cent it chose. Stacked opacities put it at 5.7 to 7.5 levels,
-   which the grounds ticket measured as at or below a whisper. Drawn once, in the
-   background stack: visible, ZERO pseudo-elements on the board, and no linen
-   weave painted over the fondant tiles standing on it. It is a WORLD texture at
-   a fixed 128px that objects reveal, so it is never scaled with an object.
+   THE GRAIN IS GONE (10 August, Dean). grain-v1.png was a fourth layer here and
+   on .ft-stand: a 128px tile of PER-PIXEL random alpha, mean 7/255, drawn at a
+   fixed 128px in CSS pixels. The arithmetic that justified it was about
+   AMPLITUDE - at most 13.7 levels on a cream ground, the same order as the
+   wallpaper - and amplitude was never the problem. SPATIAL FREQUENCY was. Noise
+   whose period is one CSS pixel does not resolve as texture at any viewing
+   distance; on a DPR 2 or 3 screen the browser resamples that single-pixel noise
+   and it resolves as SPECKLE - a dithered, dot-screened ground, which is what
+   the two largest bare expanses of it (the empty player board and the cake stand
+   tray) were read as. The gradient below it is doing the work the texture was
+   supposed to support, and it survives on its own: a smooth fall with one soft
+   highlight reads as cloth in raking light, which is the whole brief.
+   The PNG stays in images/ unreferenced. If a later session wants texture back,
+   the fix is a LOW-frequency one - a soft mottle on a repeat of 200px or more,
+   four or more times the tile pitch, the same rule the wallpaper is held to at
+   line 505 - and not this file at a lower opacity.
 
    THE CONTACT SHADOW IS LOAD-BEARING, NOT DECORATION. The cloth's far corner is
    only 4.1 luminance points above the wall; at .34 the shadow puts the wall
@@ -1951,10 +1968,8 @@ a .ft-icon {
   margin-right: calc(-1 * var(--cloth-ring));
   border-radius: 10px;
   background:
-    url('images/grain-v1.png') repeat,
     radial-gradient(150% 110% at 18% 4%, rgba(255, 255, 255, 0.80), rgba(255, 255, 255, 0) 62%),
     linear-gradient(163deg, var(--cloth-lit) 0%, var(--cloth-mid) 52%, var(--cloth-shade) 100%);
-  background-size: 128px 128px, auto, auto;
   box-shadow:
     2px 3px 10px -3px rgba(var(--shadow-ink), 0.34),
     inset 0 1px 0 rgba(255, 255, 255, 0.45);
@@ -3029,6 +3044,23 @@ a .ft-icon {
 
 .ft-spend-chip__price .ft-icon {
   color: currentColor;
+  /* THE MARK GREW; THE CHIP DID NOT (10 August). The currency mark went from 14
+     to 20 - see SPEND_CUPCAKE_ICON in board.js - and because it is the tallest
+     thing in a chip whose text is 11px, every one of the six chips would grow
+     6px with it. Six chips at 6px is 36px of page, and the widest band has 22px
+     of slack: the score column is the tallest column there, so anything this
+     panel gains, the page gains.
+     All six are given back to the chip's own 4px of padding, which the mark now
+     overhangs by 3px top and bottom. It stops 2px short of the border, the chip
+     stays exactly the 24px it shipped at, and the page height at 2181 and 2400
+     is unchanged. This is the whole reason the mark could be made big enough to
+     read: 16px was the largest that fitted without it, and 16px was not enough.
+     Do not raise SPEND_CUPCAKE_ICON further without moving this number with it,
+     and not past 22 at all - at 22 the mark reaches the border.
+     It selects .ft-icon and the cupcake is an <img> in that class, which is the
+     point of putting it there: the rule did not have to learn a second name when
+     the glyph became art. */
+  margin-block: -3px;
 }
 
 /* The sixth chip is NOT a control. A further claim is taken by tapping a card
@@ -3040,6 +3072,25 @@ a .ft-icon {
   background: none;
   border-style: dashed;
   color: var(--color-text-secondary);
+  /* AND IT IS QUIET UNTIL THE PRICE IS REAL (10 August). The other five chips
+     are buttons, so an unavailable one greys itself to 0.4 through :disabled.
+     This one is a span and could not, which left the single most prominent chip
+     in the menu describing the one spend that is unavailable for most of the
+     turn - the first claim of a turn is free, so until a claim has been made
+     there is no price here to pay. It takes the same 0.4 by hand. */
+  opacity: 0.4;
+  transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+/* Lit for exactly as long as a further claim can be bought - see extraClaimLive
+   in board.js. Full strength, primary ink and the same gold the armed chips
+   carry, but the border stays DASHED: this is now relevant, and it is still not
+   a button. The claim is taken by tapping a card. */
+.ft-spend-chip--note.is-live {
+  opacity: 1;
+  background: #FFF6DC;
+  border-color: var(--color-accent-gold, #C9A227);
+  color: var(--color-text-primary);
 }
 
 .ft-cupcake-spend-btn:hover:not(:disabled) {
@@ -3116,6 +3167,23 @@ a .ft-icon {
   outline-offset: -2px;
 }
 
+/* IN HAND (10 August). The extra tile is bought and placed in one action at the
+   spend step, so between the two taps a tile has been lifted off the market and
+   not yet put down. It is still sitting in its market cell, because nothing is
+   paid for until a board cell is named and a cancelled lift must leave the
+   market exactly as it was - so the tile is marked rather than moved.
+   It takes the ring vocabulary's SOLID accent double ring and lifts off the
+   cloth, which is the same "this one is in play right now" the armed sweep
+   buttons say. It reads against .ft-tile--buyable's single gold ring on the 24
+   tiles around it: one of them is chosen, the rest are still offers. */
+.ft-tile--held {
+  outline: 3px solid var(--color-accent);
+  outline-offset: -3px;
+  box-shadow: 0 4px 10px -2px rgba(var(--shadow-ink), 0.5);
+  transform: translateY(-2px);
+  z-index: 2;
+}
+
 /* A long row is a standing invitation to order a fresh pot of tea (the only
    thing that cuts it back), so it is worth flagging rather than just counting. */
 .ft-card-row__count--long {
@@ -3181,6 +3249,113 @@ a .ft-icon {
 
 .ft-card-grid::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* ======= THE CARD ROW'S OVERFLOW CUE (10 August) ===========================
+   Below 1150 the row scrolls sideways rather than wrapping, because the card art
+   carries the pattern a player has to match and must not be shrunk. The one
+   thing that band never had was a way of SAYING there is more row: the scrollbar
+   is an overlay hairline that Chrome fades out when idle and that iOS does not
+   draw at all until a finger is already moving, so a 390px screen showing three
+   cards of eight reads as a row of three - and the row's length is strategic
+   information, not decoration.
+
+   NOTHING HERE IS BEHIND A BREAKPOINT. syncCardScrollCue in board.js measures
+   scrollWidth against clientWidth and sets data-scroll-prev / data-scroll-next on
+   this wrapper, so the cue is a function of whether anything is actually
+   off-screen. At XL and L the row wraps, neither attribute is ever 1, and this
+   whole block resolves to one positioned div. It also self-clears at each end of
+   the travel, which is what makes it a statement about direction rather than a
+   permanent frame. */
+.ft-card-scroll {
+  position: relative;
+  min-width: 0;
+}
+
+/* THE FADE. A card cut off flat by the panel edge reads as a card that has been
+   cropped; a card dissolving into the panel ground reads as a card that carries
+   on past it. It is the only half of this cue that survives mid-swipe, when the
+   nudge button is under the player's own thumb.
+   56px is about a third of a card at every band: enough that the far card reads
+   as continuing rather than merely dim, and not so much that it stops being
+   identifiable. The 2px inset top and bottom keeps the fade clear of the panel's
+   own rounded corner. */
+.ft-card-scroll::before,
+.ft-card-scroll::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 56px;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.ft-card-scroll::before {
+  left: 0;
+  background: linear-gradient(to right,
+    rgba(var(--surface-rgb), 0.98) 12%,
+    rgba(var(--surface-rgb), 0) 100%);
+}
+
+.ft-card-scroll::after {
+  right: 0;
+  background: linear-gradient(to left,
+    rgba(var(--surface-rgb), 0.98) 12%,
+    rgba(var(--surface-rgb), 0) 100%);
+}
+
+.ft-card-scroll[data-scroll-prev="1"]::before,
+.ft-card-scroll[data-scroll-next="1"]::after {
+  opacity: 1;
+}
+
+/* THE NUDGE. The fade is honest but passive: it says "there is more" without
+   saying "and here is how you reach it", which is the same gap the hidden
+   scrollbar leaves. One tap moves the strip by exactly one card, so a player who
+   never thinks to swipe still gets to the end of the row.
+   44px, because it is a touch target in the band where it appears and the plan's
+   floor for one is 44. It sits ON the fade, at the vertical centre of the strip,
+   and it is the china of an object rather than the accent: this is a way of
+   looking at the row, never a move in the game, and the accent in this build is
+   reserved for what you may DO. */
+.ft-card-scroll__nudge {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-card);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  box-shadow: 0 2px 6px -2px rgba(var(--shadow-ink), 0.45);
+}
+
+.ft-card-scroll__nudge--prev { left: 2px; }
+.ft-card-scroll__nudge--next { right: 2px; }
+
+.ft-card-scroll[data-scroll-prev="1"] .ft-card-scroll__nudge--prev,
+.ft-card-scroll[data-scroll-next="1"] .ft-card-scroll__nudge--next {
+  display: flex;
+}
+
+.ft-card-scroll__nudge:hover {
+  background: var(--surface);
+  border-color: var(--color-accent);
+  color: var(--color-accent-hover);
+}
+
+.ft-card-scroll__nudge:active {
+  transform: translateY(-50%) scale(0.94);
 }
 
 /* Cards a player may not claim again this turn. STILL CLICKABLE, so the click
@@ -7301,7 +7476,15 @@ select:focus {
   .ft-opp-strip .ft-seat--3 { order: 2; }
   .ft-opp-strip .ft-seat--4 { order: 3; }
 
-  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]) {
+  /* :not(.ft-seat--absent) IS LOAD-BEARING (10 August). This is the only rule in
+     the file that gives a seat a `display` after .ft-seat--absent has taken it
+     away, and at (0,3,0) it beat that rule's (0,1,0) - so in a two- or
+     three-player game on a phone the unoccupied seats came back as empty 44px
+     rows, each one a tap target for a sheet about a player who is not in the
+     game. board.js no longer emits an absent seat at all, which is the actual
+     fix; this is the half that stops the next rule to touch a collapsed seat
+     from resurrecting one. */
+  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]):not(.ft-seat--absent) {
     position: relative;
     display: flex;
     flex-direction: row;

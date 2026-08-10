@@ -39,20 +39,22 @@ function runGame(strategies) {
         break;
       }
       case 'place': {
-        // The extra tile is bought here, before placements are chosen (deleted
-        // 8 August, restored 9 August). The paid 2-card deal is a spend-step
-        // action and stays below; both are on the menu.
-        // A LOOP SINCE 9 AUGUST (second revision) - the tile is uncapped, so ask
-        // again after each purchase and let the engine's gates end it.
-        for (let n = 0; n < 25; n++) {
-          const ex = strategy.decideExtraTile ? strategy.decideExtraTile(gameState) : null;
-          if (ex === null || ex === undefined) break;
-          gameState = takeExtraTile(gameState, ex);
-        }
+        // The extra tile was bought HERE until 10 August, before the placements
+        // were chosen, because the tile joined the pile about to be placed. It is
+        // a spend-step action now and is bought below.
         gameState = place(gameState, strategy.decidePlacements(gameState));
         break;
       }
       case 'spend': {
+        // The extra tile, first of the five spends and uncapped: ask again after
+        // each purchase and let the engine's gates end it. The decision is a pair
+        // - the market tile and the cell it goes in - because it is placed as it
+        // is bought.
+        for (let n = 0; n < 25; n++) {
+          const ex = strategy.decideExtraTile ? strategy.decideExtraTile(gameState) : null;
+          if (ex === null || ex === undefined) break;
+          gameState = takeExtraTile(gameState, ex.marketIndex, ex.boardIndex);
+        }
         const mv = strategy.decideMove ? strategy.decideMove(gameState) : null;
         if (mv) gameState = moveTile(gameState, mv.fromIndex, mv.toIndex);
         const rp = strategy.decideRemovePlate ? strategy.decideRemovePlate(gameState) : null;
