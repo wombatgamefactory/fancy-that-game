@@ -144,6 +144,24 @@ const PHASE_WIDTHS = [430, 390, 360, 768, 1024, 1400];
 // 2 x 14 per board area) and the seat rule is 10px per seat. Both are paid for
 // several times over. The largest fall is at 360: 3330 to 3033.
 //
+// LOWERED AGAIN ON 10/08/2026 BY STAGE 5, AT THE FOUR L WIDTHS AND NOWHERE
+// ELSE. The XL rows do not move and must not: XL is frozen, and stage 5's whole
+// layer is capped at 2180 by a range query - proved by serving the build at 2400
+// with the block stripped out and getting a byte-identical screenshot.
+//
+// Where the fall comes from: the L band stops being XL's two-and-two table and
+// becomes three columns on one row - you, the table, and an opponent rail - so
+// the 598 x 536 hole under the goal cards, which was a spanning grid item over
+// two unequal rows, cannot form at all. The three rail cards also drop the full
+// cake stand for the M band's one-line summary (decision 26), taking an opponent
+// from 698px to 362.
+//
+//   open  1493 -> 1150   (-343, a quarter of the page)
+//   mid   1816 -> 1515   (-301)
+//
+// The M and phone rows do not move either, because nothing in this stage
+// reaches them: at 1399 and below the page measures exactly what it did.
+//
 // TARGET_SCREENS is what a phone layout should aim at rather than what it is:
 // two screenfuls of scroll for a turn. Reported as a gap in the detail line, and
 // deliberately NOT asserted, because failing every phone width on an aspiration
@@ -153,7 +171,7 @@ const PAGE_HEIGHT_BUDGET = {
   // The 4-player seeded OPENING position, human in seat 0, boards empty.
   open: {
     2400: 1387, 2181: 1387,                           // was 1453
-    2180: 1493, 1920: 1493, 1700: 1493, 1400: 1493,   // was 1546
+    2180: 1150, 1920: 1150, 1700: 1150, 1400: 1150,   // was 1546, then 1493
     1399: 1407, 1366: 1407, 1280: 1407, 1150: 1407,   // was 1617
     1149: 2471, 1024: 2471, 768: 2471,                // was 2524
     430: 3014,  390: 3014,  360: 3033,                // was 3070 / 3085 / 3330
@@ -165,7 +183,7 @@ const PAGE_HEIGHT_BUDGET = {
   // before 09/08/2026.
   mid: {
     2400: 1387, 2181: 1387,                           // was 1453
-    2180: 1816, 1920: 1816, 1700: 1816, 1400: 1816,   // was 1830
+    2180: 1515, 1920: 1515, 1700: 1515, 1400: 1515,   // was 1830, then 1816
     1399: 1589, 1366: 1589, 1280: 1589, 1150: 1589,   // was 1800
     1149: 2654, 1024: 2654, 768: 2654,                // was 2707
     430: 3379,  390: 3379,  360: 3398,                // was 3435 / 3450 / 3695
@@ -320,8 +338,12 @@ async function playHumanTurn(page, { mode = 'drag', stopAfterPlacement = false, 
     return { reached: 'sweep-button-obstructed', placed: 0, expected: 0 };
   }
 
-  await page.waitForSelector('.sweep-option-btn', { timeout: 5000 });
-  await page.click('.sweep-option-btn');
+  // .ds-opt, not .sweep-option-btn. Stage 5 replaced the two ad-hoc .ft-modal
+  // sweep dialogs with one anchored .ds-dialog whose options are the actual
+  // tiles the sweep would take (plan section 6.3, decision 10), and the class
+  // went with the markup.
+  await page.waitForSelector('.ds-opt', { timeout: 5000 });
+  await page.click('.ds-opt');
   await page.waitForFunction(() => window._gameUI?.gameState?.gamePhase === 'place', null, { timeout: 5000 });
   await page.waitForTimeout(300);
 
@@ -691,9 +713,20 @@ async function checkOpponentStrip(page, width) {
     const strip = document.querySelector('.ft-opp-strip');
     if (!strip) return { absent: true };
     const cs = getComputedStyle(strip);
-    // Above the M band the strip is `display: contents` and its seats are placed
-    // by the XL grid instead, so there is no row to break.
-    if (cs.display === 'contents') return { inert: true };
+    // At XL the strip is `display: contents` and its seats are placed by the
+    // grid instead, so there is no row to break.
+    if (cs.display === 'contents') return { inert: 'display: contents at XL, seats are grid-placed' };
+    // FROM STAGE 5 THE L BAND MAKES THE STRIP A COLUMN, and this criterion does
+    // not apply to one. It measures how much wider a seat may get before the ROW
+    // breaks and a whole seat row appears; a `flex-direction: column` strip with
+    // the default `nowrap` has one seat per line by construction, so there is no
+    // reflow to be one short word away from. Reporting 0px of headroom there
+    // would be reporting a cliff that does not exist. The vertical figure that
+    // does matter at L - the rail must not outgrow the centre column - is a page
+    // height, and the ratchet is what carries it.
+    if (cs.flexDirection.startsWith('column') || cs.flexWrap === 'nowrap') {
+      return { inert: `a ${cs.flexDirection} rail: one seat per line by construction, no row to break` };
+    }
     const seats = [...strip.children].filter(el => el.getBoundingClientRect().width > 0);
     if (seats.length === 0) return { absent: true };
     const inner = strip.clientWidth
@@ -723,7 +756,7 @@ async function checkOpponentStrip(page, width) {
 
   const name = `opponent strip headroom @ ${width}`;
   if (r.absent) return record(name, null, 'no opponent strip rendered');
-  if (r.inert) return record(name, null, 'strip is display: contents above the M band, seats are grid-placed');
+  if (r.inert) return record(name, null, `strip cannot reflow - ${r.inert}`);
   record(
     name,
     r.headroom >= STRIP_HEADROOM_FLOOR,
@@ -1211,8 +1244,8 @@ if (MODE === 'check') {
     const rowBtn = page.locator('.market-row-btn:not([disabled])').first();
     if (await rowBtn.count() === 0) continue;
     try { await rowBtn.click({ timeout: 5000 }); } catch { continue; }
-    await page.waitForSelector('.sweep-option-btn', { timeout: 5000 });
-    await page.click('.sweep-option-btn');
+    await page.waitForSelector('.ds-opt', { timeout: 5000 });
+    await page.click('.ds-opt');
     await page.waitForFunction(() => window._gameUI?.gameState?.gamePhase === 'place', null, { timeout: 5000 });
     await page.waitForTimeout(300);
     tiles = await page.evaluate(() => window._gameUI.gameState.pendingSweepTiles.length);

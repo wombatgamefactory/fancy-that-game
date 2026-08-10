@@ -1212,6 +1212,14 @@ function updateMarket(gameState) {
   const market = document.getElementById('market');
   if (!market) return;
 
+  // THE SWEEP DIALOG AND ITS ROW RING COME DOWN ON EVERY MARKET RE-RENDER, and
+  // this is the only place that can do it. The ring is appended to
+  // #marketContainer while a re-render replaces #market's innerHTML, so it would
+  // otherwise outlive the row it is drawn around; and the dialog is a question
+  // about a line of tiles that has just been redealt. Both are removed together
+  // because they are one object with two parts.
+  closeSweepOptions();
+
   // Cells carrying a printed teapot symbol - one set for all player counts. The
   // symbol shows through only while the cell is EMPTY (uncovered) - it is what the
   // tea player collects into the cupcake pot. It is a printed-on-board marker, so
@@ -1703,15 +1711,13 @@ function setupMarketSelectButtons(gameState, enabled) {
 
   document.querySelectorAll('.market-row-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const row = parseInt(btn.dataset.row);
-      showSweepOptionsForRow(gameState, row);
+      showSweepOptions(gameState, parseInt(btn.dataset.row), true);
     });
   });
 
   document.querySelectorAll('.market-col-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const col = parseInt(btn.dataset.col);
-      showSweepOptionsForCol(gameState, col);
+      showSweepOptions(gameState, parseInt(btn.dataset.col), false);
     });
   });
 }
@@ -1728,178 +1734,282 @@ function setupBonusUI(gameState) {
   });
 }
 
-function showSweepOptionsForRow(gameState, row) {
-  // Defence in depth: never offer sweep choices outside a live human sweep
-  // phase (onMarketClick would silently drop them, which reads as a dead UI).
-  if (gameState.gamePhase !== 'sweep' || gameState.bonusTileAvailable) return;
-  const tiles = [];
-  for (let c = 0; c < gameState.marketSize; c++) {
-    tiles.push(gameState.market[row * gameState.marketSize + c]);
-  }
+// ---------------------------------------------------------------------------
+// THE SWEEP DIALOG (plan section 6.3, defects 3 and the sweep half of 15)
+//
+// ONE FUNCTION, NOT TWO. showSweepOptionsForRow and showSweepOptionsForCol were
+// 86 lines apiece and differed in four things: how the line is read out of the
+// market, what the title says, which data attribute the option carries, and
+// which argument onMarketClick is given. All four are parameters, so the two
+// functions are one function taking a line and a title. Everything below this
+// comment was duplicated before stage 5, including the two bugs the duplication
+// hid - two different close glyphs (fixed by stage 2) and two copies of a scrim
+// that should never have been there at all.
+//
+// IT DOES NOT USE .ft-modal, AND THAT IS DEFECT 3. .ft-modal paints
+// rgba(61, 43, 31, .5) across the whole viewport at z-index 1000. Measured with
+// the sweep dialog open, that scrim covers THE WHOLE MARKET at every desktop
+// width - 294x294 at 1280, 284x276 at 1440 and 1920, 344x336 at 2400 - so the
+// dialog dimmed the exact thing it was asking a question about. The one ruling
+// that holds at every band forbids it outright: emphasis is additive, and
+// nothing is ever dimmed at any width to say that something else is the step.
+//
+// The scrim also ate the commonest way out. Backing out of a sweep is "wrong
+// row, click a different chip", and it works only because there is nothing over
+// the market to catch the click. With the scrim, the first click closed the
+// dialog and the second opened the right row.
+//
+// .ft-modal IS UNTOUCHED AND STILL BELONGS TO THE RULES MODAL (board.js:136),
+// which is genuinely modal: a document you read is the only thing on the screen
+// while you read it.
+//
+// WHAT THE PLAYER SEES INSTEAD OF A SWATCH AND A COUNT: the actual tiles the
+// sweep would take, with their colours and their ingredients, in a slice of the
+// market's own recess (decision 10). The words survive as the accessible name
+// and nowhere else.
+//
+// FOUR WAYS OUT, and they are the four desktop routes: Escape, Close, the same
+// gutter chip again, and a different gutter chip. There is no swipe handler and
+// no grab handle to drop - the build never had either; they are the phone
+// sheet's, and stage 6 owns that.
+// ---------------------------------------------------------------------------
 
-  const colours = new Set();
-  const ingredients = new Set();
-  for (const tile of tiles) {
-    if (tile) {
-      colours.add(tile.colour);
-      ingredients.add(tile.ingredient);
-    }
-  }
+const COLUMN_LABELS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-  let html = `
-    <div class="ft-modal__title">
-      <h2>Row ${row + 1}</h2>
-      <p style="color: var(--color-text-secondary); margin: var(--spacing-sm) 0 0 0;">Select by colour or ingredient</p>
-    </div>
+// The one live dialog, its ring, and which line it is open on. Module scope
+// rather than a closure, because closeSweepOptions is called from updateMarket,
+// which knows nothing about the click that opened it.
+let sweepDialog = null;
+let sweepRing = null;
+let sweepOpenOn = null;   // { index, isRow }
+let sweepKeyHandler = null;
+let sweepMoveHandler = null;
 
-    <div class="ft-modal__section">
-      <div class="ft-modal__section-title">Colours</div>
-      <div class="ft-modal__options">
-  `;
+// THE ROW RING. One absolutely positioned element appended to #marketContainer
+// and sized off the first and last tile's own offsets, so it needs no arithmetic
+// about tile sizes or gaps and is correct at 44, 48 and 60 alike. An outline
+// sits outside the box model, so it costs zero layout: the market grid measures
+// the same with the ring up and with it down.
+function drawSweepRing(gameState, index, isRow) {
+  const container = document.getElementById('marketContainer');
+  const market = document.getElementById('market');
+  if (!container || !market) return;
 
-  for (const colour of colours) {
-    const count = tiles.filter(t => t && t.colour === colour).length;
-    html += `
-      <button class="ft-modal__option sweep-option-btn" data-row="${row}" data-col="-1" data-type="colour" data-val="${colour}">
-        <div class="ft-modal__option-colour ${getColourClass(colour)}"></div>
-        <span style="font-weight: 600;">${colour}</span>
-        <span style="font-size: 11px; color: var(--color-text-secondary);">(${count})</span>
-      </button>
-    `;
-  }
+  const n = gameState.marketSize;
+  const first = market.querySelector(`.market-tile[data-index="${isRow ? index * n : index}"]`);
+  const last = market.querySelector(`.market-tile[data-index="${isRow ? index * n + n - 1 : (n - 1) * n + index}"]`);
+  if (!first || !last) return;
 
-  html += `
-      </div>
-    </div>
+  // MEASURED WITH getBoundingClientRect AND DIFFERENCED AGAINST THE CONTAINER,
+  // not with offsetLeft. offsetLeft is relative to the element's OFFSET PARENT,
+  // and .ft-tile carries `position: relative` for its state washes, so a market
+  // tile's offset parent is already #marketContainer once the container is made
+  // relative - adding #market's own offset on top of that put the ring 36px
+  // right and 28px down, hanging off the side of the market. Rects have no such
+  // ambiguity: the difference of two client rects is the same number whatever
+  // is positioned in between.
+  if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+  const base = container.getBoundingClientRect();
+  const a = first.getBoundingClientRect();
+  const b = last.getBoundingClientRect();
 
-    <div class="ft-modal__section">
-      <div class="ft-modal__section-title">Ingredients</div>
-      <div class="ft-modal__options">
-  `;
+  sweepRing = document.createElement('div');
+  sweepRing.className = 'ds-rowring';
+  sweepRing.style.left = `${Math.round(a.left - base.left)}px`;
+  sweepRing.style.top = `${Math.round(a.top - base.top)}px`;
+  sweepRing.style.width = `${Math.round(b.right - a.left)}px`;
+  sweepRing.style.height = `${Math.round(b.bottom - a.top)}px`;
+  container.appendChild(sweepRing);
 
-  for (const ing of ingredients) {
-    const count = tiles.filter(t => t && t.ingredient === ing).length;
-    html += `
-      <button class="ft-modal__option sweep-option-btn" data-row="${row}" data-col="-1" data-type="symbol" data-val="${ing}">
-        <img src="images/symbol-${ing}-v3.png" class="ft-modal__option-icon" alt="${ing}">
-        <span style="font-size: 11px; color: var(--color-text-secondary);">(${count})</span>
-      </button>
-    `;
-  }
-
-  html += `
-      </div>
-    </div>
-  `;
-
-  const modal = document.createElement('div');
-  modal.className = 'ft-modal';
-  modal.innerHTML = `
-    <div class="ft-modal__inner">
-      <button class="ft-modal__close" aria-label="Close">${icon('close', 16)}</button>
-      ${html}
-    </div>
-  `;
-  document.body.appendChild(modal);
-
-  modal.querySelector('.ft-modal__close').addEventListener('click', () => modal.remove());
-
-  modal.querySelectorAll('.sweep-option-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const row = parseInt(btn.dataset.row);
-      const type = btn.dataset.type;
-      const val = btn.dataset.val;
-      window._gameUI.onMarketClick(row, true, val, type);
-      modal.remove();
-    });
-  });
+  // The second carrier: the gutter chip you clicked keeps the accent-deep fill,
+  // which is the only thing on the screen that says WHICH WAY you are reading
+  // the market.
+  const chip = document.querySelector(isRow
+    ? `.market-row-btn[data-row="${index}"]`
+    : `.market-col-btn[data-col="${index}"]`);
+  if (chip) chip.classList.add('ds-chip-held');
 }
 
-function showSweepOptionsForCol(gameState, col) {
-  // Defence in depth: mirrors showSweepOptionsForRow's phase guard.
-  if (gameState.gamePhase !== 'sweep' || gameState.bonusTileAvailable) return;
-  const tiles = [];
-  for (let r = 0; r < gameState.marketSize; r++) {
-    tiles.push(gameState.market[r * gameState.marketSize + col]);
+// Called by updateMarket on EVERY market re-render. The ring lives in
+// #marketContainer and #market's innerHTML is what a re-render replaces, so the
+// ring would otherwise survive its own row being redealt.
+function closeSweepOptions() {
+  if (sweepRing && sweepRing.parentNode) sweepRing.parentNode.removeChild(sweepRing);
+  sweepRing = null;
+  document.querySelectorAll('.ds-chip-held').forEach(el => el.classList.remove('ds-chip-held'));
+  if (sweepDialog && sweepDialog.parentNode) sweepDialog.parentNode.removeChild(sweepDialog);
+  sweepDialog = null;
+  sweepOpenOn = null;
+  if (sweepKeyHandler) {
+    document.removeEventListener('keydown', sweepKeyHandler);
+    sweepKeyHandler = null;
   }
+  if (sweepMoveHandler) {
+    window.removeEventListener('resize', sweepMoveHandler);
+    window.removeEventListener('scroll', sweepMoveHandler);
+    sweepMoveHandler = null;
+  }
+}
 
-  const colours = new Set();
-  const ingredients = new Set();
+// THE ANCHOR. Two lines of arithmetic against the market's own measured box:
+//
+//     top  = market.bottom + 12
+//     left = market.centre - dialog.width / 2
+//
+// DOCUMENT coordinates rather than viewport ones, because the dialog belongs to
+// the market: it has to travel with it under scroll and must not slide about
+// when somebody resizes the window. The market cannot be covered by
+// construction - the dialog's first pixel is twelve below the market's last.
+//
+// THE CLAMP IS A GUARD, NOT A BEHAVIOUR. It does not fire at any width from 1280
+// to 2400; it exists so that a band nobody has measured cannot push the dialog
+// off the page in silence.
+//
+// Below 1150 the dialog is `position: fixed` and centres itself in CSS, so this
+// writes nothing: there is no anchor there yet, and stage 6's bottom sheet is
+// what fills that band.
+function placeSweepDialog() {
+  if (!sweepDialog) return;
+  if (!window.matchMedia('(min-width: 1150px)').matches) return;
+  const container = document.getElementById('marketContainer');
+  if (!container) return;
+
+  const gap = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--ds-gap')) || 12;
+  const box = container.getBoundingClientRect();
+  const width = sweepDialog.offsetWidth;
+  const wanted = Math.round(box.left + window.scrollX + box.width / 2 - width / 2);
+  const docWidth = document.documentElement.clientWidth;
+  const left = Math.min(Math.max(wanted, 16), Math.max(16, docWidth - 16 - width));
+
+  sweepDialog.style.left = `${left}px`;
+  sweepDialog.style.top = `${Math.round(box.bottom + window.scrollY + gap)}px`;
+}
+
+// The two axes are PARTITIONS OF THE SAME LINE, which is the fact that makes
+// decision 10 fit: however many options a line offers, the number of tiles drawn
+// is at most twice the line length, and a line is at most five. Ten options
+// means ten one-tile options, not ten five-tile ones.
+//
+// THE ORDER IS THE ORDER THE TILES SIT IN THE LINE, which is a Map's own
+// insertion order and is exactly what the two Sets this replaced produced. It is
+// kept rather than swapped for a fixed palette order because the chips are
+// pictures of a specific row: reading them left to right in the dialog then
+// walks the row left to right on the board, and a fixed palette order would make
+// the fourth chip point at the first tile. (The prototype's builder sorts by
+// palette; nothing in the plan or the ticket asks for it, and the shipped order
+// is the one a player has already learned.)
+function sweepOptionsFor(tiles) {
+  const byColour = new Map();
+  const byIngredient = new Map();
   for (const tile of tiles) {
-    if (tile) {
-      colours.add(tile.colour);
-      ingredients.add(tile.ingredient);
-    }
+    if (!tile) continue;
+    if (!byColour.has(tile.colour)) byColour.set(tile.colour, []);
+    if (!byIngredient.has(tile.ingredient)) byIngredient.set(tile.ingredient, []);
+    byColour.get(tile.colour).push(tile);
+    byIngredient.get(tile.ingredient).push(tile);
+  }
+  return {
+    colour: [...byColour].map(([value, ts]) => ({ type: 'colour', value, tiles: ts })),
+    symbol: [...byIngredient].map(([value, ts]) => ({ type: 'symbol', value, tiles: ts })),
+  };
+}
+
+function sweepOptionHTML(option, index, isRow) {
+  const count = option.tiles.length;
+  const inner = option.tiles.map(tile => `
+        <span class="ds-tile ${getColourClass(tile.colour)}">
+          <img src="images/symbol-${tile.ingredient}-v3.png" class="ds-tile__icon" alt="">
+        </span>`).join('');
+
+  // THE ACCESSIBLE NAME IS WHERE THE WORDS WENT. No icon and no painted object
+  // is ever the accessible name of anything, and the chip's face carries no
+  // colour name, no ingredient name and no count because the tiles say all
+  // three: a colour chip is monochrome, an ingredient chip is mono-silhouette,
+  // and the count is how many tiles are in it.
+  const label = `Take the ${count} ${option.value} tile${count === 1 ? '' : 's'}`;
+
+  return `
+      <button class="ds-opt" type="button" data-type="${option.type}" data-val="${option.value}"
+              data-index="${index}" data-isrow="${isRow ? 1 : 0}" aria-label="${label}">${inner}
+      </button>`;
+}
+
+function showSweepOptions(gameState, index, isRow) {
+  // Defence in depth: never offer sweep choices outside a live human sweep phase
+  // (onMarketClick would silently drop them, which reads as a dead UI).
+  if (gameState.gamePhase !== 'sweep' || gameState.bonusTileAvailable) return;
+
+  // The same chip again closes it. One of the four ways out, and the one a
+  // player finds without being told.
+  const wasOpenOnThisLine = sweepOpenOn && sweepOpenOn.index === index && sweepOpenOn.isRow === isRow;
+  closeSweepOptions();
+  if (wasOpenOnThisLine) return;
+
+  const n = gameState.marketSize;
+  const tiles = [];
+  for (let j = 0; j < n; j++) {
+    tiles.push(isRow ? gameState.market[index * n + j] : gameState.market[j * n + index]);
   }
 
-  const colLabels = ['A', 'B', 'C', 'D', 'E', 'F'].slice(0, gameState.marketSize);
-  let html = `
-    <div class="ft-modal__title">
-      <h2>Column ${colLabels[col]}</h2>
-      <p style="color: var(--color-text-secondary); margin: var(--spacing-sm) 0 0 0;">Select by colour or ingredient</p>
+  const options = sweepOptionsFor(tiles);
+  const title = isRow ? `Sweep row ${index + 1}` : `Sweep column ${COLUMN_LABELS[index]}`;
+
+  // COINCIDENT OPTIONS ARE BOTH SHOWN (decision 28). Nearly seven market lines in
+  // ten carry a colour option that takes exactly the same tiles as an ingredient
+  // option, so at the extreme the dialog shows the same five tiles twice. The
+  // duplication is the teaching moment - it is where a player learns that either
+  // declaration is legal and takes the same tiles - and deduplicating would also
+  // stop the engine recording which axis the player meant.
+  const dialog = document.createElement('div');
+  dialog.className = 'ds-dialog';
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-label', title);
+  dialog.innerHTML = `
+    <div class="ds-dialog__chrome">
+      <h2 class="ds-dialog__title">${title}</h2>
+      <button class="ds-dialog__close" type="button">Close</button>
     </div>
-
-    <div class="ft-modal__section">
-      <div class="ft-modal__section-title">Colours</div>
-      <div class="ft-modal__options">
-  `;
-
-  for (const colour of colours) {
-    const count = tiles.filter(t => t && t.colour === colour).length;
-    html += `
-      <button class="ft-modal__option sweep-option-btn" data-row="-1" data-col="${col}" data-type="colour" data-val="${colour}">
-        <div class="ft-modal__option-colour ${getColourClass(colour)}"></div>
-        <span style="font-weight: 600;">${colour}</span>
-        <span style="font-size: 11px; color: var(--color-text-secondary);">(${count})</span>
-      </button>
-    `;
-  }
-
-  html += `
+    <div class="ds-dialog__body">
+      <div class="ds-group">
+        <div class="ds-group__label">By colour</div>
+        <div class="ds-options">${options.colour.map(o => sweepOptionHTML(o, index, isRow)).join('')}</div>
+      </div>
+      <div class="ds-group">
+        <div class="ds-group__label">By ingredient</div>
+        <div class="ds-options">${options.symbol.map(o => sweepOptionHTML(o, index, isRow)).join('')}</div>
       </div>
     </div>
-
-    <div class="ft-modal__section">
-      <div class="ft-modal__section-title">Ingredients</div>
-      <div class="ft-modal__options">
   `;
+  document.body.appendChild(dialog);
 
-  for (const ing of ingredients) {
-    const count = tiles.filter(t => t && t.ingredient === ing).length;
-    html += `
-      <button class="ft-modal__option sweep-option-btn" data-row="-1" data-col="${col}" data-type="symbol" data-val="${ing}">
-        <img src="images/symbol-${ing}-v3.png" class="ft-modal__option-icon" alt="${ing}">
-        <span style="font-size: 11px; color: var(--color-text-secondary);">(${count})</span>
-      </button>
-    `;
-  }
+  sweepDialog = dialog;
+  sweepOpenOn = { index, isRow };
+  placeSweepDialog();
+  drawSweepRing(gameState, index, isRow);
 
-  html += `
-      </div>
-    </div>
-  `;
+  dialog.querySelector('.ds-dialog__close').addEventListener('click', () => closeSweepOptions());
 
-  const modal = document.createElement('div');
-  modal.className = 'ft-modal';
-  modal.innerHTML = `
-    <div class="ft-modal__inner">
-      <button class="ft-modal__close" aria-label="Close">${icon('close', 16)}</button>
-      ${html}
-    </div>
-  `;
-  document.body.appendChild(modal);
-
-  modal.querySelector('.ft-modal__close').addEventListener('click', () => modal.remove());
-
-  modal.querySelectorAll('.sweep-option-btn').forEach(btn => {
+  dialog.querySelectorAll('.ds-opt').forEach(btn => {
     btn.addEventListener('click', () => {
-      const col = parseInt(btn.dataset.col);
-      const type = btn.dataset.type;
-      const val = btn.dataset.val;
-      window._gameUI.onMarketClick(col, false, val, type);
-      modal.remove();
+      const line = parseInt(btn.dataset.index);
+      const asRow = btn.dataset.isrow === '1';
+      // The declaration path is the shipped one, unchanged: the option carries
+      // its four attributes and calls onMarketClick with them.
+      closeSweepOptions();
+      window._gameUI.onMarketClick(line, asRow, btn.dataset.val, btn.dataset.type);
     });
   });
+
+  sweepKeyHandler = e => { if (e.key === 'Escape') closeSweepOptions(); };
+  document.addEventListener('keydown', sweepKeyHandler);
+
+  // Re-anchored rather than re-rendered. The dialog is in document coordinates,
+  // so a scroll moves nothing; a RESIZE does, because the market's column can
+  // change width, and a band boundary crossed with the dialog open would leave
+  // it hanging off nothing.
+  sweepMoveHandler = () => placeSweepDialog();
+  window.addEventListener('resize', sweepMoveHandler);
+  window.addEventListener('scroll', sweepMoveHandler);
 }
 
 // Why a further claim is refused, in the exact words the player needs. Shared by
@@ -2311,13 +2421,26 @@ function updatePlayerBoards(gameState) {
 }
 
 // The "On order" slot shows a player's face-up reserved cards beside their
-// board, each tagged with a teacup badge so they read as ordered-not-yet-served.
-// There is no cap on how many a player may hold (1 Aug rule change), so this
-// renders a row of cards, oldest first, that wraps.
+// board. There is no cap on how many a player may hold (1 Aug rule change).
 // During the OWNER's claim phase, any reserved card whose pattern is on their
 // board becomes claimable exactly like a market card (click → showRemovalUI,
 // which claim() then resolves from the reserve). The container is created lazily
 // so it costs nothing until a card is actually reserved.
+//
+// DEFECT 5, DEAN'S DECISION 2. This used to render a row of full-size cards that
+// WRAPPED, which cost 171px of column height per reserve with no cap on
+// reserves: in the L band's 226px rail column exactly one card fits per row, so
+// an opponent with one reserve measured 546px against 363, and the only
+// unbounded term in the desktop layout sat in the one column that must never
+// grow taller than the centre.
+//
+// IT IS AN OVERLAPPED FAN NOW, CAPPED AT ONE CARD'S HEIGHT. The cards sit in a
+// single row at a 24px step, so the top card is fully visible, the ones behind
+// show a 24px strip apiece, and A FAN OF THREE IS EXACTLY AS TALL AS A FAN OF
+// ONE. Past three the remainder becomes a +N badge, which caps the width too.
+// The phone is not affected: it shows a count on the collapsed row already.
+const ON_ORDER_FANNED = 3;
+
 function renderOnOrderSlot(gameState, player, playerIdx, boardEl) {
   let slotEl = document.getElementById(`onOrder${playerIdx + 1}`);
 
@@ -2336,18 +2459,34 @@ function renderOnOrderSlot(gameState, player, playerIdx, boardEl) {
   const isCurrentPlayer = playerIdx === gameState.currentPlayerIndex;
   const count = player.reservedCards.length;
 
-  const cardsHTML = player.reservedCards.map(card => {
-    const isClaimable = isCurrentPlayer && player.isHuman && gameState.gamePhase === 'claim'
-      && getPatternMatches(player.board, card.pattern).length > 0;
-    return cardSpriteHTML(card, 150, {
-      extraClass: isClaimable ? 'ft-card--claimable' : '',
+  const claimableOf = card => isCurrentPlayer && player.isHuman
+    && gameState.gamePhase === 'claim'
+    && getPatternMatches(player.board, card.pattern).length > 0;
+
+  // A CARD PAST THE THIRD IS FOLDED AWAY - UNLESS IT CAN BE CLAIMED RIGHT NOW.
+  // The cap is a height and width budget, not a rule of the game: a reserved
+  // card is claimed by clicking it, so folding a claimable one away would put a
+  // legal move out of reach. The exemption fires only in the owner's claim step
+  // with four or more reserves, and each extra card it lets through costs 24px
+  // of width in a column with 70 to spare.
+  const folded = player.reservedCards.map((card, i) => i >= ON_ORDER_FANNED && !claimableOf(card));
+  const hidden = folded.filter(Boolean).length;
+
+  const cardsHTML = player.reservedCards.map((card, i) => {
+    const isClaimable = claimableOf(card);
+    return cardSpriteHTML(card, 'var(--fan-card-h)', {
+      extraClass: [
+        isClaimable ? 'ft-card--claimable' : '',
+        folded[i] ? 'ft-on-order__card--folded' : '',
+      ].filter(Boolean).join(' '),
       clickable: isClaimable,
     });
   }).join('');
 
   slotEl.innerHTML = `
     <div class="ft-on-order__label">On order${count > 1 ? ` (${count})` : ''}</div>
-    <div class="ft-on-order__cards">${cardsHTML}</div>
+    <div class="ft-on-order__cards">${cardsHTML}${hidden > 0
+      ? `<span class="ft-on-order__more" aria-hidden="true">+${hidden}</span>` : ''}</div>
   `;
 
   // Wire each card by position - cardSpriteHTML emits them in reserve order.

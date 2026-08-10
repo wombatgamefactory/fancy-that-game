@@ -244,11 +244,17 @@
      deeper stop for the new base, so the hover stops being a colour change and
      the button's hover feedback is the --shadow-card lift it already carries.
 
-     Defined here, wired in stage 4, so this stage stays invisible. It is an
-     alias rather than a new hex on purpose: inventing a deeper brown would be
-     a design act and this stage executes rather than designs. Recorded as a
-     plan defect in the stage 3 ticket. */
-  --accent-deep-hover: var(--accent-deep);
+     Defined by stage 3 as an alias, wired by stage 4, and GIVEN ITS VALUE HERE
+     by stage 5 - Dean's decision 4 of 10/08/2026, taken while stage 4 was
+     already running, which is why the three land in three different stages.
+
+     #7A4530 IS THE SAME HUE ONE STOP DEEPER than the #8E5239 base, so hover
+     reinforces the contrast fix rather than eroding it as the old #A0624A did.
+     Measured on the computed value: white on #7A4530 is 7.41:1 against the
+     base's 6.15:1 and the retired hover's 4.84:1. The button therefore darkens
+     under the pointer, which is the direction every other lift on the page
+     already goes. */
+  --accent-deep-hover: #7A4530;
 
   /* 8.5. --rule keeps exactly two jobs: separating rows inside a table, and
      the single edge where a persistent strip meets content. Every panel border
@@ -2362,10 +2368,13 @@ a .ft-icon {
 .ft-tile.ft-colour.ft-colour-green,
 .ft-tile.ft-colour.ft-colour-blue,
 .ft-tile.ft-colour.ft-colour-orange,
-.ft-stand__plate.ft-colour,
-.ft-modal__option-colour.ft-colour {
+.ft-stand__plate.ft-colour {
   background-color: var(--mid);
 }
+/* .ft-modal__option-colour.ft-colour came off this list with the swatch it
+   painted. Stage 5 replaced the sweep dialog's colour SWATCH with the actual
+   tiles the sweep would take (decision 10), which are .ds-tile and take their
+   field from --lt / --mid / --dk exactly as .ft-tile does. */
 
 /* The touch-hygiene block that neutralises :hover lives at the VERY END of this
    file - see "Touch hygiene (plan B2)". It has to, because a media query adds no
@@ -3007,11 +3016,23 @@ a .ft-icon {
   background: transparent;
 }
 
-/* Cards a player may not claim again this turn: dimmed, but still clickable so
-   the click can be answered with the rule (see showCardRowNotice). */
+/* Cards a player may not claim again this turn. STILL CLICKABLE, so the click
+   can be answered with the rule (see showCardRowNotice), and NO LONGER DIMMED.
+
+   STAGE 5, THE FIRST OF THE CARD ROW'S THREE DIMS. `opacity: .55` plus
+   `grayscale(.35)` is the exact thing plan section 6.5 forbids at every band:
+   emphasis is additive, and nothing is ever dimmed to say that something else
+   is the step. Stage 4 applied that ruling to the ten tile states and left the
+   card row for this ticket, because the ticket owns the card row.
+
+   What says it instead is what was always saying it: .ft-card--claimable adds a
+   gold ring and a pulse to a card you MAY take, so a card you may not is a card
+   with no ring. The cursor and the notice carry the rest, and both are prose
+   rather than paint. The rule is kept as a hook rather than deleted, because
+   board.js adds the class at two sites and a class with no rule reads as a
+   mistake to the next session. */
 .ft-card--claim-used {
-  opacity: 0.55;
-  filter: grayscale(0.35);
+  cursor: not-allowed;
 }
 
 /* A card is NOT clickable by default, and the cursor must say so.
@@ -3071,10 +3092,12 @@ a .ft-icon {
   border-color: var(--color-accent-gold);
 }
 
-.ft-card--unavailable {
-  opacity: 0.5;
-  pointer-events: none;
-}
+/* .ft-card--unavailable DELETED BY STAGE 5. The second of the card row's three
+   dims, and the only one of the three that was never applied: a grep of src/
+   and index.html finds no site that adds the class, so it has been a dead
+   `opacity: .5` waiting for a caller since before this map opened. It is
+   deleted rather than rewritten, because the ruling it breaks would have to be
+   answered before it could be used and there is nothing to answer it for. */
 
 @keyframes pulse-gold-strong {
   0%, 100% {
@@ -3233,64 +3256,11 @@ a .ft-icon {
   padding-right: 52px;
 }
 
-.ft-modal__section {
-  margin-bottom: var(--spacing-xl);
-}
-
-.ft-modal__section-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: var(--spacing-md);
-}
-
-.ft-modal__options {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--spacing-sm);
-}
-
-.ft-modal__option {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-md);
-  border: 2px solid var(--color-border);
-  background: var(--color-cream);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-text-primary);
-}
-
-.ft-modal__option:hover {
-  border-color: var(--color-accent);
-  background: white;
-}
-
-.ft-modal__option.active {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: white;
-}
-
-.ft-modal__option-icon {
-  width: 40px;
-  height: 40px;
-  object-fit: contain;
-}
-
-.ft-modal__option-colour {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-md);
-  border: 2px solid rgba(0, 0, 0, 0.1);
-}
+/* .ft-modal__section, __section-title, __options, __option, __option-icon and
+   __option-colour DELETED BY STAGE 5. All six existed for the two sweep dialogs
+   and nothing else; the rules modal (board.js:136) uses only .ft-modal, __inner,
+   __close and __title, and it is untouched by this stage. The sweep dialog is
+   .ds-dialog below. */
 
 @keyframes fade-in {
   from {
@@ -3298,6 +3268,295 @@ a .ft-icon {
   }
   to {
     opacity: 1;
+  }
+}
+
+/* ===========================================================================
+   THE SWEEP DIALOG (plan section 6.3, defect 3, stage 5)
+
+   ONE ANCHOR AT EVERY DESKTOP WIDTH: the dialog hangs under the market, centred
+   on it, twelve pixels below its bottom edge, in DOCUMENT coordinates so it
+   travels with the market under scroll and does not slide about on resize. It
+   cannot cover the market, because its first pixel is twelve below the market's
+   last one. showSweepOptions in board.js writes `left` and `top` from
+   #marketContainer's own measured box; what this file owns is the box.
+
+   WHY IT IS NOT .ft-modal ANY MORE - DEFECT 3, AND IT IS WORSE THAN THE DEFECT
+   LIST RECORDED. .ft-modal's scrim is rgba(61, 43, 31, .5) across the whole
+   viewport at z-index 1000, and measured it covers THE WHOLE MARKET at every
+   desktop width - 294x294 at 1280, 284x276 at 1440 and 1920, 344x336 at 2400.
+   That is the purest possible breach of the one ruling that holds at every band:
+   emphasis is additive and nothing is ever dimmed to say that something else is
+   the step. It dimmed the very thing the dialog was asking about.
+
+   AND IT ATE THE COMMONEST CANCEL ROUTE. Backing out of a sweep is "wrong row,
+   click a different chip", and that only works if there is nothing over the
+   market to eat the click. With the scrim in front, the first click closed the
+   dialog and the second opened the right row.
+
+   .ft-modal STAYS EXACTLY AS IT IS for the rules modal (board.js:136), which is
+   genuinely modal: a document you read is the one thing on the screen while you
+   read it.
+
+   AN ANCHOR IS NOT A LAYOUT, so the desktop half of this block carries a FLOOR
+   (`min-width: 1150px`) rather than a range. Nothing in the band table moves,
+   and the dialog is out of flow and body-appended, so it contributes nothing to
+   any column's max-content width and nothing to scrollHeight.
+   =========================================================================== */
+
+:root {
+  /* The gap between the market's bottom edge and the dialog's top edge. 12px is
+     the L band's own column gap, so the dialog is spaced off the market the way
+     the three columns are spaced off each other. */
+  --ds-gap: 12px;
+
+  /* THE WIDTH IS THE CONTENT BOUND PLUS FOUR PIXELS, AND BOTH TERMS ARE
+     MEASURED. A group of options is `50p + 10k - 4` pixels wide at the 48px
+     desktop tile, where p is the tiles in the line and k the options in that
+     axis, both capped at five - a 48px tile, a 2px gap inside a chip, 4px of
+     chip padding and a 4px gap between chips. So the widest group any line can
+     produce is 296px at p=5 k=5, and 296 + 24 of padding a side = 344 is the
+     smallest box that holds it.
+
+     344 IS NOT THE BOX, BECAUSE 296 IN 296 HAS NO SLACK. The content box is 300
+     and the dialog is 348. The four pixels are bought at the price of two pixels
+     of clearance from the clocks column, and what the width may NOT be is a
+     round number: a 320px content box is 368 wide and, centred under the market
+     at 1440, its trailing edge lands inside .ft-centre-meters. */
+  --ds-width: 348px;
+  --ds-pad: 24px;
+
+  /* The dialog's tile. 48 above 1149, and 44 below it, which is the same rung
+     the band the dialog is open in already draws its own board at. Written as
+     its own token rather than by re-declaring --tile-size, because a var()
+     inside a custom property is substituted where it is DECLARED and
+     --board-col-width would have to be re-declared with it. */
+  --ds-tile: 44px;
+}
+
+.ds-dialog {
+  box-sizing: border-box;
+  /* BELOW 1150 there is no anchor yet - stage 6 brings the bottom sheet - so the
+     dialog centres on the viewport, which is what the old modal did, minus the
+     scrim. `width: min()` rather than a bare 348, because 348 does not fit a
+     360px screen with a margin either side. */
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(var(--ds-width), calc(100vw - 32px));
+  z-index: 1000;
+  background: var(--surface);
+  border: 0;
+  border-radius: var(--radius-lg);
+  /* One shadow. Section 8.5 allows a sheet exactly one, because there it says
+     "above the board", and a dialog hanging off the market makes the same
+     claim. */
+  box-shadow: 0 8px 26px -10px rgba(var(--shadow-ink), 0.55);
+  color: var(--ink);
+  animation: fade-in 0.15s ease;
+}
+
+.ds-dialog__chrome {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: 14px var(--ds-pad) 6px;
+}
+
+/* --type-title, and this is the only place it is used. */
+.ds-dialog__title {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: var(--type-title);
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Labelled Close and not Done, because nothing has been done. 44x44 is a touch
+   floor and this dialog opens at mouse widths too, but a 28px hit area on the
+   one control that undoes a mis-click is no better with a pointer than with a
+   finger, and the room is free. */
+.ds-dialog__close {
+  flex: 0 0 auto;
+  min-width: 64px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.ds-dialog__close:hover {
+  border-color: var(--accent-deep);
+  color: var(--accent-deep);
+}
+
+.ds-dialog__body {
+  padding: 0 var(--ds-pad) 18px;
+  /* IT DOES NOT SCROLL, AT ANY WIDTH. That is the constraint the 300px content
+     box exists to keep. */
+  overflow: visible;
+}
+
+/* TWO LABELLED GROUPS IN ONE LIST, STACKED. Not tabs - they would hide half the
+   options to save nothing - and not merged, because a one-tile chip is the same
+   picture under either heading and the single-tile chip is exactly what the
+   worst case is made of. Coincident options are both shown (decision 28): the
+   duplication is where a player learns that either declaration is legal and
+   takes the same tiles. */
+.ds-group + .ds-group {
+  margin-top: var(--spacing-sm);
+}
+
+/* --type-micro. Sentence case, not the one surviving uppercase role, which is a
+   printed label on a painted component. */
+.ds-group__label {
+  font-size: var(--type-micro);
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--ink-soft);
+  margin-bottom: var(--spacing-xs);
+}
+
+/* ONE LINE PER AXIS, ALWAYS, AND IT IS PROVABLE - see --ds-width. `flex-wrap` is
+   set anyway, because a wrap that can never fire costs nothing and a dialog that
+   overflows costs everything. */
+.ds-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  align-items: flex-start;
+}
+
+/* AN OPTION IS A SLICE OF THE MARKET'S OWN RECESS - same fill, same near wall,
+   same 2px gaps, same rims - so the thing in the dialog and the thing in the row
+   are visibly the same object, which is the whole of decision 10.
+
+   No colour name, no ingredient name, no count. The tiles carry all three: a
+   colour chip is monochrome, an ingredient chip is mono-silhouette, and the
+   count is how many tiles are in it. The words survive as the accessible name
+   and nowhere else. */
+.ds-opt {
+  position: relative;
+  display: flex;
+  gap: var(--tile-gap);
+  padding: var(--spacing-xs);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--recess);
+  box-shadow:
+    inset 0 2px 3px -1px rgba(var(--shadow-ink), 0.30),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.40),
+    2px 3px 9px -3px rgba(var(--shadow-ink), 0.30);
+  cursor: pointer;
+  touch-action: manipulation;
+  /* 44 + 4 + 4 = 52 on both axes for a one-tile option, so the smallest option
+     in the system clears the 44px floor by 8 at every width. */
+  min-width: 52px;
+  min-height: 52px;
+}
+
+/* State drawn AROUND, never into. An outline costs zero layout, so pressing a
+   chip cannot move its neighbours. */
+.ds-opt:focus-visible,
+.ds-opt:active {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .ds-opt:hover {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+/* The tile inside a chip. The same layers a market tile carries - the 1px rim
+   off its own dark stop, the flat local colour, the inner edge light and shade -
+   sized from --ds-tile rather than --tile-size so it is 48 at every desktop
+   width including XL, where the market's own tile is 60.
+
+   background-COLOR: var(--mid), the way .ft-tile.ft-colour.ft-colour-<name>
+   does it, and NOT `background: var(--tile-field)`. --tile-field is declared on
+   :root and its value contains var(--lt) / var(--mid) / var(--dk), which are
+   declared on the TILE - and a var() inside a custom property is substituted
+   where the custom property is DECLARED. Measured on the shipped build:
+   --tile-field computes to the empty string at :root and on every tile, so
+   background-image is `none` and a market tile is a flat --mid fill today. This
+   chip therefore draws what the market draws. See the stage 5 ticket's
+   Resolution - it is stage 4's to answer, not this stage's to quietly diverge
+   from, and background-image below follows the token if it is ever repaired. */
+.ds-tile {
+  width: var(--ds-tile);
+  height: var(--ds-tile);
+  border: 1px solid var(--dk);
+  border-radius: calc(var(--ds-tile) * 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--mid);
+  background-image: var(--tile-field);
+  box-shadow: var(--form-edges);
+  flex: 0 0 auto;
+}
+
+.ds-tile__icon {
+  width: 60%;
+  height: 60%;
+  object-fit: contain;
+  display: block;
+}
+
+/* THE ROW RING. One absolutely positioned element appended to #marketContainer
+   and removed on every market re-render. An outline sits outside the box model,
+   so the ring costs ZERO layout at 44, 48 and 60 alike and the market grid does
+   not move by a pixel when it appears. NOTHING IS DIMMED and nothing is lifted:
+   the only wash that would read as "not this one" is the slate wash that means
+   back in the bag, and a lifted tile means in hand. */
+.ds-rowring {
+  position: absolute;
+  pointer-events: none;
+  border-radius: var(--radius-sm);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  z-index: 2;
+}
+
+/* The gutter chip you clicked stays pressed. Second carrier, and the one that
+   says WHICH way you are reading the market. */
+.ft-btn--sweep.ds-chip-held {
+  background: var(--accent-deep);
+  border-color: var(--accent-deep);
+  color: #FFFFFF;
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+@media (min-width: 1150px) {
+  :root {
+    --ds-tile: 48px;
+  }
+
+  /* THE ANCHOR. Document coordinates, so the dialog belongs to the market rather
+     than to the window: it travels with it under scroll and does not slide about
+     when somebody resizes. board.js writes left and top; all this rule does is
+     take the box out of the viewport's frame and put it in the page's. */
+  .ds-dialog {
+    position: absolute;
+    transform: none;
+    left: 0;
+    top: 0;
+    width: var(--ds-width);
   }
 }
 
@@ -4246,13 +4505,20 @@ select:focus {
   box-shadow: 0 0 12px rgba(212, 175, 55, 0.55);
 }
 
-/* TAKEN - struck through, greyed, and carrying the name of whoever took it. The
+/* TAKEN - struck through, dashed, and carrying the name of whoever took it. The
    name is the point: "the player on my left took the two-lemon one" is what makes
    losing a race feel personal rather than arbitrary, and it is the one thing the
-   Freshness panel could never honestly show. */
+   Freshness panel could never honestly show.
+
+   STAGE 5, THE THIRD OF THE CARD ROW'S THREE DIMS. `opacity: .42` and
+   `grayscale(1)` come off; the STRIKE and the DASHED BORDER stay, and they are
+   what was carrying the state anyway. That is the same reasoning ticket 09 used
+   for back-in-the-bag: a strike is a SHAPE, so it survives desaturation and it
+   survives a fade nobody applied, whereas a grey card is only distinguishable
+   from a live one while the two are side by side. It also stops the card's
+   printed ingredient symbols being repainted to show a state that belongs to
+   the card rather than to the ingredient. */
 .ft-menu--taken {
-  opacity: 0.42;
-  filter: grayscale(1);
   border-style: dashed;
 }
 
@@ -4483,8 +4749,33 @@ select:focus {
   box-shadow: 0 6px 16px rgba(193, 123, 92, 0.45);
 }
 
-/* "On order" reserved-card slot in a player panel. */
+/* "On order" reserved-card slot in a player panel.
+
+   DEFECT 5, AND IT IS DEAN'S DECISION 2 OF 10/08/2026. Until stage 5 this was a
+   wrapping ROW of full 150px cards, which cost 171px of column height per
+   reserved card with no cap on reserves - the only unbounded term in the whole
+   desktop layout, and the one thing that could make the L band's new opponent
+   rail taller than the centre column it sits beside. In a 226px rail column
+   exactly one card fits per row, so every reserve added a whole row, for ever.
+
+   IT BECOMES AN OVERLAPPED FAN, CAPPED AT ONE CARD'S HEIGHT. The cards sit in a
+   single row with each one drawn 24px along from the last, so the top card is
+   fully visible and the ones behind show a 24px strip apiece - the way a hand of
+   cards is held. Past three the remaining reserves become a +N badge. The rail's
+   height is then a constant whatever a player has ordered, and desktop keeps the
+   picture instead of falling back to the phone's count.
+
+   THE 24px STRIP IS A REAL TARGET, not just a peek: it is 24 x 150, which clears
+   the 44px floor on its long axis and is clickable for the whole of it. That is
+   what lets a covered card still be claimed. */
 .ft-on-order {
+  /* The fan's two numbers, declared here so the container and the cards cannot
+     disagree about them. The card's WIDTH is derived rather than typed:
+     .card-market-sprite has `aspect-ratio: 0.72155`, so a 150px card is 108.2px
+     wide and the negative margin that produces the overlap has to be written
+     against the same figure. */
+  --fan-card-h: 150px;
+  --fan-step: 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -4492,12 +4783,52 @@ select:focus {
   margin-top: var(--spacing-md);
 }
 
-/* A reserve is uncapped, so the on-order cards wrap into rows. */
 .ft-on-order__cards {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
-  gap: var(--spacing-sm);
+  align-items: flex-start;
+  /* A definite height, so a fan of three is exactly as tall as a fan of one and
+     nothing downstream has to trust that the overlap worked. */
+  height: var(--fan-card-h);
+}
+
+/* THE OVERLAP. Every card after the first is pulled back over its predecessor
+   until only --fan-step of it shows. Later siblings paint over earlier ones, and
+   the cards are emitted oldest first, so the newest order is the one on top and
+   fully visible. */
+.ft-on-order__cards > .card-market-sprite + .card-market-sprite {
+  margin-left: calc(var(--fan-step) - var(--fan-card-h) * 0.72155);
+}
+
+/* A reserve past the third is not drawn. It is counted instead - see
+   .ft-on-order__more - which is what caps the fan's WIDTH at
+   108.2 + 2 x 24 = 156px, comfortably inside the rail's 226px column.
+   board.js exempts a card that can be claimed right now, so a covered order can
+   never become an unreachable one. */
+.ft-on-order__cards > .card-market-sprite.ft-on-order__card--folded {
+  display: none;
+}
+
+/* The +N. ABSOLUTELY POSITIONED, so it costs the fan no width at all - the
+   standing rule from decision 18 that nothing in a seat may add to its
+   max-content width applies here for the same reason it applies to seat colour.
+   It sits on the top card's leading corner, over the card rather than beside
+   it, because that is the one part of the fan that is never a click target. */
+.ft-on-order__more {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 3;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-deep);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+  pointer-events: none;
 }
 
 .ft-on-order__label {
@@ -4726,19 +5057,197 @@ select:focus {
   }
 }
 
-/* The strip is INERT above the M band: its seats are promoted back out and
-   placed by .ft-seat--2/3/4 exactly as they were before the wrapper existed. */
+/* The strip is INERT above the L band: its seats are promoted back out and
+   placed by .ft-seat--2/3/4 exactly as they were before the wrapper existed.
+
+   THAT IS EXACTLY WHY PLAYER 2 LANDS UNDER PLAYER 1 at L today. `contents`
+   promotes the three opponents back out to be placed by their own classes, and
+   .ft-seat--2 says column 1, row 2 - which was right when all four seats were
+   the same size and is a bug of omission the moment they are not. The L block
+   below switches this wrapper ON rather than building one, which is what keeps
+   the rework to CSS with nothing re-parented. */
 .ft-opp-strip {
   display: contents;
 }
 
 /* THE ONE-LINE STAND SUMMARY and the cupcake count on an opponent's total.
    Both are rendered for every opponent at every width and hidden here, because
-   above the M band the full stand and the cupcake panel are still on show and
-   these would be duplicates. Switched on in the M band below. */
+   at XL the full stand and the cupcake panel are still on show and these would
+   be duplicates. Switched on in the L block below and again in the M band. */
 .ft-stand-mini,
 .ft-score-total__cupcakes {
   display: none;
+}
+
+/* THE MINI STAND'S OWN ROWS, AT FILE SCOPE BECAUSE TWO BANDS USE THEM NOW.
+   These four rules lived inside the M block until stage 5, when decision 26 gave
+   the L band's opponents the same one-line summary. They describe what the
+   summary LOOKS like rather than where it appears, and the two `display` rules
+   that decide whether it appears at all stay in their bands - which is the same
+   separation the band blocks keep everywhere else in this file. */
+.ft-stand-mini__row {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  line-height: 1.2;
+}
+
+/* A completed row is the thing worth spotting at a glance: it is an ingredient
+   that can never be plated again, by anyone, anywhere on that stand. */
+.ft-stand-mini__row--full {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.ft-stand-mini__lock {
+  width: 12px;
+  height: 12px;
+  object-fit: contain;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.ft-stand-mini__lock--empty {
+  border: 1px dashed var(--color-border);
+  border-radius: 50%;
+  opacity: 0.6;
+}
+
+/* The fifth chip's marker. It is an INTERFACE icon and the four before it are
+   painted INGREDIENT silhouettes, which is exactly right: the crumb tray is not
+   an ingredient, and the two families are meant to read differently. It keeps
+   --accent-deep rather than following the row's secondary ink, because it is a
+   chip rather than a control. Moved out of the M block with the four rules
+   above, and for the same reason: the tray chip is drawn at L too. */
+.ft-stand-mini__tray {
+  margin-right: 2px;
+}
+
+/* ===========================================================================
+   THE L BAND RESHAPED - 1400 to 2180 (plan section 6.1, stage 5)
+
+   THREE COLUMNS, ONE ROW, NO SPANNING ITEM: you, the table, and an opponent
+   rail. This is the one band whose SHAPE differs from both its neighbours, which
+   is why it is a RANGE query rather than the file's usual max-width cascade -
+   written as `max-width: 2180px` the M block would have to unpick five rules
+   rather than override two tokens.
+
+   WHAT WAS WRONG, AND IT IS A BUG OF OMISSION RATHER THAN A DESIGN. XL seats
+   four players round a table, two down each side, with the centre spanning both
+   rows. That works because at 2400 all four seats are the same width, so which
+   player sits in which slot does not matter. L inherited the arrangement and
+   broke its premise: your seat is 466px here and an opponent 226, and
+   .ft-seat--2 still parked the 226 in the 466 column, directly under the one
+   seat on the page that is not like it.
+
+   AND THE HOLE UNDER THE GOAL CARDS WAS A SPANNING ITEM OVER TWO UNEQUAL ROWS.
+   The side columns carried two stacked seats; the centre carried one column of
+   table; the difference appeared as a rectangle of nothing bounded above by the
+   cards and on both sides by a seat. EVERY GAP IN THIS FILE COULD GO TO ZERO AND
+   THE SHORTFALL WOULD REMAIN, because it is the difference between two
+   independent stacks of content. There is no row 2 here and nothing spans, so
+   the hole cannot form: three columns of unequal length ending at unequal
+   heights against the wall is ordinary page layout.
+
+   XL IS INERT BY CONSTRUCTION, NOT BY INSPECTION. Every rule in this block
+   carries the 2180 upper bound, so nothing in it can reach 2181. That is Dean's
+   decision 6 written as CSS rather than promised in a comment.
+
+   WHERE THIS BLOCK SITS IS NOT A MATTER OF TASTE. @media contributes no
+   specificity, so `.ft-opp-strip { display: contents }` forty lines above would
+   beat `.ft-opp-strip { display: flex }` here on source order alone if this
+   block were moved up. It goes after the file-scope strip rules and before the
+   touch band. The touch-hygiene block near the top of the responsive section is
+   still last relative to the hover rules it undoes; nothing here declares one.
+   =========================================================================== */
+@media (min-width: 1400px) and (max-width: 2180px) {
+  /* max-content columns rather than 1fr. A 1fr column stretches a 226px
+     opponent card across 625px of track at 1920, which is the other half of
+     what makes the shipped band look unfinished. The composition is its own
+     natural width at every point in the band and the wall shows either side -
+     a centred block, decision 27, with the discontinuity at 2181 accepted
+     rather than smoothed. */
+  .ft-game {
+    grid-template-columns: max-content var(--centre-width) max-content;
+    grid-template-rows: auto;
+    justify-content: center;
+    align-items: start;
+    /* 12, not --spacing-lg's 16. Defect 4: the shipped band needs 1416px at its
+       own lower boundary of 1400, so it overflows the band it defines. Four
+       pixels off each column gap pays for it, and THE BAND IS REPAIRED AT 1400
+       RATHER THAN STARTED AT 1416 - which is what keeps the band table
+       2181 / 1400 / 1150 / 768 a confirmation rather than a revision. */
+    column-gap: 12px;
+    row-gap: 12px;
+  }
+
+  .ft-seat--1 { grid-column: 1; grid-row: 1; }
+  .ft-centre  { grid-column: 2; grid-row: 1; }
+
+  /* THE RAIL. The wrapper is already in the markup and NOTHING IS RE-PARENTED -
+     board.js binds its placement, claim and cupcake listeners once by
+     delegation, and a moved node loses nothing visibly and everything
+     functionally. */
+  .ft-opp-strip {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    grid-column: 3;
+    grid-row: 1;
+    align-items: stretch;
+  }
+
+  /* Inside the rail the seats are flex items, so their XL grid positions have to
+     be revoked or they fight the column - exactly as the M band already revokes
+     them for its horizontal strip. */
+  .ft-seat--2,
+  .ft-seat--3,
+  .ft-seat--4 {
+    grid-column: auto;
+    grid-row: auto;
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+
+  /* THE RAIL READS IN TURN ORDER, AND IT DOES NOT WITHOUT THIS. The markup emits
+     the seats 1, 3, 2, 4, which is what puts them round a table two-and-two in a
+     row-major grid. Stack the same four in one column and the rail reads
+     P3, P2, P4 - the one order that is neither turn order nor seating order.
+     Flex `order` rather than a markup change, for the no-re-parenting rule
+     above: ordering is the one thing flex will do that the DOM does not have
+     to. */
+  .ft-seat--2 { order: 1; }
+  .ft-seat--3 { order: 2; }
+  .ft-seat--4 { order: 3; }
+
+  /* THE PRICE OF THE RAIL (decision 26). A rail is a VERTICAL budget and the
+     shipped L opponent does not fit one: three full-detail opponents are over
+     2,000px of column and the rail would cost more than the hole it removes.
+     The full cake stand is the bulk of it, and the M band already solved this
+     and shipped the solution - the one-line .ft-stand-mini in place of the
+     stand, with the cupcake count folded onto the total line. Promoting those
+     rules into L is the entire content change in this block. XL keeps full
+     stands, so nobody on a large screen loses anything. */
+  .ft-seat--opp .ft-stand,
+  .ft-seat--opp .ft-cupcake-supply {
+    display: none;
+  }
+
+  .ft-seat--opp .ft-stand-mini {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 2px var(--spacing-xs);
+    margin-top: var(--spacing-xs);
+  }
+
+  .ft-seat--opp .ft-score-total__cupcakes {
+    display: inline;
+    margin-left: var(--spacing-sm);
+    font-weight: 500;
+  }
 }
 
 /* THE TOUCH BAND - M and below (plan B3).
@@ -4776,11 +5285,14 @@ select:focus {
    the game starts was the one screen never measured. Its difficulty buttons were
    24px tall and the player-count select 36px, on a tablet, where they are the
    only things standing between a player and a game. */
+/* .ft-modal__option and .sweep-option-btn came off this list with the two sweep
+   dialogs stage 5 replaced. Their successor, .ds-opt, carries its own 52x52
+   floor unconditionally rather than only inside the touch band, because the
+   smallest option in the system is one 44px tile plus 4px of chip padding a
+   side and that is true at every width. */
 .ft-btn,
 .ft-btn--small,
 .ft-cupcake-spend-btn,
-.ft-modal__option,
-.sweep-option-btn,
 .ft-setup__difficulty-btn,
 .ft-setup__toggle-btn,
 .ft-setup__select {
@@ -4911,44 +5423,9 @@ select:focus {
     font-weight: 500;
   }
 
-  .ft-stand-mini__row {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    font-size: 10px;
-    color: var(--color-text-secondary);
-    line-height: 1.2;
-  }
-
-  /* A completed row is the thing worth spotting at a glance: it is an ingredient
-     that can never be plated again, by anyone, anywhere on that stand. */
-  .ft-stand-mini__row--full {
-    color: var(--color-accent);
-    font-weight: 600;
-  }
-
-  .ft-stand-mini__lock {
-    width: 12px;
-    height: 12px;
-    object-fit: contain;
-    font-size: 10px;
-    line-height: 1;
-  }
-
-  .ft-stand-mini__lock--empty {
-    border: 1px dashed var(--color-border);
-    border-radius: 50%;
-    opacity: 0.6;
-  }
-
-  /* The fifth chip's marker. It is an INTERFACE icon and the four before it are
-     painted INGREDIENT silhouettes, which is exactly right: the crumb tray is
-     not an ingredient, and the two families are meant to read differently. It
-     keeps --accent-deep rather than following the row's secondary ink, because
-     it is a chip rather than a control. */
-  .ft-stand-mini__tray {
-    margin-right: 2px;
-  }
+  /* .ft-stand-mini__row, --full, __lock, __lock--empty and __tray MOVED OUT OF
+     THIS BLOCK to file scope by stage 5, because two bands render the summary
+     now. They are unchanged; see the note beside them above the L block. */
 
   .ft-seat--opp .ft-seat__score-col {
     width: auto;
