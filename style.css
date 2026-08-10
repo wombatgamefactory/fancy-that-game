@@ -1660,7 +1660,20 @@ a .ft-icon {
    the game, which is every frame the layout harness measures. It is not
    first-run copy: it appears on every claim of every game, and a veteran reads
    it as the label on a choice they are making right now. */
+/* DEFECT 17's LINE, AND WHERE IT LIVES (stage 1 wrote it, stage 7 moved it).
+   The first tile plated on a row locks that row to that ingredient for the whole
+   game - the one irreversible choice in the game, and until stage 1 the only
+   place that said so was the rules modal and a `title` a phone cannot render.
+
+   IT IS OFF BY DEFAULT AND ON ONLY INSIDE THE STAND SHEET. Stage 1 could afford
+   it only in the destination step, where it cost 33px of canvas, because outside
+   stage 7's model there was nowhere free to put it. Plan section 11.1: teaching
+   goes in a sheet, where it is free, and never on the canvas, where it is not.
+   Below 1149 the score panel IS the stand sheet - position: fixed, out of the
+   page's flow - so the line is permanent there at zero page height, and the 33px
+   comes back at every band. Above the band the rules modal carries it. */
 .ft-stand__lock-note {
+  display: none;
   margin-top: var(--spacing-xs);
   padding: 0 var(--spacing-xs);
   font-size: 10px;
@@ -5465,7 +5478,11 @@ select:focus {
      background-image, so the surface leaves and the flat --mid background-color
      stays exactly where it was. Surface goes first, then form, never the
      silhouette - plan section 8.2. */
-  .ft-seat--opp .ft-colour {
+  /* THE :not() IS STAGE 7's (plan section 4.5). One opponent at a time leaves the
+     collapsed strip and becomes a tall sheet with their board at 44px, which is a
+     rung where the field paints; excluding the open seat here is what lets it,
+     without a second copy of the recipe that could drift from .ft-colour's. */
+  .ft-seat--opp:not([data-pm-open="1"]) .ft-colour {
     --tile-field: none;
   }
 
@@ -5702,8 +5719,10 @@ select:focus {
 
   /* The field is already off from the 24px rung above, which this query is
      always inside; restated so the 14px rung reads as a complete rung and a
-     later edit to the M band cannot switch the field back on at 14 by accident. */
-  .ft-seat--opp .ft-colour {
+     later edit to the M band cannot switch the field back on at 14 by accident.
+     The :not() is stage 7's, for the same reason as the 24px rung's: the one
+     opponent open as a tall sheet is drawing at 44, not at 14. */
+  .ft-seat--opp:not([data-pm-open="1"]) .ft-colour {
     --tile-field: none;
   }
 
@@ -5924,6 +5943,17 @@ select:focus {
 /* The sheet's chrome. There are no sheets above 1149 - your score column and
    your cupcake supply are on the canvas there, where they belong. */
 .pm-sheet-head {
+  display: none;
+}
+
+/* STAGE 7's TWO, AND THEY ARE OFF FOR THE SAME REASON. Desktop does not take the
+   summary rail (plan section 6.4): the L rework brings 1440 to 1150, so the
+   clocks stay on screen at every scroll position for any viewport over 464px
+   tall, and the rail solves a problem the rework removed. The collapsed
+   opponent row is the phone's answer to a strip that was 42 per cent of the
+   page; above the band an opponent is a seat with a board on it. */
+.pm-rail,
+.pm-seat-row {
   display: none;
 }
 
@@ -6618,5 +6648,706 @@ select:focus {
   #gameRulesButton {
     height: 44px;
     min-height: 44px;
+  }
+}
+
+/* ===========================================================================
+   THE SUMMARY RAIL AND THE COLLAPSED OPPONENT STRIP
+   stage 7, plan section 4, 10 August 2026
+   ===========================================================================
+
+   THE STAGE THAT DELIVERS THE HEADLINE: one page height, at every phone width,
+   on every turn. Stage 6 got the phone to 1513 on the opening and 1878 mid; the
+   opponent strip was the only block on the page that GREW as the game ran, and
+   it was the whole of the mid-game residue. The rail is what makes the number
+   stop varying, and the collapsed row is what stops the strip growing.
+
+       fixed   TURN BAR         48
+       fixed   SUMMARY RAIL     48   FIVE CHIPS - stage 6 reserved this slot and
+       ------------------------      every number in the model is derived from a
+       scroll  the canvas            96px top dock, so the rail lands in 48 and
+       ------------------------      does not ask for 49
+       fixed   [ a sheet ]
+       fixed   PHASE BAR        76
+
+   A THIRD max-width: 1149px QUERY, at the end of the file for the same reason
+   stage 6's is: @media contributes no specificity, so source order is what lets
+   this override the two blocks above it without a single !important. Neither of
+   them is edited; they are superseded here, block by block.
+
+   THE FOUR READING PANELS GET THEIR OPENERS. Stage 6 made #cardProgress,
+   #teaOption, #tastingMenuPanel and #flavourPanel bottom sheets, which is most
+   of the 1,520px it refunded - but nothing opened them, so on that commit the
+   end-of-game meter, the fresh-pot gauge, the tasting menus and the flavour of
+   the day were not readable on a phone at all. These five chips are the openers,
+   and a chip's id IS stage 6's sheet id.
+   =========================================================================== */
+@media (max-width: 1149px) {
+
+  /* =========================================================================
+     1. THE RAIL
+     A STRIP in plan section 8.5's sense: --surface, one hairline on the content
+     edge, radius 0, no shadow, edge to edge, never a heading. z-index 890, with
+     the turn bar it sits under: above the sheets' 880 and below the phase bar's
+     900.
+
+     IT NEVER VARIES BY PHASE and it is present during opponents' turns, which is
+     when it earns most of its keep - it is the only thing on the screen that is
+     changing. A chip that ARRIVES cannot announce a change, because there is
+     nothing to compare it against, and the announcement model depends on every
+     chip being present continuously.
+
+     NOT overflow-x: auto. Dean rejected a scrolling rail outright and the reason
+     is mechanical rather than aesthetic: the whole value of a chip is that it is
+     on screen at the moment its number moves.
+     ========================================================================= */
+  .pm-rail {
+    display: flex;
+    position: fixed;
+    top: var(--pm-turnbar-h);
+    left: 0;
+    right: 0;
+    z-index: 890;
+    height: var(--pm-rail-h);
+    align-items: stretch;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--rule);
+    overflow: hidden;
+  }
+
+  /* A fifth of 360 is 72px, and Dean's decision 22 makes the whole 72 content
+     budget: there is no horizontal padding, because the flex centring is what
+     separates one chip from the next and there is no divider to clear. The
+     widest line the engine can produce - a score of 95 with twelve cupcakes, its
+     own 1,500-game maximum - measures 69 of the 72. If it ever tightens, the
+     cupcake glyph goes first and the count stays.
+
+     48 tall by 72 wide clears the 44px floor on both axes, with the height
+     binding. */
+  .pm-chip {
+    flex: 1 1 0;
+    min-width: 0;
+    /* The delta badge and the threshold rail are absolutely positioned against
+       this, so neither can add a pixel to the chip's content width. */
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    min-height: var(--pm-rail-h);
+    padding: 2px 0;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .pm-chip__line {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  /* The mark is an interface label beside the figure and takes the interface's
+     brown; the painted marks - the teapot and the day's ingredient - are objects
+     rather than icons and are drawn as themselves, because one object in two
+     registers is the confusion the icon set exists to prevent. */
+  .pm-chip__mark {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    color: var(--accent-deep);
+  }
+
+  .pm-chip__mark img {
+    display: block;
+    object-fit: contain;
+  }
+
+  /* --type-figure-sm, Fraunces 700 / 16 / tabular. The number IS the chip, so it
+     is set in the voice of the game. */
+  .pm-chip__fig {
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 700;
+    font-size: 16px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  /* THE ONE SUBORDINATE NUMBER ON THE RAIL (decision 33). Score and cupcakes are
+     one chip rather than a sixth cell: both are "where you stand", and they are
+     told apart by WEIGHT rather than by position, so the cupcake count can never
+     be read as the score it sits beside. */
+  .pm-chip__fig2 {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-soft);
+    white-space: nowrap;
+  }
+
+  .pm-chip__fig2 svg {
+    color: var(--accent-deep);
+  }
+
+  /* --type-micro, Inter 500 / 11, sentence case. NEVER --type-stamp: that is a
+     printed label on a painted component, and a rail chip is not one. */
+  .pm-chip__label {
+    max-width: 100%;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--ink-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* State is drawn around a thing, never into it. The open chip carries the same
+     3px accent rail the panel system already uses as a state marker. */
+  .pm-chip[aria-expanded="true"] {
+    box-shadow: inset 0 -3px 0 var(--accent);
+  }
+
+  .pm-chip[aria-expanded="true"] .pm-chip__label {
+    color: var(--ink);
+  }
+
+  /* The live region carries the threshold sentences only - a screen reader that
+     announced every tick would be unusable. It rides inside the fixed rail, so
+     it can never be page height. */
+  .pm-rail__live {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* -------------------------------------------------------------------------
+     1a. WHAT A CHANGE LOOKS LIKE. Three grades, graded by CONSEQUENCE rather
+     than by size of change, and stage 8 owns every duration below.
+
+     FIVE THINGS NO GRADE MAY EVER DO: move the chip, change its width or reflow
+     the dock; dim anything; be the only carrier; depend on colour alone; cost
+     any of the View Transition name budget. Every carrier here is a wash, an
+     absolutely positioned mark or a colour, and the rail takes zero names.
+
+     BOTH TIMED CARRIERS ARE ANIMATIONS RATHER THAN JS-DRIVEN OPACITY, and that
+     is load-bearing twice over: an animation ends where it started, so the rail
+     returns to rest by itself, and the screenshot harness freezes animations to
+     their end state, so a timed carrier can never make a capture depend on when
+     it was taken.
+     ------------------------------------------------------------------------- */
+
+  /* GRADE 1, A TICK. The number moved by a step. The wash primitive paints ABOVE
+     the ground and BELOW the content, so no strength of announcement can ever
+     reach the figure it is announcing. */
+  @keyframes pm-tick {
+    0%   { box-shadow: inset 0 0 0 999px rgba(193, 123, 92, 0); }
+    12%  { box-shadow: inset 0 0 0 999px rgba(193, 123, 92, 0.22); }
+    100% { box-shadow: inset 0 0 0 999px rgba(193, 123, 92, 0); }
+  }
+
+  .pm-chip[data-pm-news="tick"] {
+    animation: pm-tick 900ms ease-out 1;
+  }
+
+  /* GRADE 2, A THRESHOLD, AND IT IS THE ONE THAT CARRIES THE DESIGN CLAIM. A
+     board full at 25; the teapot count reaching the trigger; the last tasting
+     menu going; the flavour majority changing hands.
+
+     THE RAIL STAYS UNTIL THE PLAYER TAPS THE CHIP (decision 32). A transient
+     cannot carry news the player may be looking away from, and a flash nobody
+     saw is precisely the failure the rail was built to prevent. It is a STATIC
+     3px mark, so it survives prefers-reduced-motion intact - the grade that
+     carries consequence is the one that cannot be turned off. The pulse is the
+     arrival; the rail is the memory. */
+  .pm-chip[data-pm-threshold="1"]::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 3px;
+    background: var(--accent-deep);
+    pointer-events: none;
+  }
+
+  .pm-chip[data-pm-threshold="1"] .pm-chip__fig {
+    color: var(--accent-deep);
+  }
+
+  @keyframes pm-threshold {
+    0%, 100% { box-shadow: inset 0 0 0 999px rgba(142, 82, 57, 0); }
+    50%      { box-shadow: inset 0 0 0 999px rgba(142, 82, 57, 0.26); }
+  }
+
+  .pm-chip[data-pm-threshold="1"][data-pm-news="threshold"] {
+    animation: pm-threshold 600ms ease-in-out 3;
+  }
+
+  /* GRADE 3, CATCH-UP. Three bots play between your turns on a phone you are not
+     watching, and without this the rail is a snapshot with no history - the board
+     fill quietly going 9 to 14 is exactly what a clock exists to prevent. The
+     badge is absolutely positioned, so it costs zero layout width and cannot
+     push a chip, and it fades by animation rather than by timer. */
+  .pm-chip__delta {
+    position: absolute;
+    top: 1px;
+    right: 2px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent-deep);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  @keyframes pm-delta {
+    0%, 77% { opacity: 1; }
+    100%    { opacity: 0; }
+  }
+
+  .pm-chip[data-pm-delta="1"] .pm-chip__delta {
+    animation: pm-delta 2600ms ease-out 1 both;
+  }
+
+  /* The reduced-motion substitute is the same signal with the travel removed,
+     not silence. Neither wash has travel, so what goes is the ramp: they step to
+     their lit value, hold, and step off. The threshold rail is static and is
+     untouched. */
+  @media (prefers-reduced-motion: reduce) {
+    .pm-chip[data-pm-news="tick"] {
+      animation-duration: 700ms;
+      animation-timing-function: steps(1, end);
+    }
+
+    .pm-chip[data-pm-threshold="1"][data-pm-news="threshold"] {
+      animation-duration: 700ms;
+      animation-iteration-count: 1;
+      animation-timing-function: steps(1, end);
+    }
+
+    .pm-chip[data-pm-delta="1"] .pm-chip__delta {
+      animation-timing-function: steps(1, end);
+    }
+  }
+
+  /* =========================================================================
+     2. THE FIVE SHEETS - which cap each takes.
+
+     Stage 6 built two sizes and gave all four reading panels the tall one. THREE
+     OF THE FOUR ARE READ AGAINST YOUR OWN 5x5 - how close the end is, how many
+     flavour tiles you hold, which menus you could still make - so they take the
+     HALF cap, which stops a reading sheet covering the thing it is being read
+     against. A cap is a ceiling rather than a height, so this takes nothing
+     away. The You sheet stays tall: it is the whole of its own decision, and it
+     is the one sheet the claim opens by itself.
+     ========================================================================= */
+  #cardProgress,
+  #teaOption,
+  #tastingMenuPanel,
+  #flavourPanel {
+    max-height: calc(var(--pm-sheet-max) + var(--pm-sheet-chrome-h));
+  }
+
+  /* The gauge supplies its own section heading, and inside a sheet the sheet's
+     title is the only heading in the room. Stage 6 deleted the other three. */
+  #teaOption > .ft-section__head > .ft-section__title {
+    display: none;
+  }
+
+  /* Both of these panels are a wrapping ROW at this band, so their chrome has to
+     claim a line of its own rather than becoming a flex item beside the cards. */
+  #tastingMenuPanel > .pm-sheet-head,
+  #flavourPanel > .pm-sheet-head {
+    flex: 1 0 100%;
+  }
+
+  /* THE MENUS' NOTE COMES BACK, AND IT IS FREE NOW. It is display:none below
+     1150 because stage 1 measured it as real page height on the canvas; the
+     panel is a sheet on this commit, out of the page's flow entirely, so the two
+     facts it carries - anywhere on the stand or the crumb tray, not your board,
+     and first to qualify keeps it - reach a phone player for nothing. Stage 1
+     had to merge them into one line for the desktop bands and that wording is
+     unchanged: the fuller version still costs 15px from 1400 up, where there is
+     no sheet to put it in. */
+  #tastingMenuPanel > .ft-section__note {
+    display: block;
+  }
+
+  /* THE STAND GOES FIRST AND THE BREAKDOWN SECOND (plan section 4.2), which is a
+     reordering rather than a re-parenting, so board.js's delegated
+     [data-dest-row] listeners are untouched. The reason is the claim: when this
+     sheet opens itself at claim step 3 the stand rows ARE the tap targets, and a
+     tap target below the fold of a sheet that has just opened is a defect. The
+     breakdown is a reading item and may be scrolled to. */
+  #playerScore1 {
+    display: flex;
+    flex-direction: column;
+  }
+
+  #playerScore1 > .pm-sheet-head      { order: 0; }
+  #playerScore1 > .ft-stand__prompt   { order: 1; }
+  #playerScore1 > .ft-stand           { order: 2; }
+  #playerScore1 > .ft-score-total     { order: 3; }
+  #playerScore1 > .ft-score-breakdown { order: 4; }
+  #playerScore1 > .ft-cupcake-supply  { order: 5; }
+
+  /* Defect 17's line, in the sheet where teaching is free. See the note beside
+     .ft-stand__lock-note at file scope. */
+  .ft-stand__lock-note {
+    display: block;
+  }
+
+  /* =========================================================================
+     3. THE COLLAPSED OPPONENT STRIP - decision 20, on by default
+
+     ONE FULL-WIDTH 44px ROW PER OPPONENT. Three opponents cost 160px against the
+     428 the shipped strip cost on the opening and the 793 it reached by turn 1.
+
+     THE ONE STRUCTURAL CLAIM: a shipped seat is a `min-width: max-content` flex
+     item in a WRAPPING row, so two pixels of extra chip width flips two seats
+     per row to one and a whole seat row appears - 220px of page height, with
+     13px of headroom left at 360. A COLLAPSED SEAT IS A FULL-WIDTH ROW. It is
+     not sized by its content and there is no wrap decision to make, so the
+     mechanism that produced the cliff is GONE rather than avoided.
+
+     A SESSION THAT REVERTS THE STRIP TO THE SHIPPED SEAT INHERITS THE CLIFF
+     AGAIN, and the standing rule is not weakened by any of this: nothing
+     carrying seat colour may add to a seat's max-content width.
+
+     The strip is a SURFACE and never the wall - a thing made of words and
+     numbers. It would matter most if a 14px board were in here; there is not
+     one, and the ground is right anyway.
+     ========================================================================= */
+  .ft-opp-strip {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding: 8px;
+    background: var(--surface);
+    border-radius: 12px;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  /* DOM order in the strip is seat 3, 2, 4, inherited from the XL grid.
+     Collapsed, the strip is a list, and a list is read in seat order. */
+  .ft-opp-strip .ft-seat--2 { order: 1; }
+  .ft-opp-strip .ft-seat--3 { order: 2; }
+  .ft-opp-strip .ft-seat--4 { order: 3; }
+
+  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]) {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    /* THE ROW IS THE TAP TARGET, and 44 is the floor for one. */
+    min-height: 44px;
+    margin: 0;
+    /* 14 leading, for the 4px seat rule inside the row's own padding. */
+    padding: 4px 8px 4px 14px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    box-shadow: none;
+    overflow: hidden;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* CARRIER 1, the seat rule, at the row's leading edge. Collapsed there is no
+     board column for it to stand above, so the same 4px of the same ink stands
+     at the leading edge instead - a fill inside the row's own padding, so it
+     costs no width anybody can measure. The element is the one the seat already
+     had; only where it sits changes. */
+  .ft-opp-strip .ft-seat--opp .ft-seat__rule {
+    position: absolute;
+    left: 4px;
+    top: 6px;
+    bottom: 6px;
+    width: 4px;
+    height: auto;
+    margin: 0;
+  }
+
+  /* CARRIERS 2 AND 3 OF AN OPPONENT'S TURN, both at zero layout width: the
+     active ring is an `outline`, which sits outside the box model, and the seat
+     rule goes 4px to 6px. */
+  .ft-opp-strip .ft-seat--opp.ft-panel--active {
+    outline: 2px solid var(--seat);
+    outline-offset: -2px;
+  }
+
+  .ft-opp-strip .ft-seat--opp.ft-panel--active .ft-seat__rule {
+    width: 6px;
+    height: auto;
+  }
+
+  /* The engine's own determinate thinking progress, along the row's bottom edge
+     in the seat's ink. Absolutely positioned, so it is outside every width
+     calculation, and it is a progress bar rather than a decoration - which is
+     why prefers-reduced-motion keeps it. */
+  .pm-seat-row__think {
+    position: absolute;
+    left: 14px;
+    right: 8px;
+    bottom: 3px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--seat);
+    opacity: 0.35;
+    transform-origin: left center;
+    transform: scaleX(0);
+    pointer-events: none;
+  }
+
+  /* WHAT COMES OFF, and the 14px board is the largest of them and the one worth
+     arguing about (decision 31). Three tickets measured it as failing: it is
+     unreadable at that size, green against blue sits at dE 7.8 for a tritanope
+     with no ink to help, and the board's own ground and the wall are dE 1.6
+     apart. Removing it RETIRES both colour problems rather than mitigating them,
+     and it comes back at 44px in the sheet, where the ink resolves both narrow
+     pairs outright. This reverses the collapsed variant that kept the unreadable
+     half and threw away the score. */
+  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]) .ft-cloth,
+  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]) .ft-stand,
+  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]) .ft-stand-mini,
+  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]) .ft-score-total,
+  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]) .ft-score-breakdown,
+  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]) .ft-working-area,
+  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]) .ft-seat__dot,
+  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]) > .pm-sheet-head,
+  /* THE RESERVED CARD. It renders a real 108 x 150 card face inside the seat's
+     board column, which is 171px of a 44px row and the only unbounded term in
+     the whole layout budget. It is not deleted - it becomes the row's fourth
+     readout, a count rather than a card, and the card itself is in the sheet. */
+  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]) .ft-on-order {
+    display: none;
+  }
+
+  /* The two columns stop being columns, and both lose their definite
+     --board-col-width, which is the whole of the max-content story. */
+  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]) .ft-seat__board-col {
+    order: 1;
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    width: auto;
+    min-width: 0;
+    gap: 0;
+  }
+
+  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]) .ft-seat__score-col {
+    order: 2;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    width: auto;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]) .ft-seat__header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    text-align: left;
+  }
+
+  /* --type-micro. The seat's name was Fraunces 16 on a panel; on a row it is a
+     label beside three figures, and the figures are what carry the voice. */
+  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]) .ft-panel__title {
+    margin: 0;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.3;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* THE READOUTS. One element on the row's trailing side rather than four
+     scattered through the seat: the score, the cupcakes, THEIR OWN BOARD FILL,
+     a count of any cards on order, and the disclosure.
+
+     Their board fill is the one that earns its place. The rail's board-fill chip
+     says how full the FULLEST board is and says nothing about whose; this is the
+     complementary half, and it is the only opponent fact that is a clock on
+     everybody rather than a fact about that player's score. */
+  .ft-opp-strip .ft-seat--opp:not([data-pm-open="1"]) .pm-seat-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  .pm-seat-row__stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 11px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-soft);
+    white-space: nowrap;
+  }
+
+  .pm-seat-row__stat--score {
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--ink);
+  }
+
+  .pm-seat-row__stat svg {
+    display: block;
+    color: var(--accent-deep);
+  }
+
+  .pm-seat-row__more {
+    display: flex;
+    flex: 0 0 auto;
+    color: var(--ink-soft);
+  }
+
+  /* =========================================================================
+     4. ONE OPPONENT, EXPANDED - a tall sheet (plan section 4.5)
+
+     Stage 6's structural trick applied to a seat: NOTHING IS RE-PARENTED. The
+     seat leaves the strip by going `position: fixed` where it already sits in
+     the DOM, so updateStats keeps rewriting it and every delegated listener
+     survives. Its chrome sits INSIDE it as a .pm-sheet-head, which is stage 6's
+     convention and the reason there is no floating bar to re-position.
+
+     It is the whole of its own decision - your own board is not part of it - so
+     it takes the tall cap, and the point of it is a board at a size that can be
+     read.
+     ========================================================================= */
+  .ft-seat--opp[data-pm-open="1"] {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--pm-dock-bottom);
+    /* NEVER translateX(-50%). A transform on a fixed sheet makes it the
+       containing block for its own fixed descendants. */
+    margin: 0 auto;
+    width: 100%;
+    max-width: 600px;
+    max-height: calc(var(--pm-sheet-tall) + var(--pm-sheet-chrome-h));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    z-index: 880;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-sm);
+    padding: 0 var(--spacing-md) var(--spacing-md);
+    background: var(--surface);
+    border: 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -6px 20px -6px rgba(var(--shadow-ink), 0.38);
+    cursor: default;
+    /* THE BOARD COMES BACK AT 44px, AND SO DOES THE INK. This is the whole of
+       decision 31. The rung's values are taken by `inherit` rather than retyped:
+       the parent chain declares none of them, so each resolves to the :root
+       value this band already sets for a 44px board, and the sheet cannot drift
+       from the rung it is meant to be drawing. */
+    --tile-size: 44px;
+    --tile-size-opp: 44px;
+    --stand-plate: 24px;
+    --cloth-ring: inherit;
+    --form-edges: inherit;
+    --dent-edges: inherit;
+    --plate-size: inherit;
+    --plate-body: inherit;
+    --plate-edges: inherit;
+  }
+
+  .ft-seat--opp[data-pm-open="1"] > .pm-sheet-head {
+    display: flex;
+    order: 0;
+  }
+
+  .ft-seat--opp[data-pm-open="1"] .ft-seat__board-col { order: 1; }
+  .ft-seat--opp[data-pm-open="1"] .ft-seat__score-col { order: 2; }
+  .ft-seat--opp[data-pm-open="1"] .pm-seat-row { display: none; }
+
+  /* The seat rule keeps a leading edge in the sheet too, so the sheet is still
+     visibly that player's. */
+  .ft-seat--opp[data-pm-open="1"] .ft-seat__rule {
+    position: absolute;
+    left: 0;
+    top: 16px;
+    bottom: auto;
+    width: 4px;
+    height: 24px;
+    margin: 0;
+  }
+
+  .ft-seat--opp[data-pm-open="1"] .ft-tile__icon { display: block; }
+  .ft-seat--opp[data-pm-open="1"] .ft-stand      { display: block; }
+  .ft-seat--opp[data-pm-open="1"] .ft-stand-mini { display: none; }
+
+  /* THE BREAKDOWN COMES BACK TOO. It is display:none for every opponent below
+     2181 - three labelled rows are a level of detail for the board you are
+     playing rather than for a glance across the table - and this sheet is not a
+     glance. It is the one place a player has deliberately asked for that seat in
+     full, which is the whole reason for opening it. */
+  .ft-seat--opp[data-pm-open="1"] .ft-score-breakdown {
+    display: flex;
+  }
+
+  /* The sheet's own title says whose seat it is, so the seat header would be the
+     same name twice, and the cupcake supply is a readout of controls nobody can
+     press - the count is on the row and in the breakdown. */
+  .ft-seat--opp[data-pm-open="1"] .ft-seat__header,
+  .ft-seat--opp[data-pm-open="1"] .ft-cupcake-supply {
+    display: none;
   }
 }

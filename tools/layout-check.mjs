@@ -195,6 +195,29 @@ const PHASE_WIDTHS = [430, 390, 360, 768, 1024, 1400];
 // this stage reaches them: the model's own query stops at 1149, and the M band's
 // one edit - the rules button growing to a 44px tap target - was measured at
 // 1407 before and after, because the title bar was already 44px tall.
+//
+// LOWERED AGAIN ON 10/08/2026 BY STAGE 7, THE SUMMARY RAIL AND THE COLLAPSED
+// OPPONENT STRIP, and this is the stage that makes the number STOP VARYING.
+//
+//   open  360 / 390 / 430   1513 -> 1245      mid  1878 -> 1245
+//   open  768 / 1024 / 1149 1293 -> 1245      mid  1476 -> 1245
+//
+// THE OPEN AND MID ROWS ARE NOW THE SAME NUMBER, at every width in the band, and
+// that is the point rather than a coincidence. The opponent strip was the only
+// block on the page that GREW as the game ran - measured over six scripted turns
+// at 360 it ran 428, 793, 623, 793, 793, 793, taking the page 1513, 1878, 1708,
+// 1878, 1878, 1878 - because a seat is a `min-width: max-content` flex item in a
+// wrapping row and every tile an opponent placed could flip two seats per row to
+// one. Three full-width 44px rows cost 160px and cannot do that, so the page is
+// 1245 on turns 0 through 5 at 360, 390 and 430 alike.
+//
+// The rail costs nothing it does not refund: it fills the 48px slot stage 6
+// reserved inside a 96px dock that was already being paid for, and it is what
+// makes the four reading panels reachable at all.
+//
+// Where the rest of the fall comes from: three opponent seats at 208px each on
+// the opening become three rows at 44, and at the tablet widths the same
+// substitution is worth 48 on the opening and 231 in the mid-game.
 const TARGET_SCREENS = 2.0;
 const PAGE_HEIGHT_BUDGET = {
   // The 4-player seeded OPENING position, human in seat 0, boards empty.
@@ -202,20 +225,24 @@ const PAGE_HEIGHT_BUDGET = {
     2400: 1355, 2181: 1355,                           // was 1453, then 1387
     2180: 1150, 1920: 1150, 1700: 1150, 1400: 1150,   // was 1546, then 1493
     1399: 1407, 1366: 1407, 1280: 1407, 1150: 1407,   // was 1617
-    1149: 1293, 1024: 1293, 768: 1293,                // was 2524, then 2471
-    430: 1513,  390: 1513,  360: 1513,                // was 3014 / 3014 / 3033
+    1149: 1245, 1024: 1245, 768: 1245,                // was 2471, then 1293
+    430: 1245,  390: 1245,  360: 1245,                // was 3014 / 3014 / 3033, then 1513
   },
   // MID-GAME, after one scripted human turn and the bots' replies. Taller than
   // the opening at every width except XL, because four boards now carry tiles
   // and the swept-tile trays and score breakdowns have grown with them. This is
   // the worst case a phone actually has to scroll, and it had no number at all
   // before 09/08/2026.
+  //
+  // FROM STAGE 7 IT IS NOT TALLER ANYWHERE IN THE BAND. Below 1150 the mid-game
+  // page is the opening page to the pixel, because nothing left on the canvas
+  // grows with the position.
   mid: {
     2400: 1383, 2181: 1383,                           // was 1453, then 1387
     2180: 1515, 1920: 1515, 1700: 1515, 1400: 1515,   // was 1830, then 1816
     1399: 1589, 1366: 1589, 1280: 1589, 1150: 1589,   // was 1800
-    1149: 1476, 1024: 1476, 768: 1476,                // was 2707, then 2654
-    430: 1878,  390: 1878,  360: 1878,                // was 3379 / 3379 / 3398
+    1149: 1245, 1024: 1245, 768: 1245,                // was 2654, then 1476
+    430: 1245,  390: 1245,  360: 1245,                // was 3379 / 3379 / 3398, then 1878
   },
 };
 
@@ -503,6 +530,14 @@ async function checkContainment(page, width) {
       const g = grid.getBoundingClientRect();
       const p = panel.getBoundingClientRect();
       if (p.width === 0) continue;             // a hidden seat
+      // A BOARD THAT IS NOT DRAWN CANNOT OVERFLOW ITS PANEL, and from stage 7 an
+      // opponent's is not drawn at all below 1150 (decision 31 - the 14px board
+      // comes off the strip and returns at 44px inside a sheet). A hidden grid
+      // reports a zero rect at the document origin, so the arithmetic below read
+      // the panel's own left inset as an overhang and failed six widths for a
+      // board nobody can see. Corrected here rather than worked around in CSS:
+      // the criterion is about a VISIBLE board spilling out of its panel.
+      if (g.width === 0 || g.height === 0) continue;
       const overhang = Math.max(g.right - p.right, p.left - g.left);
       if (overhang > 0.5) out.push({ id: panel.id, overhang: Math.round(overhang) });
     }

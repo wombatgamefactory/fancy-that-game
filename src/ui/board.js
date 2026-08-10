@@ -62,6 +62,27 @@ function icon(name, size, extraClass = '') {
 }
 
 // ---------------------------------------------------------------------------
+// A SHEET'S CHROME (stage 6's shape, stage 7's fifth and sixth users)
+//
+// A grab handle, a title and Close, INSIDE the sheet rather than floating above
+// it as a separate fixed bar - the 56px comes out of the same reserve either
+// way, and this is what .ds-dialog already does, so the model has one shape
+// rather than two and there is no second element to re-position on every render.
+//
+// Emitted unconditionally at every width and drawn at none of them except the
+// phone band: `.pm-sheet-head { display: none }` at file scope, so no render
+// path has to consult a media query. Labelled Close and not Done, because
+// nothing has been done.
+// ---------------------------------------------------------------------------
+function sheetHeadHTML(title) {
+  return `<div class="pm-sheet-head">
+      <span class="pm-sheet-head__handle" aria-hidden="true"></span>
+      <h2 class="pm-sheet-head__title">${title}</h2>
+      <button class="pm-sheet-head__close" type="button" data-pm-close>Close</button>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
 // THE TOAST (9 August, ticket 00 / finding 16)
 // ---------------------------------------------------------------------------
 //
@@ -652,8 +673,21 @@ function seatHTML(playerIdx, gameState) {
   // The RECESS is .ft-board-grid itself, which already carries the 8px of
   // padding and the 1px border that --board-col-width is derived from, so
   // wrapping it moves no dimension the harness reads.
+  // THE OPPONENT SHEET'S OWN CHROME (stage 7, plan section 4.5). A collapsed row
+  // opens into a tall sheet, and stage 6's convention is that a sheet's chrome
+  // sits INSIDE it rather than floating above it as a second fixed bar. So the
+  // head is the panel's first child, emitted unconditionally and drawn only when
+  // that seat is the one open - `.pm-sheet-head` is display:none at file scope
+  // and this one is display:none again inside the collapsed strip.
+  const oppSheetHead = isOwnSeat ? '' : `
+        <div class="pm-sheet-head">
+          <span class="pm-sheet-head__handle" aria-hidden="true"></span>
+          <h2 class="pm-sheet-head__title">Player ${n} ${seatMarker(player)}</h2>
+          <button class="pm-sheet-head__close" type="button" data-pm-opp-close>Close</button>
+        </div>`;
+
   return `
-      <div class="${classes}" id="playerPanel${n}">
+      <div class="${classes}" id="playerPanel${n}">${oppSheetHead}
         <div id="playerScore${n}" class="ft-player-score ft-seat__score-col"></div>
         <div class="ft-seat__board-col">
           <div class="ft-panel__header ft-seat__header">
@@ -678,6 +712,7 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
 
   container.innerHTML = `
     <div class="ft-game">
+      ${summaryRailHTML()}
       <!-- The seats are emitted by seatHTML() and POSITIONED BY CLASS. The DOM
            order is seat 1, centre, then seats 3, 2, 4, which is the order the
            old markup used; where each one lands is .ft-seat--N's business, and
@@ -766,6 +801,16 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
                  keeps its id and its markup so the layout and the responsive bands
                  are untouched; only what it counts has changed. -->
             <section class="ft-section ft-section--claims" id="cardProgress">
+              <!-- THE SHEET HEAD (stage 7). This panel is a bottom sheet below
+                   1149, opened by the rail's Board fill chip, and stage 6's
+                   convention is that a sheet's chrome sits inside it. Emitted
+                   unconditionally and display:none above the band, so no render
+                   path has to consult a media query. -->
+              <div class="pm-sheet-head">
+                <span class="pm-sheet-head__handle" aria-hidden="true"></span>
+                <h2 class="pm-sheet-head__title">End of the game</h2>
+                <button class="pm-sheet-head__close" type="button" data-pm-close>Close</button>
+              </div>
               <!-- A FIGURE WITH A CAPTION, not a heading (plan section 8.5). The
                    heading test - cover it, and see whether a player can still name
                    what they are looking at - deletes "END OF GAME TRIGGER - FULL
@@ -927,6 +972,8 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
     gameRulesButton.addEventListener('click', showRulesModal);
   }
 
+  bindSummaryRail();
+  bindOpponentStrip();
   setupDragAndDrop(gameState);
   setupTapToPlace(gameState);
 }
@@ -1125,8 +1172,40 @@ export function setThinkingState(playerName, isThinking) {
     if (containerElement) containerElement.style.display = 'block';
   } else {
     if (containerElement) containerElement.style.display = 'none';
+    setSeatThinkingHairline(null);
     updateGameDisplay(window._gameUI?.gameState);
   }
+}
+
+// AN OPPONENT'S TURN, ON THEIR OWN ROW (stage 7, plan section 4.6). Three
+// carriers and all three cost ZERO layout width: the active ring is an `outline`,
+// which sits outside the box model; the seat rule goes 4px to 6px and is a fill
+// inside the row's own padding; and this, the thinking hairline, is absolutely
+// positioned along the row's bottom edge in the seat's ink.
+//
+// It is the ENGINE'S OWN determinate progress rather than a decoration, which is
+// why prefers-reduced-motion keeps it: it is a progress bar reporting a fact.
+// Driven from setThinkingProgress, the same choke point that drives the turn
+// bar's, so the two can never disagree.
+//
+// The chip does not say "thinking" in words - the turn bar names the player 48px
+// above the rail - and there is no auto-scroll to the active seat, because that
+// would move the canvas under a player reading their own board.
+function setSeatThinkingHairline(percent) {
+  const gs = window._gameUI?.gameState;
+  document.querySelectorAll('.ft-opp-strip .ft-seat--opp').forEach(panel => {
+    const m = (panel.id || '').match(/playerPanel(\d+)/);
+    const idx = m ? Number(m[1]) - 1 : -1;
+    const active = percent !== null && gs && gs.currentPlayerIndex === idx;
+    let bar = panel.querySelector('.pm-seat-row__think');
+    if (!active) { if (bar) bar.remove(); return; }
+    if (!bar) {
+      bar = document.createElement('span');
+      bar.className = 'pm-seat-row__think';
+      panel.appendChild(bar);
+    }
+    bar.style.transform = `scaleX(${Math.max(0.02, Math.min(1, percent / 100))})`;
+  });
 }
 
 export function setThinkingProgress(playerName, progress) {
@@ -1140,10 +1219,12 @@ export function setThinkingProgress(playerName, progress) {
     textElement.textContent = `${playerName} is thinking… (${progress}%)`;
     containerElement.style.display = 'block';
     progressBar.style.width = `${progress}%`;
+    setSeatThinkingHairline(progress);
   } else {
     textElement.textContent = `${playerName} is thinking…`;
     containerElement.style.display = 'block';
     progressBar.style.width = '0%';
+    setSeatThinkingHairline(0);
   }
 }
 
@@ -1210,6 +1291,9 @@ export function updateGameDisplay(gameState) {
   updateStats(gameState);
   updateGameInfo(gameState);
   updatePhaseControls(gameState);
+  // AFTER the four reading panels and updateStats, because three of the five
+  // chips read the panel the chip opens rather than recomputing it.
+  updateSummaryRail(gameState);
   // LAST, because it reads the phase bar it may have just added a button to and
   // the destination choices updateStats has just rendered targets for.
   applyPhoneSheets(gameState);
@@ -1418,6 +1502,7 @@ function updateTeaOption(gameState) {
   // cannot go loud when the pot is due is not a gauge.
   el.className = `ft-section ft-section--tea ft-tea-option ft-tea-option--${state}`;
   el.innerHTML = `
+    ${sheetHeadHTML('Fresh pot of tea')}
     <!-- THE TEAPOT RIDES IN THE HEAD, immediately before the count (7 August).
          It used to sit on its own line below the note, captioned "teapots visible",
          which was a whole row of panel to say what the figure beside it already
@@ -1562,6 +1647,7 @@ function updateTastingMenus(gameState) {
 
   el.className = `ft-section ft-menus ft-menus--${available > 0 ? 'live' : 'spent'}`;
   el.innerHTML = `
+    ${sheetHeadHTML('Tasting menus')}
     <!-- NO N/M FIGURE (dropped 7 August). Every other figure on this rail is a
          PROGRESSION - 5/25 cells filled, 2/4 teapots showing - and reads as "how
          far along are we". This one was a stock level, and the cards below already
@@ -1656,6 +1742,7 @@ function updateFlavourOfTheDay(gameState) {
 
   el.className = 'ft-section ft-flavour';
   el.innerHTML = `
+    ${sheetHeadHTML('Flavour of the day')}
     <div class="ft-section__head">
       <!-- BOTH CLAUSES IN THE HEADING, and no figure beside it (7 August). The
            price was split across a title span and a "+3 most" figure, which read as
@@ -1832,6 +1919,32 @@ function attachSheetSwipe(el, onClose) {
   el.addEventListener('mouseup', up);
 }
 
+// STAGE 7 HAS SIX SHEET HEADS, NOT TWO, and four of them are inside panels that
+// rewrite their own innerHTML on every render. Binding per head per render would
+// re-attach four listener pairs 38 times a turn, so Close and swipe-down are
+// delegated once here instead. The score panel keeps its own binding because it
+// was already there and is bound once per render on an element that is replaced;
+// this handler is idempotent with it, since closeSheet only clears an attribute.
+document.addEventListener('click', e => {
+  if (e.target.closest('[data-pm-close]')) closeSheet();
+});
+let sheetSwipeFrom = null;
+const swipeStart = e => {
+  const head = e.target.closest && e.target.closest('.pm-sheet-head');
+  sheetSwipeFrom = head ? (e.touches ? e.touches[0] : e).clientY : null;
+};
+const swipeEnd = e => {
+  if (sheetSwipeFrom === null) return;
+  const y = (e.changedTouches ? e.changedTouches[0] : e).clientY;
+  const travelled = y - sheetSwipeFrom;
+  sheetSwipeFrom = null;
+  if (travelled <= 40) return;
+  if (document.body.getAttribute('data-pm-opp')) closeOppSheet();
+  else closeSheet();
+};
+document.addEventListener('touchstart', swipeStart, { passive: true });
+document.addEventListener('touchend', swipeEnd, { passive: true });
+
 // Bound once, at module scope, so no render path has to remember it. Escape
 // closes whichever sheet is open; the sweep sheet has its own Escape handler
 // because it is a different object with a different close.
@@ -1852,8 +1965,10 @@ function applyPhoneSheets(gameState) {
   if (!isPhoneBand()) {
     // Above the band every panel is on the canvas and no sheet exists. Clearing
     // the attribute rather than leaving it stale means a resize back down does
-    // not re-open a sheet the player closed three widths ago.
+    // not re-open a sheet the player closed three widths ago. The opponent sheet
+    // is stage 7's and goes the same way, for the same reason.
     if (open) closeSheet();
+    if (document.body.getAttribute('data-pm-opp')) closeOppSheet();
     lastSheetPhase = phase;
     return;
   }
@@ -1873,6 +1988,338 @@ function applyPhoneSheets(gameState) {
 
   lastSheetPhase = phase;
 }
+
+// ---------------------------------------------------------------------------
+// THE SUMMARY RAIL AND THE COLLAPSED OPPONENT STRIP (stage 7, plan section 4)
+//
+// Two things, and they answer each other. The rail is FIVE CHIPS in the top
+// dock's reserved 48px slot; the strip is ONE FULL-WIDTH 44px ROW PER OPPONENT.
+//
+// THE RAIL IS ALSO THE HALF OF STAGE 6 THAT STAGE 6 COULD NOT BUILD. Stage 6
+// took #cardProgress, #teaOption, #tastingMenuPanel and #flavourPanel off the
+// canvas and made them sheets, which is most of the 1,520px it refunded - but
+// the openers are these chips, so until they existed the end-of-game meter, the
+// fresh-pot gauge, the tasting menus and the flavour of the day were not
+// readable on a phone at all. A chip's id IS the sheet's id (stage 6's
+// body[data-pm-sheet] is the whole state machine), which is what makes it
+// impossible for a chip to be a second copy of a number: tapping Menus raises
+// the tasting-menu panel itself.
+//
+// FIVE CHIPS, NOT SIX (decision 9). No bag-count chip - it answers the same
+// question as board fill, and the rail cannot afford to say a thing twice. The
+// You chip carries the score with cupcakes as a SUBORDINATE number (decision
+// 33) rather than splitting into a sixth cell; the engine's worst case, a score
+// of 95 with twelve cupcakes, fits 69 of the 72px a fifth of 360 gives.
+//
+// WHAT A CHANGE LOOKS LIKE - three grades, graded by CONSEQUENCE:
+//   1. TICK        the number moved a step          a wash, about a second
+//   2. THRESHOLD   what is legal has changed        A PERSISTENT 3px RAIL that
+//                  or something has ended           stays until the chip is
+//                                                   tapped (decision 32)
+//   3. CATCH-UP    what the bots did while you      a delta badge for the first
+//                  were not looking                 couple of seconds
+//
+// GRADE 2 CARRIES THE DESIGN CLAIM AND IT IS WHY THIS IS NOT A FLASH. A player
+// looking at their own board cannot be assumed to have seen a transient, and
+// news the player misses is the failure the rail exists to prevent. Tapping the
+// chip both acknowledges the news and opens the sheet it came from, so the
+// acknowledgement and the reading are one gesture. The lit state is held in
+// module state rather than in the DOM, so it survives a full re-render and a
+// bot turn.
+//
+// EVERY CARRIER IS A WASH, AN ABSOLUTELY POSITIONED MARK OR A COLOUR. Nothing
+// may move a chip, change its width or reflow the dock - which is also why the
+// two timed carriers are CSS ANIMATIONS rather than JS-driven opacity: an
+// animation ends where it started, so the rail is a deterministic surface for
+// the screenshot harness as well as a stable one for the player.
+//
+// THE STRIP IS WHERE THE 2px CLIFF STOPS EXISTING, and it stops existing rather
+// than being avoided. A shipped seat is a `min-width: max-content` flex item in
+// a WRAPPING row, so two pixels of extra chip width flips two seats per row to
+// one and a whole seat row appears - measured at 220px of page height, with 13px
+// of headroom left at 360. A COLLAPSED SEAT IS A FULL-WIDTH ROW: it is not sized
+// by its content and there is no wrap decision to make, so the mechanism is gone.
+// A session that reverts the strip to the shipped seat inherits the cliff again.
+// ---------------------------------------------------------------------------
+
+// Decision 9's five, in decision 9's order. `id` is stage 6's own sheet id.
+const RAIL_CHIPS = [
+  { id: 'fill',    label: 'Board fill', name: 'Board fill towards the end of the game' },
+  { id: 'tea',     label: 'Teapots',    name: 'Teapots towards a fresh pot of tea' },
+  { id: 'menus',   label: 'Menus',      name: 'Tasting menus still available' },
+  { id: 'stand',   label: 'You',        name: 'Your score, your cupcakes and your cake stand' },
+  { id: 'flavour', label: 'Flavour',    name: 'Flavour of the day, and how many you hold' },
+];
+
+function summaryRailHTML() {
+  const chips = RAIL_CHIPS.map(c => `
+        <button type="button" class="pm-chip" data-pm-chip="${c.id}"
+                aria-expanded="false" aria-label="${c.name}">
+          <span class="pm-chip__delta" aria-hidden="true"></span>
+          <span class="pm-chip__line">
+            <span class="pm-chip__mark" data-pm-mark></span>
+            <span class="pm-chip__fig" data-pm-fig></span>
+            <span class="pm-chip__fig2" data-pm-fig2 hidden></span>
+          </span>
+          <span class="pm-chip__label">${c.label}</span>
+        </button>`).join('');
+  // The live region rides INSIDE the rail, which is position: fixed, so a polite
+  // announcement can never be page height. It carries threshold sentences only;
+  // a screen reader that read every tick would be unusable.
+  return `<div class="pm-rail" role="toolbar" aria-label="Game summary">${chips}
+        <span class="pm-rail__live" role="status" aria-live="polite"></span>
+      </div>`;
+}
+
+// The rail's memory, at module scope so it survives every re-render. `ord` is
+// what a change is measured against; `lit` is the thresholds the player has not
+// yet tapped through; `mark` is the ordinals as at the end of your last turn.
+const railState = { ord: {}, lit: {}, said: {}, mark: {}, wasYours: null, first: true };
+
+// THE FIVE READINGS (plan section 4.7). Every reading has an ordinal and either
+// has a threshold or does not - that is the whole of the shared content model,
+// and it is what lets L and XL render the same five facts without a second
+// definition.
+//
+// The numbers come from the ENGINE where the number is clean and from the
+// PANEL'S OWN READOUT where the build already computes it, which is what stops a
+// chip and the sheet it opens ever disagreeing.
+function railReadings(gameState) {
+  const me = gameState.players[0];
+  const total = me.board.length;
+  // THE FULLEST BOARD, NOT YOURS. The game ends when ANY board fills, so this is
+  // a clock reading rather than a score. Same expression as updateGameInfo's.
+  const fullest = Math.max(...gameState.players.map(
+    p => total - p.board.filter(c => c === null).length,
+  ));
+
+  // Clamped to the trigger rather than printing 5/4, exactly as the gauge does.
+  const potSize = getVisibleTeapotSymbols(gameState);
+  const teaShown = Math.min(potSize, REFRESH_THRESHOLD);
+
+  const menusInPlay = isTastingMenuInPlay(gameState);
+  const menusLeft = menusInPlay ? getAvailableMenus(gameState).length : null;
+
+  const flavourInPlay = isFlavourInPlay(gameState);
+  const myFlavour = flavourInPlay ? getFlavourCount(gameState, me) : null;
+  const leading = flavourInPlay && getFlavourLeaders(gameState).includes(me.id);
+
+  const bd = getScoreBreakdown(me, gameState);
+
+  return {
+    fill: {
+      fig: `${fullest}/${total}`, mark: icon('grid', 16), ord: fullest,
+      state: fullest >= total,
+      say: 'A board is full. The end of the game is triggered.',
+    },
+    tea: {
+      fig: `${teaShown}/${REFRESH_THRESHOLD}`,
+      mark: '<img src="images/teapot.png" width="16" height="16" alt="" aria-hidden="true">',
+      ord: teaShown,
+      state: potSize >= REFRESH_THRESHOLD,
+      say: gameState.bag.length === 0
+        ? 'A pot of tea is due and the bag is empty. This ends the game.'
+        : 'A fresh pot of tea is brewing at the end of this turn.',
+    },
+    menus: {
+      fig: menusLeft === null ? '-' : String(menusLeft), mark: icon('card', 16), ord: menusLeft,
+      state: menusLeft === 0,
+      say: 'The last tasting menu has gone.',
+    },
+    // A score crosses nothing, so the You chip has no threshold at all.
+    stand: {
+      fig: String(bd.total), fig2: String(me.cupcakes), mark: icon('cake-stand', 16),
+      ord: bd.total, state: false,
+    },
+    // THE FLAVOUR IS A STANDING, NOT A CLOCK. board.js says so in terms - it is
+    // revealed at setup and does not change - so the chip carries the CONTEST
+    // around it: how many of the day's flavour you hold, and whether you lead.
+    // The mark is drawn at 20px and not 16, and the size is derived rather than
+    // chosen: in a 16px box the lemon's median ink run measures 1.64 against the
+    // 2.00 CSS pixel floor, and at 20 it reaches 2.05.
+    flavour: {
+      fig: myFlavour === null ? '-' : String(myFlavour),
+      mark: flavourInPlay
+        ? `<img src="images/symbol-${gameState.flavourOfTheDay}-v3.png" width="20" height="20" alt="" aria-hidden="true">`
+        : icon('card', 16),
+      ord: myFlavour,
+      // Taking or losing the majority is an EVENT rather than a state, so it is
+      // latched on the change rather than tested every render.
+      latch: flavourInPlay ? (leading ? 'lead' : 'behind') : null,
+      say: leading
+        ? `You hold the most ${ingredientLabel(gameState.flavourOfTheDay)} tiles.`
+        : `You no longer hold the most ${ingredientLabel(gameState.flavourOfTheDay)} tiles.`,
+    },
+  };
+}
+
+function updateSummaryRail(gameState) {
+  const rail = document.querySelector('.pm-rail');
+  if (!rail) return;
+  const live = rail.querySelector('.pm-rail__live');
+  const readings = railReadings(gameState);
+  const open = document.body.getAttribute('data-pm-sheet') || '';
+  const yours = gameState.currentPlayerIndex === 0;
+  const first = railState.first;
+
+  // GRADE 3's bookkeeping. Snapshot every ordinal on the way OUT of your turn
+  // and diff on the way back IN, because three bots play between your turns on a
+  // phone you are not watching and a rail with no history is a snapshot.
+  const leaving = railState.wasYours === true && !yours;
+  const arriving = railState.wasYours === false && yours;
+  if (leaving) for (const c of RAIL_CHIPS) railState.mark[c.id] = railState.ord[c.id];
+  railState.wasYours = yours;
+
+  for (const c of RAIL_CHIPS) {
+    const r = readings[c.id];
+    const btn = rail.querySelector(`[data-pm-chip="${c.id}"]`);
+    if (!btn || !r) continue;
+
+    const markEl = btn.querySelector('[data-pm-mark]');
+    if (markEl.dataset.pmKey !== r.mark) {
+      markEl.dataset.pmKey = r.mark;
+      markEl.innerHTML = r.mark;
+    }
+    const figEl = btn.querySelector('[data-pm-fig]');
+    if (figEl.textContent !== r.fig) figEl.textContent = r.fig;
+    const fig2El = btn.querySelector('[data-pm-fig2]');
+    if (r.fig2 == null) {
+      fig2El.hidden = true;
+    } else {
+      fig2El.hidden = false;
+      if (fig2El.dataset.pmKey !== r.fig2) {
+        fig2El.dataset.pmKey = r.fig2;
+        fig2El.innerHTML = `${icon('cupcake', 12)}<span>${r.fig2}</span>`;
+      }
+    }
+    btn.setAttribute('aria-expanded', String(c.id === open));
+
+    // GRADE 2, and it outranks a tick. A state threshold lights while the state
+    // holds; the flavour's is latched on a change of standing. Either way the
+    // rail stays until the chip is tapped - see the click handler.
+    let arrived = false;
+    if (r.state !== undefined && r.state !== null) {
+      if (r.state && !railState.said[c.id]) { railState.lit[c.id] = true; arrived = true; }
+      if (!r.state) { railState.lit[c.id] = false; }
+      railState.said[c.id] = !!r.state;
+    } else if (r.latch !== undefined && r.latch !== null) {
+      const was = railState.said[c.id];
+      if (!first && was !== undefined && was !== r.latch) { railState.lit[c.id] = true; arrived = true; }
+      railState.said[c.id] = r.latch;
+    }
+    if (railState.lit[c.id]) btn.setAttribute('data-pm-threshold', '1');
+    else btn.removeAttribute('data-pm-threshold');
+
+    // GRADE 1, the tick. Suppressed on the first render, because a value has to
+    // have been seen before it can be seen to move.
+    const was = railState.ord[c.id];
+    if (arrived) announceChip(btn, 'threshold', live, r.say);
+    else if (!first && was != null && r.ord != null && r.ord !== was) announceChip(btn, 'tick');
+
+    // GRADE 3, the badge itself.
+    if (arriving && railState.mark[c.id] != null && r.ord != null && r.ord !== railState.mark[c.id]) {
+      const d = r.ord - railState.mark[c.id];
+      btn.querySelector('.pm-chip__delta').textContent = (d > 0 ? '+' : '') + d;
+      btn.setAttribute('data-pm-delta', '1');
+    } else if (arriving) {
+      btn.removeAttribute('data-pm-delta');
+    }
+
+    railState.ord[c.id] = r.ord;
+  }
+  railState.first = false;
+}
+
+// The attribute is what starts the CSS animation, and it has to be removed and
+// re-set to restart one. Removing it again afterwards is what lets the NEXT
+// change of the same grade play - the pixels are already back where they
+// started, because every one of these keyframe sets ends transparent.
+function announceChip(btn, grade, live, sentence) {
+  btn.removeAttribute('data-pm-news');
+  void btn.offsetWidth;
+  btn.setAttribute('data-pm-news', grade);
+  if (grade === 'threshold' && live && sentence) live.textContent = sentence;
+  window.setTimeout(() => {
+    if (btn.getAttribute('data-pm-news') === grade) btn.removeAttribute('data-pm-news');
+  }, grade === 'threshold' ? 2000 : 1000);
+}
+
+// Bound once per game, by delegation on the rail, which is emitted once by
+// renderGameScreen and never re-rendered - only its figures are rewritten.
+function bindSummaryRail() {
+  const rail = document.querySelector('.pm-rail');
+  if (!rail) return;
+  rail.addEventListener('click', e => {
+    const btn = e.target.closest('[data-pm-chip]');
+    if (!btn) return;
+    const id = btn.dataset.pmChip;
+    // TAPPING IS THE ACKNOWLEDGEMENT. It clears the threshold rail whether or
+    // not the state has passed, which is the whole of decision 32 stated as a
+    // mechanism: the news persists until it has been read, and reading it is
+    // opening the sheet it came from.
+    railState.lit[id] = false;
+    btn.removeAttribute('data-pm-threshold');
+    closeOppSheet();
+    toggleSheet(id);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// ONE OPPONENT, EXPANDED (plan section 4.5)
+//
+// Their 14px board comes off the strip entirely and comes back at 44px in a tall
+// sheet (decision 31), which reverses the collapsed variant that kept the
+// unreadable half. Three tickets measured the 14px board as failing - unreadable
+// at all, green against blue at dE 7.8 for a tritanope with no ink to help, and
+// a board ground only dE 1.6 from the wall - and removing it RETIRES both colour
+// problems rather than mitigating them.
+//
+// Stage 6's structural trick, applied to a seat: NOTHING IS RE-PARENTED. The
+// seat leaves the strip by going `position: fixed` where it already sits, so
+// updateStats keeps rewriting it and every delegated listener survives.
+// ---------------------------------------------------------------------------
+
+function openOppSheet(panel) {
+  closeSheet();
+  closeOppSheet();
+  panel.setAttribute('data-pm-open', '1');
+  document.body.setAttribute('data-pm-opp', panel.id || '1');
+}
+
+function closeOppSheet() {
+  document.querySelectorAll('.ft-seat--opp[data-pm-open]').forEach(el => el.removeAttribute('data-pm-open'));
+  document.body.removeAttribute('data-pm-opp');
+}
+
+function bindOpponentStrip() {
+  const strip = document.querySelector('.ft-opp-strip');
+  if (!strip) return;
+  strip.addEventListener('click', e => {
+    if (!isPhoneBand()) return;
+    const panel = e.target.closest('.ft-seat--opp');
+    if (!panel) return;
+    if (e.target.closest('[data-pm-opp-close]')) { closeOppSheet(); return; }
+    if (panel.getAttribute('data-pm-open') === '1') return;   // taps inside the open sheet
+    openOppSheet(panel);
+  });
+  // The row is a button in every sense except the tag, and the tag cannot change:
+  // .ft-seat--opp is the hook four bands of layout hang off.
+  strip.querySelectorAll('.ft-seat--opp').forEach(panel => {
+    panel.setAttribute('role', 'button');
+    panel.setAttribute('tabindex', '0');
+    panel.addEventListener('keydown', e => {
+      if (!isPhoneBand()) return;
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      if (panel.getAttribute('data-pm-open') === '1') return;
+      e.preventDefault();
+      openOppSheet(panel);
+    });
+  });
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.body.getAttribute('data-pm-opp')) closeOppSheet();
+});
 
 // ---------------------------------------------------------------------------
 // THE SWEEP DIALOG (plan section 6.3, defects 3 and the sweep half of 15)
@@ -3067,7 +3514,7 @@ function getScoreBreakdown(player, gameState = null) {
 // current human is choosing a claim destination), legal rows and the crumb tray
 // are marked with data-attributes so click handlers can be attached.
 function renderStand(player, opts = {}) {
-  const { interactive = false, legalRows = null } = opts;
+  const { interactive = false, legalRows = null, own = false } = opts;
 
   let rowsHtml = '';
   for (let rowIndex = player.stand.length - 1; rowIndex >= 0; rowIndex--) {
@@ -3140,14 +3587,15 @@ function renderStand(player, opts = {}) {
   // highlight - and until now the only place that said so was the rules modal
   // and a `title` a phone cannot render.
   //
-  // ONLY WHILE THE STAND IS A LIVE DESTINATION. The plan puts this line in the
-  // stand rather than in the phase bar (section 15, defect 17), and "at the
-  // moment it binds" is what decides when: the destination step IS the moment,
-  // it is reached on every claim of every game, and outside it the line would
-  // be page height spent on a decision nobody is making. Ticket 21's phase-bar
-  // variant is the one the plan overrides here, and it is also the one its own
-  // write-up flagged as the only item that could fail measurement at 360.
-  const lockNote = interactive
+  // IT MOVES INTO THE STAND SHEET (stage 7). Stage 1 could only afford it in the
+  // destination step, where it cost 33px of a canvas that had nowhere free to put
+  // it; the plan's section 11.1 rule is that TEACHING GOES IN A SHEET, WHERE IT IS
+  // FREE, AND NEVER ON THE CANVAS, WHERE IT IS NOT. Below 1149 this panel IS the
+  // stand sheet - position: fixed, out of the page's flow entirely - so the line
+  // is now permanent there and costs nothing at all, and the 33px comes back at
+  // the destination step. Above the band it is display: none and the rules modal
+  // carries it, which is the same rule applied to a screen that has no sheets.
+  const lockNote = own
     ? `<p class="ft-stand__lock-note">Choosing an empty row locks it to that ingredient for the rest of the game.</p>`
     : '';
 
@@ -3306,15 +3754,41 @@ function updateStats(gameState) {
     // `display: none` above 1149, so nothing on a desktop knows they exist; the
     // markup is emitted unconditionally so no render path has to consult a media
     // query. Labelled Close and not Done, because nothing has been done.
-    const sheetHead = (title) => playerIdx !== 0 ? '' : `
-      <div class="pm-sheet-head">
-        <span class="pm-sheet-head__handle" aria-hidden="true"></span>
-        <h2 class="pm-sheet-head__title">${title}</h2>
-        <button class="pm-sheet-head__close" type="button" data-pm-close>Close</button>
+    const sheetHead = (title) => playerIdx !== 0 ? '' : sheetHeadHTML(title);
+
+    // THE COLLAPSED OPPONENT ROW'S READOUTS (stage 7, plan section 4.4). Six
+    // facts on one 44px full-width row, and the row is the tap target.
+    //
+    // THEIR BOARD FILL IS THE ONE THAT EARNS ITS PLACE. The rail's board-fill
+    // chip says how full the FULLEST board is and says nothing about whose; this
+    // is the complementary half, and it is the only opponent fact that is a
+    // clock on everybody rather than a fact about that player's score.
+    //
+    // A RESERVED CARD BECOMES A COUNT, and only while it is non-zero. `.ft-on-order`
+    // renders a real 108 x 150 card face inside the seat's board column - 171px
+    // of a 44px row, and the only unbounded term in the whole layout budget. A
+    // count cannot grow with the number of reserves; the card faces are in the
+    // sheet.
+    //
+    // Every glyph is backed by a visually hidden word, because a `title` is not
+    // reachable on a phone and no icon in this set is ever the accessible name of
+    // anything.
+    const seatRow = !isOpponentSeat ? '' : (() => {
+      const filled = p.board.length - p.board.filter(c => c === null).length;
+      const onOrder = p.reservedCards.length;
+      return `
+      <div class="pm-seat-row">
+        <span class="pm-seat-row__stat pm-seat-row__stat--score"><span class="ft-sr-only">Score </span>${bd.total}</span>
+        <span class="pm-seat-row__stat">${icon('cupcake', 12)}<span class="ft-sr-only">cupcakes </span>${bd.cupcakes}</span>
+        <span class="pm-seat-row__stat">${icon('grid', 12)}<span class="ft-sr-only">board filled </span>${filled}/${p.board.length}</span>
+        ${onOrder ? `<span class="pm-seat-row__stat">${icon('card', 12)}<span class="ft-sr-only">cards on order </span>${onOrder}</span>` : ''}
+        <span class="pm-seat-row__more" aria-hidden="true">${icon('arrow-right', 12)}</span>
       </div>`;
+    })();
 
     let html = `
       ${sheetHead('Your score and cake stand')}
+      ${seatRow}
       <div class="ft-score-total">Total: ${bd.total}${oppCupcakes}</div>
       <div class="ft-score-breakdown">
         <div class="ft-score-breakdown__item"><span>Cake stand</span><strong>${bd.standTotal}</strong></div>
@@ -3324,7 +3798,7 @@ function updateStats(gameState) {
         ${flavourLine}
       </div>
       ${destinationMode ? `<div class="ft-stand__prompt">Choose where this tile goes ${icon('arrow-down', 16)}</div>` : ''}
-      ${renderStand(p, { interactive: destinationMode, legalRows })}
+      ${renderStand(p, { interactive: destinationMode, legalRows, own: !isOpponentSeat })}
       ${isOpponentSeat ? renderStandSummary(p) : ''}
     `;
 
