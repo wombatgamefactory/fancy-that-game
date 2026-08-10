@@ -380,9 +380,19 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.55),
     inset 1px 0 0 rgba(255, 255, 255, 0.30),
     inset -1px -1px 0 rgba(107, 78, 58, 0.26);
-  --tile-field:
-    radial-gradient(115% 115% at 27% 20%, rgba(255, 255, 255, 0.60), rgba(255, 255, 255, 0) 56%),
-    linear-gradient(148deg, var(--lt) 0%, var(--mid) 46%, var(--dk) 100%);
+
+  /* --tile-field IS NOT DECLARED HERE, AND IT CANNOT BE. See the note over
+     .ft-colour, where it lives. Stage 4 declared it on :root with var(--lt) /
+     var(--mid) / var(--dk) inside it; those three are declared on the COLOUR
+     CLASS, which is on the tile, so on :root the references were substituted
+     against a root element that has none of them. The custom property computed
+     to the empty string, `background: var(--tile-field)` became invalid at
+     computed-value time, background-image came out `none`, and EVERY TILE IN
+     THE GAME WAS A FLAT --mid FILL from stage 4 until stage 4a repaired it.
+     Silently: no error, no fallback, no warning. Same trap --board-col-width
+     documents below. A var() inside a custom property is substituted where the
+     custom property is DECLARED, so a recipe must be declared on an element
+     that already carries its ingredients. */
 
   /* The dent's form is the tile's form INVERTED - shade top and left, light
      bottom and right - and it shrinks on the same ladder. */
@@ -1574,7 +1584,9 @@ a .ft-icon {
   /* The same 1px rim of the tile's own dark stop, shrinking inside border-box so
      the plate's 34/32/30/28px size does not move. */
   border: 1px solid var(--dk);
-  background: var(--tile-field);
+  /* background-IMAGE over the .ft-stand__plate.ft-colour background-color, for
+     the reason given on .ft-tile (stage 4a). */
+  background-image: var(--tile-field);
   box-shadow: var(--form-edges);
 }
 
@@ -2036,7 +2048,13 @@ a .ft-icon {
      on a state change that is meant to be instant. transform and opacity are
      also the only two properties that animate off the main thread. */
   transition: transform 0.15s ease, opacity 0.15s ease;
-  background: var(--tile-field);
+  /* background-IMAGE, not the `background` shorthand (stage 4a). The shorthand
+     reset background-color to transparent in the same declaration, and the flat
+     --mid under the gradient stack is the printed tile colour: the field sits on
+     top of the mid, it never replaces it. A tile with no colour class - a dent,
+     an empty plate - has no --tile-field at all, so this resolves to the initial
+     `none` for it and its own rule paints the ground. */
+  background-image: var(--tile-field);
   box-shadow: var(--form-edges);
   position: relative;
 }
@@ -2362,6 +2380,45 @@ a .ft-icon {
 .ft-colour-green  { --lt: var(--green-lt);  --mid: var(--green);  --dk: var(--green-dk); }
 .ft-colour-blue   { --lt: var(--blue-lt);   --mid: var(--blue);   --dk: var(--blue-dk); }
 .ft-colour-orange { --lt: var(--orange-lt); --mid: var(--orange); --dk: var(--orange-dk); }
+
+/* ======= THE FIELD (plan section 8.6, stage 4a) ===========================
+   LAYER 2 OF THE TILE, and the centrepiece of the visual language: a radial
+   highlight at 27 / 20 per cent, and a 148 degree body gradient running the
+   colour's light stop to its mid at 46 per cent to its dark stop. It is the
+   prototype's recipe to the character (wayfinder/prototypes/tile-treatment-v1
+   .html, .tile) and it is not to be re-derived.
+
+   IT IS DECLARED HERE, ON THE BARE .ft-colour MARKER, AND NOWHERE ELSE, and
+   that placement is the whole of stage 4a. A var() inside a custom property is
+   substituted at the point of DECLARATION, against the element the custom
+   property is being computed for - not at the point of USE. --lt, --mid and
+   --dk are declared on .ft-colour-<name> immediately above, so the only scope
+   where this recipe can resolve is an element carrying a colour class. .ft-colour
+   is on every one of them: board tiles, market tiles, working tiles, the stand's
+   filled plates and the sweep dialog's .ds-tile, all from one getColourClass()
+   in board.js.
+
+   Declared on :root instead - which is where stage 4 put it - the three stops
+   are absent, the property computes to the empty string, and every consumer's
+   background-image silently resolves to `none`. That shipped through a whole
+   stage of screenshot review because an empty string and a deliberate `none`
+   look identical.
+
+   One class of specificity is deliberate and is enough: nothing sets a custom
+   property inline, so this needs none of the three-class depth the
+   background-color rule below needs. It leaves the shrink ladder room to turn
+   the field off from a band with a two-class descendant selector, which is what
+   the 24 and 14px rungs do.
+
+   CONSUMED AS background-image, NEVER as the `background` shorthand. The
+   shorthand would reset background-color to transparent in the same rule, and
+   the flat --mid underneath the gradient stack is the printed tile colour - it
+   may be painted over, never replaced. */
+.ft-colour {
+  --tile-field:
+    radial-gradient(115% 115% at 27% 20%, rgba(255, 255, 255, 0.60), rgba(255, 255, 255, 0) 56%),
+    linear-gradient(148deg, var(--lt) 0%, var(--mid) 46%, var(--dk) 100%);
+}
 
 .ft-tile.ft-colour.ft-colour-yellow,
 .ft-tile.ft-colour.ft-colour-pink,
@@ -3486,16 +3543,12 @@ a .ft-icon {
    sized from --ds-tile rather than --tile-size so it is 48 at every desktop
    width including XL, where the market's own tile is 60.
 
-   background-COLOR: var(--mid), the way .ft-tile.ft-colour.ft-colour-<name>
-   does it, and NOT `background: var(--tile-field)`. --tile-field is declared on
-   :root and its value contains var(--lt) / var(--mid) / var(--dk), which are
-   declared on the TILE - and a var() inside a custom property is substituted
-   where the custom property is DECLARED. Measured on the shipped build:
-   --tile-field computes to the empty string at :root and on every tile, so
-   background-image is `none` and a market tile is a flat --mid fill today. This
-   chip therefore draws what the market draws. See the stage 5 ticket's
-   Resolution - it is stage 4's to answer, not this stage's to quietly diverge
-   from, and background-image below follows the token if it is ever repaired. */
+   background-COLOR: var(--mid) with the field over it as background-IMAGE, the
+   way .ft-tile does it. Stage 5 wrote this pair while --tile-field was still
+   computing to the empty string, precisely so that the chip would draw whatever
+   the market drew and would follow the token the moment it was repaired. Stage
+   4a repaired it - the recipe moved to .ft-colour, which this element carries -
+   so this chip now paints the full field with no edit of its own. */
 .ds-tile {
   width: var(--ds-tile);
   height: var(--ds-tile);
@@ -5328,12 +5381,22 @@ select:focus {
      cast shadow is off, so the plate keeps its relief and loses its contact. */
   .ft-seat--opp {
     --cloth-ring: 6px;
-    --tile-field: linear-gradient(var(--mid), var(--mid));
     --form-edges: inset 0 1px 0 rgba(255, 255, 255, 0.55);
     --dent-edges: inset 0 1px 0 rgba(var(--shadow-ink), 0.38);
     --plate-size: 92%;
     --plate-body: linear-gradient(var(--china), var(--china));
     --plate-edges: inset 0 1px 0 rgba(var(--shadow-ink), 0.34);
+  }
+
+  /* THE FIELD GOES AT 24, and it is turned off ON THE TILE rather than on the
+     seat (stage 4a). --tile-field can only be declared where --lt / --mid / --dk
+     are in scope, so the seat is not a scope that can hold it; two classes beat
+     the one on .ft-colour, and `none` is the literal initial value of
+     background-image, so the surface leaves and the flat --mid background-color
+     stays exactly where it was. Surface goes first, then form, never the
+     silhouette - plan section 8.2. */
+  .ft-seat--opp .ft-colour {
+    --tile-field: none;
   }
 
   .ft-game {
@@ -5560,12 +5623,18 @@ select:focus {
      headroom at 390, where two more would cost 269px of page height. */
   .ft-seat--opp {
     --cloth-ring: 0px;
-    --tile-field: linear-gradient(var(--mid), var(--mid));
     --form-edges: 0 0 0 0 rgba(0, 0, 0, 0);
     --dent-edges: 0 0 0 0 rgba(0, 0, 0, 0);
     --plate-size: 92%;
     --plate-body: linear-gradient(var(--china), var(--china));
     --plate-edges: 0 0 0 0 rgba(0, 0, 0, 0);
+  }
+
+  /* The field is already off from the 24px rung above, which this query is
+     always inside; restated so the 14px rung reads as a complete rung and a
+     later edit to the M band cannot switch the field back on at 14 by accident. */
+  .ft-seat--opp .ft-colour {
+    --tile-field: none;
   }
 
   /* .ft-centre and .ft-centre-table dissolve so their children become items of
