@@ -2171,6 +2171,65 @@ function closeSheetNow() {
   document.body.setAttribute('data-pm-sheet', '');
 }
 
+// ARMING A SPEND THAT REACHES OUTSIDE THE SHEET (10 August, Dean's report).
+//
+// The spend sheet is a HALF sheet so that the two board spends can be played
+// through it - you arm "move a tile" and tap your own board in the space the cap
+// leaves above (see the scroll in openSheet). That is the whole reason the cap is
+// non-negotiable, and it is right for those two.
+//
+// The other two ARM SOMETHING THAT IS NOT YOUR BOARD. The extra tile arms the
+// tile market, which on a phone sits at the top of the canvas; the reserve arms
+// the card row, which sits below your board. Neither is in the space the cap
+// leaves, so the sheet was left standing over the very thing it had just asked
+// the player to choose from - measured at 390: four of five probes down the
+// middle of the card row came back as sheet, so a player who tapped "Reserve a
+// card" was looking at a two-millimetre sliver of the first card and nothing
+// else.
+//
+// So: close the sheet, then bring the target into view IF IT IS NOT ALREADY
+// fully there. The test is deliberately "fully", not "at all" - a card row with
+// its top eighth showing is exactly the state being fixed. `block: 'nearest'`
+// then scrolls the least it can to finish the job, and the scroll margins on the
+// target (style.css, beside .ft-game > *) keep it clear of the fixed docks.
+// Instant, never smooth: this is not a movement to be read, it is the page
+// arriving where the player has just been sent.
+function revealSpendTarget(selector) {
+  closeSheet();
+  // THE SCROLL WAITS FOR THE RE-RENDER, and it has to. Every caller here closes
+  // the sheet, arms the mode and re-renders, in that order and synchronously - so
+  // a scroll measured before the arming reads geometry that is one paint out of
+  // date, scrolls to where the target WAS, and the re-render then moves it. That
+  // is not theory: measured at 390 the first version landed the card row under
+  // the phase bar, having reported it clear a frame earlier. One frame later the
+  // page is the page the player will actually see.
+  requestAnimationFrame(() => {
+    const el = document.querySelector(selector);
+    if (!el || !el.getBoundingClientRect) return;
+    const r = el.getBoundingClientRect();
+    // The fixed docks are part of the viewport as far as this is concerned: a
+    // target under the phase bar is not visible, whatever its rect says.
+    //
+    // MEASURED OFF THE DOCKS THEMSELVES, not off --pm-dock-top. That property is
+    // a calc() of two others, so getPropertyValue hands back the literal string
+    // "calc(48px + 48px)" and parseFloat makes NaN of it - a silent zero, which
+    // is exactly the bug this test exists to catch. The elements are there to be
+    // measured, and above the touch band they simply are not fixed, so their
+    // contribution is nought without a media query being consulted.
+    const dockDepth = (sel, edge) => {
+      const d = document.querySelector(sel);
+      if (!d) return 0;
+      if (getComputedStyle(d).position !== 'fixed') return 0;
+      const dr = d.getBoundingClientRect();
+      return edge === 'top' ? Math.max(0, dr.bottom) : Math.max(0, window.innerHeight - dr.top);
+    };
+    const top = Math.max(dockDepth('.ft-centre-head', 'top'), dockDepth('.pm-rail', 'top'));
+    const bottom = dockDepth('.ft-seat__controls', 'bottom');
+    const fullyVisible = r.top >= top && r.bottom <= window.innerHeight - bottom;
+    if (!fullyVisible) el.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+  });
+}
+
 // NOTHING IS EVER STARTED BY A RE-RENDER (plan section 7, the build rule).
 // applyPhoneSheets runs at the end of every updateGameDisplay and opens or closes
 // a sheet from the engine's own state, so it calls openSheet/closeSheetNow, which
@@ -4462,19 +4521,17 @@ function updateStats(gameState) {
     // The extra tile ARMS the market and waits for a second click (onExtraTile),
     // which is why it needs a toggle at all.
     //
-    // AND IT CLOSES THE SHEET BEHIND IT (10 August). On the phone this panel IS a
-    // sheet, and the thing this chip arms - the tile market - is at the top of
-    // the page, underneath it. Leaving the sheet open would recreate, one step
-    // later, exactly the friction that moved this spend here in the first place:
-    // arm the option, then work out for yourself that the menu is in the way.
-    // The other four spends do not need this - two of them target your own board,
-    // which the half-sheet cap deliberately leaves visible, and two are complete
-    // the moment they are tapped. closeSheet() is a no-op above 1149, where there
-    // is no sheet and the panel is a rail.
+    // AND IT GETS THE SHEET OUT OF THE WAY OF THE MARKET (10 August). On the
+    // phone this panel IS a sheet and the tile market is at the top of the page,
+    // underneath it. Leaving it open would recreate, one step later, exactly the
+    // friction that moved this spend to the spend step in the first place: arm
+    // the option, then work out for yourself that the menu is in the way.
+    // See revealSpendTarget - it is a no-op above 1149, where the panel is a rail
+    // and nothing is covering anything.
     if (canBuyTile && ui.onExtraTileToggle) {
       const btn = statsEl.querySelector('#buyExtraTileBtn');
       if (btn) btn.addEventListener('click', () => {
-        closeSheet();
+        revealSpendTarget('.ft-market-wrap');
         ui.onExtraTileToggle();
       });
     }
@@ -4484,9 +4541,15 @@ function updateStats(gameState) {
       const btn = statsEl.querySelector('#dealCardsBtn');
       if (btn) btn.addEventListener('click', () => ui.onDealCards());
     }
+    // THE RESERVE ARMS THE CARD ROW, which is the other spend that reaches
+    // outside the sheet - and it was the one Dean hit. Same treatment as the
+    // extra tile above, for the same reason and through the same helper.
     if (canReserve && ui.onReserveToggle) {
       const btn = statsEl.querySelector('#reserveCardBtn');
-      if (btn) btn.addEventListener('click', () => ui.onReserveToggle());
+      if (btn) btn.addEventListener('click', () => {
+        revealSpendTarget('.ft-section--cards');
+        ui.onReserveToggle();
+      });
     }
   });
 }
@@ -4704,12 +4767,24 @@ function updatePhaseControls(gameState) {
     // Cancel is offered because a market tile lifted by mistake must be
     // droppable - nothing has been paid for until the cell is named.
     const holdingExtraTile = ui.extraTilePending !== null && ui.extraTilePending !== undefined;
+    // The reserve is armed and the sheet that armed it has closed itself, so the
+    // bar is the only thing left that can say what happens next. Cancel is not
+    // optional here for the same reason: the toggle that would disarm it is
+    // inside a sheet the player would have to reopen to reach.
+    const armedReserve = ui.reserveMode && canReserveCard(gameState);
 
     html = holdingExtraTile ? `
       <div class="ft-phase-bar">
         ${barText('Choose where this tile goes', `<div class="ft-phase-bar__status success">${clickVerb()} a lit cell on your board</div>`)}
         <div class="ft-phase-bar__controls">
           <button id="cancelExtraTile" class="ft-btn ft-btn--secondary ft-btn--small">Cancel</button>
+        </div>
+      </div>
+    ` : armedReserve ? `
+      <div class="ft-phase-bar">
+        ${barText('Reserve a card', `<div class="ft-phase-bar__status success">${clickVerb()} a ringed card on the row</div>`)}
+        <div class="ft-phase-bar__controls">
+          <button id="cancelReserve" class="ft-btn ft-btn--secondary ft-btn--small">Cancel</button>
         </div>
       </div>
     ` : `
@@ -4879,6 +4954,16 @@ function updatePhaseControls(gameState) {
   if (cancelExtraTileBtn && gameState.gamePhase === 'spend') {
     cancelExtraTileBtn.addEventListener('click', () => {
       window._gameUI.extraTilePending = null;
+      updateGameDisplay(gameState);
+    });
+  }
+
+  // Disarming the reserve. Nothing has been spent - reserveCard charges on the
+  // card tap - so this is a state reset like the extra tile's.
+  const cancelReserveBtn = controls.querySelector('#cancelReserve');
+  if (cancelReserveBtn && gameState.gamePhase === 'spend') {
+    cancelReserveBtn.addEventListener('click', () => {
+      window._gameUI.reserveMode = false;
       updateGameDisplay(gameState);
     });
   }

@@ -5261,8 +5261,19 @@ select:focus {
 }
 
 /* Market cards invite a click during a human's reserve step. */
+/* ARMED, AND IT HAS TO SHOW (10 August). This carried a pointer cursor and a
+   hover lift and nothing else, which is no affordance at all on the device where
+   the reserve is hardest to use: a phone has no hover and no cursor, so a player
+   who tapped "Reserve a card" watched the sheet close and then saw a card row
+   that looked exactly as it had a moment earlier.
+   It takes the ring vocabulary's "you may act here" - a DASHED accent ring, the
+   same mark the sweep buttons wear while they are waiting to be used, told apart
+   from the claimable card's SOLID gold ring by being dashed rather than by
+   moving. Nothing animates: the row can hold eight of these at once. */
 .ft-card--reservable {
   cursor: pointer;
+  outline: 2px dashed var(--color-accent);
+  outline-offset: 3px;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -6514,7 +6525,14 @@ select:focus {
      landing under them. This is the cheap half of an auto-scroll; the model
      needs no other half, because the board is never more than one screen from
      the market. */
-  .ft-game > * {
+  /* THE TWO SPEND TARGETS ARE ON THE LIST TOO (10 August). revealSpendTarget in
+     board.js scrolls the tile market or the card row into view when a spend is
+     armed against it, and neither is a direct child of .ft-game - they are both
+     inside the centre column - so without naming them here the browser would
+     park each one neatly underneath the fixed top dock. */
+  .ft-game > *,
+  .ft-market-wrap,
+  .ft-section--cards {
     scroll-margin-top: calc(var(--pm-dock-top) + 8px);
     scroll-margin-bottom: calc(var(--pm-dock-bottom) + 8px);
   }
