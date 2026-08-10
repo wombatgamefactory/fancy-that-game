@@ -1782,10 +1782,24 @@ a .ft-icon {
   box-shadow: inset 3px 0 0 var(--color-accent);
 }
 
+/* ONE LINE: the word and the count. It was a column - a label, an italic
+   instruction, and then one 36x36 BUTTON PER CUPCAKE - and all three went with
+   stage 6's settlement of defect 13 (Dean's decision 1):
+
+     - the instruction described the two board spends, which are chips of their
+       own now and carry their own prices;
+     - the per-cupcake buttons were the only way into board-spend mode, and at
+       twelve cupcakes (the engine's own 1,500-game maximum) twelve 36px buttons
+       wrap to three rows inside a sheet capped at 280px. They were also the
+       second of ticket 04's two 44px tap-target failures, at 36x36.
+
+   What is left is what the row always meant: how many you have. */
 .ft-cupcake-header {
   display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
 }
 
 .ft-cupcake-label {
@@ -1794,65 +1808,20 @@ a .ft-icon {
   color: var(--color-accent);
 }
 
-.ft-cupcake-help-text {
-  font-size: 11px;
-  color: var(--color-text-secondary);
-  font-style: italic;
-}
-
-.ft-cupcake-icons {
-  display: flex;
-  gap: var(--spacing-sm);
-  flex-wrap: wrap;
-  min-height: 36px;
+.ft-cupcake-count {
+  display: inline-flex;
   align-items: center;
+  gap: var(--spacing-xs);
+  font-size: 15px;
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink, var(--color-text-primary));
 }
 
-.ft-cupcake-empty {
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  font-style: italic;
-}
-
-.ft-cupcake-btn {
-  width: 36px;
-  height: 36px;
-  padding: 4px;
-  border: 2px solid #E8D5B7;
-  background: white;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.ft-cupcake-btn--active {
-  border-color: var(--color-accent-gold);
-  box-shadow: 0 0 8px rgba(212, 175, 55, 0.3);
-  animation: cupcake-pulse 2s ease-in-out infinite;
-}
-
-.ft-cupcake-btn--active:hover {
-  background: rgba(212, 175, 55, 0.1);
-  box-shadow: 0 0 12px rgba(212, 175, 55, 0.5);
-  transform: scale(1.1);
-}
-
-.ft-cupcake-btn--active:active {
-  transform: scale(0.95);
-}
-
-.ft-cupcake-btn--disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  border-color: #CCCCCC;
-}
-
-.ft-cupcake-icon {
-  width: 100%;
-  height: 100%;
+.ft-cupcake-count__icon {
+  width: 18px;
+  height: 18px;
   object-fit: contain;
   pointer-events: none;
 }
@@ -1862,15 +1831,6 @@ a .ft-icon {
   color: var(--color-text-secondary);
   font-weight: 500;
   text-align: center;
-}
-
-@keyframes cupcake-pulse {
-  0%, 100% {
-    box-shadow: 0 0 8px rgba(212, 175, 55, 0.3);
-  }
-  50% {
-    box-shadow: 0 0 12px rgba(212, 175, 55, 0.5);
-  }
 }
 
 /* ======= Game Grids ======= */
@@ -2447,7 +2407,6 @@ a .ft-icon {
 .working-tile,
 .ft-btn,
 .market-tile,
-.ft-cupcake-btn,
 .ft-cupcake-spend-btn,
 .ft-card {
   touch-action: manipulation;
@@ -2913,9 +2872,14 @@ a .ft-icon {
    menu is always legible - a player needs to know the option exists on the turn
    they cannot use it, not only on the turn they can.
    --------------------------------------------------------------------------- */
+/* A GRID SINCE STAGE 6, one column here and two on the phone (Dean's decision
+   1). One column is what the flex column already drew, so nothing moves above
+   the band; what changes is that there are SIX chips rather than three buttons,
+   because the extra tile at step 1 and the further claim at step 4 were the two
+   spends this menu never listed. */
 .ft-cupcake-spends {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 4px;
   margin-top: var(--spacing-xs);
 }
@@ -2930,6 +2894,47 @@ a .ft-icon {
   color: var(--color-text-primary);
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+/* THE CHIP: icon, name, price. The price is a COLUMN rather than a suffix in
+   the name - "(1 cupcake)" at the end of a sentence is unscannable in a
+   two-column grid, and six prices that line up are six prices you can compare.
+   The cupcake is the icon and it is aria-hidden; the button's aria-label says
+   the price in words, because no icon in this set is ever the accessible name
+   of anything. */
+.ft-spend-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+  text-align: left;
+}
+
+.ft-spend-chip__name {
+  min-width: 0;
+}
+
+.ft-spend-chip__price {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.ft-spend-chip__price .ft-icon {
+  color: currentColor;
+}
+
+/* The sixth chip is NOT a control. A further claim is taken by tapping a card
+   at the claim step, so there is no button here to press and a permanently
+   disabled one would be a lie about what the interface does. It states a price,
+   which is the one thing about that spend a player cannot read anywhere else. */
+.ft-spend-chip--note {
+  cursor: default;
+  background: none;
+  border-style: dashed;
+  color: var(--color-text-secondary);
 }
 
 .ft-cupcake-spend-btn:hover:not(:disabled) {
@@ -3550,6 +3555,8 @@ a .ft-icon {
    4a repaired it - the recipe moved to .ft-colour, which this element carries -
    so this chip now paints the full field with no edit of its own. */
 .ds-tile {
+  /* Positioned for the strike on a surplus tile below, and for nothing else. */
+  position: relative;
   width: var(--ds-tile);
   height: var(--ds-tile);
   border: 1px solid var(--dk);
@@ -3568,6 +3575,69 @@ a .ft-icon {
   height: 60%;
   object-fit: contain;
   display: block;
+}
+
+/* ---- THE OVERFLOW PREVIEW (plan section 5.4, stage 6) ---------------------
+   BACK IN THE BAG, on the option, BEFORE the tap. Not a new mark: it is the
+   state the build already uses for a tile returning to the bag - a 52% cool
+   slate wash and a flat strike - so the sheet and the placement step say the
+   same thing in the same language. No opacity and no filter, because a painted
+   object is never faded; the strike is a SHAPE and survives desaturation, which
+   matters because it is the only thing saying a tile is lost.
+
+   It is silent 99.68% of the time: 20 overflows in 6,280 measured sweeps, and
+   every one of them with one or two spaces left. That rarity is the argument
+   for having it at all - a player meets it perhaps once in a game, has never
+   seen it before, and at that moment their own board is the one thing the sheet
+   is standing in front of. */
+.ds-tile--tobag {
+  box-shadow: inset 0 0 0 999px rgba(var(--shadow-ink), 0.52), var(--form-edges);
+}
+
+.ds-tile--tobag::after {
+  content: '';
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  border-top: 2px solid rgba(61, 43, 31, 0.60);
+  transform: rotate(-20deg);
+  pointer-events: none;
+}
+
+/* THE FOOT APPEARS RATHER THAN LIVING THERE. Ticket 12's argument for the left
+   accent rail, applied to a sentence: a line that is always there says nothing,
+   a line that appears says read me. Stage 7's pinned board-fill chip carries the
+   same number permanently two docks above, which is what stops this needing to
+   be furniture - and if a later ticket ever moves that chip off the rail, this
+   foot has to become permanent.
+
+   TWO LINES AT 360 IS A HARD CONSTRAINT and these numbers are the whole of it:
+   16px of chrome (8 margin, 7 padding, 1 rule) and 45 of text, which is two 12px
+   lines at 1.4 with 11px spare and not three. */
+.ds-foot {
+  display: none;
+  margin-top: var(--spacing-sm);
+  padding-top: 7px;
+  border-top: 1px solid var(--rule);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+.ds-foot b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.ds-dialog[data-overflow="1"] .ds-foot {
+  display: block;
+}
+
+/* The grab handle is the phone sheet's, and it is what makes swipe-to-dismiss
+   discoverable and what VoiceOver reads. There is no swipe above the band. */
+.ds-dialog__handle {
+  display: none;
 }
 
 /* THE ROW RING. One absolutely positioned element appended to #marketContainer
@@ -4918,8 +4988,9 @@ select:focus {
      in @media (hover: hover) at the point of declaration, which is the honest
      form: a lift that only exists where there is a pointer cannot stick to a
      tap. The three card and cupcake lifts are still declared unconditionally
-     further up the file and are still undone here. */
-  .ft-cupcake-btn--active:hover,
+     further up the file and are still undone here. (.ft-cupcake-btn--active
+     came off this list with the element: stage 6 replaced the row of
+     per-cupcake buttons with a count.) */
   .ft-card--reservable:hover,
   .ft-card--claimable:hover {
     transform: none;
@@ -5073,11 +5144,10 @@ select:focus {
   }
 
   /* An opponent's cupcake panel is a READOUT - they cannot be clicked and the
-     spend buttons are not even rendered for another player. The instruction
-     ("Click to move a tile...") and the tiebreak footnote are therefore telling
-     you how to use controls that are not there, and they are among the widest
-     lines in the panel. The count itself stays. */
-  .ft-seat--opp .ft-cupcake-help-text,
+     spend chips are not even rendered for another player, so the tiebreak
+     footnote is telling you how to use controls that are not there. The count
+     itself stays. (The italic instruction line was the other half of this rule
+     and is deleted outright by stage 6 - see .ft-cupcake-header.) */
   .ft-seat--opp .ft-cupcake-points {
     display: none;
   }
@@ -5834,5 +5904,719 @@ select:focus {
      stacked panels with ~150px. */
   .ft-opp-strip {
     justify-content: center;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   STAGE 6'S FILE-SCOPE DEFAULTS, and they are all "off".
+
+   Three things exist in the markup at every width and are drawn at none of them
+   except the phone band below. They are emitted unconditionally so that no
+   render path in board.js has to consult a media query - the stylesheet decides
+   where a thing appears, which is the same separation the seat positions have
+   kept since phase A.
+
+   They must sit BEFORE the block below rather than after it: @media contributes
+   no specificity, so a default declared later would win at every width and turn
+   all three off again.
+   --------------------------------------------------------------------------- */
+
+/* The sheet's chrome. There are no sheets above 1149 - your score column and
+   your cupcake supply are on the canvas there, where they belong. */
+.pm-sheet-head {
+  display: none;
+}
+
+/* The phase bar's sheet opener, and a phase bar that opens nothing. */
+.ft-btn--sheet {
+  display: none;
+}
+
+/* THE ONE-ROW BAR'S TEXT COLUMN. `display: contents` above the band, so the
+   instruction and the status figure remain block-level siblings of the controls
+   carrying their own margins, and the desktop bar renders exactly as it did
+   before the wrapper existed. */
+.ft-phase-bar__text {
+  display: contents;
+}
+
+/* ===========================================================================
+   THE PHONE STEP MODEL - stage 6, plan sections 3 and 5, 10 August 2026
+   ===========================================================================
+
+   ONE CANVAS BETWEEN TWO FIXED DOCKS, WITH STANDARD BOTTOM SHEETS IN TWO SIZES.
+   Dean's standing decision 1: a persistent board with sheets over it, not
+   full-screen steps and not a swipeable pager.
+
+       fixed   TURN BAR         48   whose turn, which step, the rules button
+       fixed   SUMMARY RAIL     48   stage 7's five chips. THE SLOT IS RESERVED
+       --------------------------------------------------------------------
+       scroll  the market            tiles, and the ten sweep gutter chips
+       scroll  the swept-tile tray
+       scroll  YOUR 5x5 BOARD
+       scroll  the patisserie goal cards
+       scroll  the opponent strip
+       --------------------------------------------------------------------
+       fixed   [ a sheet rises here ]
+       fixed   PHASE BAR        76   what this step wants, and the primary
+
+   Five things on the canvas, in the order a tile travels: taken from the
+   market, held in the tray, placed on your board, matched against a card,
+   compared with the opponents. Nothing else is ever on the page - and the six
+   panels that used to sit between them are sheets now.
+
+   THE ONE GEOMETRIC LAW, and it is a number rather than a preference:
+
+       A SHEET NEVER COVERS YOUR BOARD WHILE YOUR BOARD IS PART OF THE DECISION
+
+   THE ONE STRUCTURAL TRICK: NOTHING IS RE-PARENTED. Every block that leaves the
+   canvas leaves it by going `position: fixed` where it already sits in the DOM.
+   board.js binds its placement, claim and cupcake listeners ONCE, by delegation,
+   to #workingArea1, #playerBoard1 and #playerScore1; re-parenting any of them
+   kills input silently and shows up in no layout measurement. This is also why
+   the reveal is `visibility` and never `display` or `transform` - see the sheet
+   block below, where both traps are real and named.
+
+   THIS BLOCK IS A SECOND max-width: 1149px QUERY and it sits at the end of the
+   file on purpose. @media adds no specificity, so it is source order that lets
+   it override the S band above it without a single !important or a raised
+   selector. The S band is not edited; it is superseded here, block by block,
+   which keeps stage 6's whole diff readable in one place.
+   =========================================================================== */
+@media (max-width: 1149px) {
+
+  :root {
+    /* THE VIEWPORT UNIT. `vh` is normatively `lvh`, so it over-reports by the
+       height of the browser toolbar - which is exactly the strip a bottom sheet
+       would end up underneath. svh is the small viewport. Declared as a fallback
+       pair rather than inside one min(), because a min() containing an
+       unsupported unit is invalid as a whole and would take the cap with it. */
+    --pm-vh: 100vh;
+    --pm-half-vh: 50vh;
+
+    /* THE TOP DOCK. The turn bar plus the summary rail's slot. STAGE 7 FILLS THE
+       SLOT; stage 6 reserves it, because every number below is derived from the
+       dock's height and a rail that arrives later must not move the geometry it
+       arrives into. */
+    --pm-turnbar-h: 48px;
+    --pm-rail-h: 48px;
+    --pm-dock-top: calc(var(--pm-turnbar-h) + var(--pm-rail-h));
+
+    /* THE BOTTOM DOCK: the phase bar, which was already fixed below 1400 and
+       keeps that role, compacted from three rows to one. The shipped bar ran to
+       about 127px in the place phase because it stacked an instruction, a status
+       line and two buttons on separate rows; 76 is 44 of button and 32 of
+       padding, and the bar is exactly that at every phone width. */
+    --pm-dock-bottom: 76px;
+
+    /* The sheet's own chrome: handle, title, Close. It sits above whichever
+       sheet is open and comes out of the same budget. */
+    --pm-sheet-chrome-h: 56px;
+    --pm-air: 26px;
+
+    /* WHAT THE BOARD NEEDS, AND WHAT A HALF SHEET MAY THEREFORE NEVER TAKE.
+       --board-col-width is 5 tiles at 44, 4 gaps at 2, the grid's 8px of padding
+       and its 1px border each side = 246px, and it is the same expression the
+       board itself is drawn from, so the two cannot drift. */
+    --pm-board-reserve: calc(var(--board-col-width) + var(--pm-sheet-chrome-h) + var(--pm-air));
+
+    /* TWO SHEET SIZES, AND THE ENGINE PICKS BETWEEN THEM RATHER THAN TASTE.
+
+       A HALF SHEET is one you ACT THROUGH while the canvas is still part of the
+       action: the spend sheet, because two of the six spends - move a tile,
+       clear an empty plate - are played by tapping your own board while it is
+       open. A TALL SHEET is one you READ, or one that is the whole of its own
+       decision: your score and stand, where by claim step 3 the tile is already
+       chosen and the stand rows ARE the tap targets.
+
+       Apple's medium detent and Material's cap at 50 per cent of screen height
+       independently land on half a screen; the cap takes the LOWER of that and
+       what the board leaves, so the platform figure is a ceiling rather than the
+       answer. Measured: 280 / 344 / 432 half and 552 / 616 / 704 tall, at
+       360x780, 390x844 and 430x932. */
+    --pm-sheet-max: min(
+      var(--pm-half-vh),
+      calc(var(--pm-vh) - var(--pm-dock-top) - var(--pm-dock-bottom) - var(--pm-board-reserve))
+    );
+    --pm-sheet-tall: calc(
+      var(--pm-vh) - var(--pm-dock-top) - var(--pm-dock-bottom) - var(--pm-sheet-chrome-h)
+    );
+
+    /* THE SWEEP SHEET TAKES ITS OWN, TIGHTER RESERVE (plan section 5.2), and
+       this is the one number in the model that is NOT the generic half sheet.
+
+       The generic cap keeps YOUR BOARD on screen. During sweep the thing that
+       must stay on screen is THE MARKET, and the market is taller than the
+       board: #marketContainer is a 44px gutter row, a 2px gap, five 44px tile
+       rows and four 2px gaps = 274px, against the board grid's 246. Under the
+       generic cap the leftover canvas is exactly 272px at EVERY phone width -
+       because the cap is the viewport minus the fixed things, so the gap is
+       (board reserve minus chrome) whatever the screen - and THE MARKET WOULD
+       MISS BY TWO PIXELS.
+
+       So it is derived from the market rather than typed as 240. The 12px is the
+       board region's padding; if that ever changes, this cap moves with it and
+       the expression is the thing to re-evaluate rather than the number.
+       Measured: 240 / 304 / 392 / 460 at 360 / 390 / 430 / 768. */
+    --ss-market-h: calc(var(--market-gutter-h) + var(--tile-gap)
+                        + 5 * var(--tile-size) + 4 * var(--tile-gap));
+    --ss-region-pad: 12px;
+    --ss-sweep-reserve: calc(var(--ss-market-h) + var(--ss-region-pad)
+                             + var(--pm-sheet-chrome-h) + var(--pm-air));
+    --ss-sheet-max: min(
+      var(--pm-half-vh),
+      calc(var(--pm-vh) - var(--pm-dock-top) - var(--pm-dock-bottom) - var(--ss-sweep-reserve))
+    );
+
+    /* The dialog's tile is already 44 below 1150; --ds-pad is the sheet's own
+       12px rather than the desktop dialog's 24, which is what puts the widest
+       group (276px at the ten-option worst case) inside a 336px inner width at
+       360 with 60px to spare. */
+    --ds-pad: 12px;
+  }
+
+  @supports (height: 100svh) {
+    :root {
+      --pm-vh: 100svh;
+      --pm-half-vh: 50svh;
+    }
+  }
+
+  /* =========================================================================
+     1. THE CANVAS
+     ========================================================================= */
+
+  /* The two docks are fixed, so the canvas is PADDED past them rather than
+     scrolled under them. 190px of bottom clearance was sized for the old
+     three-row bar; the compact one needs 76 plus a comfortable 44. */
+  .ft-game {
+    padding-top: calc(var(--pm-dock-top) + 8px);
+    padding-bottom: calc(var(--pm-dock-bottom) + 44px);
+  }
+
+  /* Anything scrolled into view by the browser clears the docks rather than
+     landing under them. This is the cheap half of an auto-scroll; the model
+     needs no other half, because the board is never more than one screen from
+     the market. */
+  .ft-game > * {
+    scroll-margin-top: calc(var(--pm-dock-top) + 8px);
+    scroll-margin-bottom: calc(var(--pm-dock-bottom) + 8px);
+  }
+
+  /* ---- 1a. THE TURN BAR: survives, halved, and pinned ---------------------
+     78px of SCROLLING page saying whose turn it is - the one fact you need most
+     often and the first one you scroll away from. It becomes a STRIP in the
+     plan's section 8.5 sense: the --inverse ground, flat (the 135deg gradient
+     goes, because a flat interface means flat), one hairline on the content
+     edge, radius 0, no shadow, edge to edge.
+
+     z-index 890: under the phase bar's 900 and above the sheets' 880, so a tall
+     sheet stops at the dock rather than sliding under a transparent gap. */
+  .ft-centre-head {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 890;
+    height: var(--pm-turnbar-h);
+    min-height: 0;
+    flex-wrap: nowrap;
+    gap: var(--spacing-sm);
+    padding: 0 6px 0 var(--spacing-md);
+    background: var(--inverse);
+    border: 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.35);
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /* --type-heading, sentence case. Fraunces is the voice of the game and is
+     never uppercase and never letterspaced. */
+  .ft-centre-head__player {
+    font-size: var(--type-heading);
+    font-weight: 600;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ft-centre-head__turn {
+    flex: 1 1 auto;
+    gap: 4px;
+  }
+
+  .ft-centre-head__thinking {
+    width: 100%;
+    max-width: 180px;
+  }
+
+  .ft-centre-head__right {
+    flex: 0 0 auto;
+    gap: var(--spacing-xs);
+  }
+
+  /* TAP TARGET FIX 1 OF 2. Ticket 04 measured #gameRulesButton at 120x29 and it
+     is the one 44px failure the harness reports at every single width. The
+     `book` icon at 16 in a 44px target, taking currentColor from the control it
+     sits in; the words stay as the accessible name, because the icon is never
+     the accessible name of anything. */
+  #gameRulesButton {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+    background: transparent;
+    border: 1px solid rgba(251, 245, 236, 0.35);
+    color: var(--ink-inverse);
+    box-shadow: none;
+  }
+
+  #gameRulesButton .ft-btn-howto__label {
+    display: none;
+  }
+
+  /* ---- 1c. MARKET, BOARD, CARDS: the three that stay ----------------------
+     The shipped band already orders market(2), your seat(3), cards(4). The model
+     does not reorder it; it EMPTIES THE GAPS. The tasting menus sat between the
+     market and your board and the ~400px score column sat between your board and
+     the cards, and both are sheets now. */
+
+  /* PATISSERIE GOALS is deleted on the phone: a row of patisserie cards names
+     itself, and the figure beside the heading is what was actually being read.
+     Its note is rules text sitting in the one gap the claim's co-visibility is
+     measured across, and the rules modal already says it. */
+  .ft-section--cards > .ft-section__head > .ft-section__title,
+  .ft-section--cards > .ft-section__note {
+    display: none;
+  }
+
+  /* SCROLL, DO NOT SHRINK. Three 170px cards wrap to two rows at 360 and cost
+     372px of page; one row costs 178 and the cards keep their size. This is what
+     brings the claim's span - your board to the card row - inside the viewport,
+     so it is load-bearing rather than tidy. */
+  #cardMarket {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: var(--spacing-xs);
+  }
+
+  #cardMarket > * {
+    flex: 0 0 auto;
+    scroll-snap-align: center;
+  }
+
+  /* =========================================================================
+     2. THE SHEETS
+     One object, six uses. Bottom-anchored, capped so the board stays visible,
+     full-bleed under 600px and centred at a 600px cap above it - which is
+     Material's own compact-window figure and which stops a 1149px-wide screen
+     getting a letterbox sheet. ONE LINE OF CSS AND ONE MEDIA FEATURE, NOT A
+     BAND: max-width 600px with margin-inline auto is the whole of it.
+
+     THEY ARE MATERIAL *STANDARD* SHEETS, NOT MODAL ONES, and there is NO SCRIM
+     ANYWHERE IN THE MODEL. Material's own distinction: a standard sheet
+     co-exists with the screen's main UI region while a modal one disables all
+     other app functionality. Two of the six spends are played by tapping your
+     own board through the open spend sheet, so the canvas behind a sheet stays
+     lit and stays interactive wherever the phase allows. That requirement is
+     what makes the half-sheet cap non-negotiable.
+
+     THE FOUR READING PANELS ARE SHEETS HERE AND HAVE NO OPENER UNTIL STAGE 7.
+     #cardProgress, #teaOption, #tastingMenuPanel and #flavourPanel are the
+     panels the rail's chips expand (plan section 4.2), and taking them off the
+     canvas is most of what makes the page 1886. The chips that open them are
+     stage 7's, and until they land those four are reachable only by setting
+     body[data-pm-sheet] by hand.
+     ========================================================================= */
+  #playerScore1,
+  #cupcakeSupply1,
+  #tastingMenuPanel,
+  #flavourPanel,
+  #cardProgress,
+  #teaOption {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--pm-dock-bottom);
+    /* NEVER translateX(-50%) TO CENTRE. A transform on a fixed sheet makes it
+       the containing block for its own fixed descendants, and #cupcakeSupply1 is
+       a fixed descendant of #playerScore1. margin-inline centres with no
+       transform and no trap. */
+    margin: 0 auto;
+    width: 100%;
+    max-width: 600px;
+    max-height: calc(var(--pm-sheet-tall) + var(--pm-sheet-chrome-h));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    z-index: 880;
+    /* REVEALED BY `visibility`, NEVER `display` OR `transform`. display:none
+       drops the cake stand's [data-dest-row] targets out of layout and breaks
+       the claim's third step; a transform springs the containing-block trap
+       above. visibility is also the only one of the three a child can override
+       on a hidden parent, which is exactly what #cupcakeSupply1 needs. */
+    visibility: hidden;
+    background: var(--surface);
+    border: 0;
+    border-radius: 16px 16px 0 0;
+    /* The one flat container in the system allowed a shadow, because here it
+       says "above the board" rather than decorating. */
+    box-shadow: 0 -6px 20px -6px rgba(var(--shadow-ink), 0.38);
+    padding: 0 var(--spacing-md) var(--spacing-md);
+  }
+
+  /* ONE ATTRIBUTE IS THE WHOLE STATE MACHINE. */
+  body[data-pm-sheet="stand"]   #playerScore1,
+  body[data-pm-sheet="spend"]   #cupcakeSupply1,
+  body[data-pm-sheet="menus"]   #tastingMenuPanel,
+  body[data-pm-sheet="flavour"] #flavourPanel,
+  body[data-pm-sheet="fill"]    #cardProgress,
+  body[data-pm-sheet="tea"]     #teaOption {
+    visibility: visible;
+  }
+
+  /* #cupcakeSupply1 is a CHILD of #playerScore1 and has to be able to show while
+     its parent is hidden and to hide while its parent shows. */
+  body[data-pm-sheet="stand"] #cupcakeSupply1 {
+    visibility: hidden;
+  }
+
+  /* THE ONE HALF SHEET IN THE MODEL. Everything else on this list is a tall
+     sheet, either because you read it or because it is the whole of its own
+     decision. */
+  #cupcakeSupply1 {
+    max-height: calc(var(--pm-sheet-max) + var(--pm-sheet-chrome-h));
+    margin-top: 0;
+  }
+
+  /* THE SHEET CHROME, INSIDE ITS SHEET rather than floating above it. The
+     arithmetic is identical - the 56px comes out of the same budget either way -
+     and it is what .ds-dialog already does, so the model has one shape rather
+     than two and there is no second element to re-position on every render.
+     Sticky, so it stays put if a tall sheet's content ever scrolls under it. */
+  .pm-sheet-head {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    height: var(--pm-sheet-chrome-h);
+    margin: 0 calc(-1 * var(--spacing-md));
+    padding: 14px var(--spacing-md) 6px;
+    background: var(--surface);
+    border-radius: 16px 16px 0 0;
+  }
+
+  /* Apple: people expect to swipe a sheet down to dismiss it. The handle is what
+     makes that discoverable and what VoiceOver reads. */
+  .pm-sheet-head__handle {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    width: 36px;
+    height: 4px;
+    margin-left: -18px;
+    border-radius: 2px;
+    background: var(--rule);
+  }
+
+  /* --type-title, and the sheet's title is the only heading in the room: you got
+     here by tapping something that said what it was. */
+  .pm-sheet-head__title {
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: var(--type-title);
+    font-weight: 600;
+    line-height: 1.2;
+    margin: 0;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* Labelled Close and not Done, because nothing has been done. */
+  .pm-sheet-head__close {
+    flex: 0 0 auto;
+    min-width: 64px;
+    min-height: 44px;
+    padding: 0 14px;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  /* Inside a sheet the panel's own section heading is deleted, for the same
+     reason the sheet has a title at all. */
+  #tastingMenuPanel > .ft-section__head > .ft-section__title,
+  #flavourPanel > .ft-section__head > .ft-section__title,
+  #cardProgress > .ft-section__head > .ft-section__title {
+    display: none;
+  }
+
+  /* The seat's own rules for a score column that is no longer in the seat. */
+  #playerScore1 {
+    min-width: 0;
+  }
+
+  /* =========================================================================
+     3. THE PHASE BAR: survives, compacted to one row
+     It keeps the fixed bottom position it already had below 1400. What changes
+     is that it is ONE ROW rather than three, and that the primary sits at the
+     trailing end of a bar inset from both screen edges.
+
+     Apple says avoid full-width buttons and puts a sheet's primary on the
+     trailing edge; Material anchors persistent UI at the bottom with the
+     confirming action closest to the trailing edge, and says dismissive actions
+     never sit to the right of confirming ones. An inset bar with the primary
+     trailing and 12px of padding puts its centre about 42px in from the corner,
+     clear of the 64px corner-accuracy penalty - which is the part of the reach
+     evidence that survived its own author's repudiation of the thumb-zone map.
+
+     THE BAR IS EXACTLY --pm-dock-bottom TALL, and the safe-area inset is carried
+     as PADDING rather than margin (ticket 00, finding 18) so the home indicator
+     floats over the bar's own ground instead of over the page behind it.
+     ========================================================================= */
+  .ft-seat__controls > .ft-phase-bar {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: var(--spacing-sm);
+    margin: 0 var(--spacing-sm);
+    padding: var(--spacing-md);
+    padding-bottom: max(var(--spacing-md), env(safe-area-inset-bottom));
+    min-height: var(--pm-dock-bottom);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    box-shadow: 0 -2px 12px rgba(61, 43, 31, 0.18);
+  }
+
+  /* The instruction and the status figure become ONE COLUMN sharing the row with
+     the controls, which is the whole of "three rows to one". Both are clamped:
+     the bar is a dock with a fixed height, and a phase whose sentence ran long
+     used to be a phase whose bar was half again as tall. */
+  .ft-phase-bar__text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .ft-phase-bar__instruction {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 1.3;
+    margin: 0;
+  }
+
+  .ft-phase-bar__status {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 1.3;
+    margin: 0;
+  }
+
+  .ft-phase-bar__controls {
+    flex: 0 0 auto;
+    gap: var(--spacing-sm);
+    /* Dismissive actions never sit to the right of the confirming one, and the
+       markup already emits them in that order. */
+    flex-direction: row;
+  }
+
+  .ft-phase-bar__controls .ft-btn {
+    min-height: 44px;
+  }
+
+  /* Undo is an icon in the bar. Its word is worth about 40px of the text column
+     at 360, and the icon plus its accessible name says the same thing. */
+  .ft-btn--undo {
+    min-width: 44px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .ft-btn--undo .ft-btn__label {
+    display: none;
+  }
+
+  /* THE SHEET OPENER, which exists only where a sheet does. */
+  .ft-btn--sheet {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+  }
+
+  /* The toast clears the compacted bar rather than the old three-row one. */
+  .ft-toast {
+    bottom: calc(var(--pm-dock-bottom) + 12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* =========================================================================
+     4. THE SPEND SHEET - defect 13, Dean's decision 1
+     409px of content against a 280px cap at 360, and the cap is not negotiable
+     because two of the six spends are played by tapping the board through the
+     open sheet. So the panel is what gives: a TWO-COLUMN GRID OF SIX CHIPS,
+     three rows of two. All six stay visible, nothing scrolls, and there is no
+     second navigation step.
+     ========================================================================= */
+  .ft-cupcake-supply {
+    gap: var(--spacing-sm);
+    padding: 0;
+    margin-top: 0;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .ft-cupcake-spends {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .ft-spend-chip {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 2px;
+    min-height: 48px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    line-height: 1.25;
+  }
+
+  .ft-spend-chip__name {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .ft-spend-chip__price {
+    font-weight: 700;
+  }
+
+  .ft-cupcake-state {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .ft-cupcake-note {
+    margin: 0;
+    max-width: none;
+  }
+
+  /* "Cupcakes score no points - they break ties" is a rule, and a rule belongs
+     in the rules modal, which states it. On the phone it is 22px of a sheet with
+     76px of slack in its worst case - three state lines, six live chips and a
+     full purse - and this is the cheapest 22px in the panel. */
+  .ft-cupcake-points {
+    display: none;
+  }
+
+  /* The sheet opener is the icon alone; its word is the accessible name. */
+  .ft-btn--sheet {
+    min-width: 44px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .ft-btn--sheet .ft-btn__label {
+    display: none;
+  }
+
+  /* =========================================================================
+     5. THE SWEEP SHEET (plan section 5)
+     The desktop dialog stage 5 built IS the sweep sheet - same element, same
+     content, the same four data attributes on the option and the same
+     onMarketClick. Only the container changes, which is what section 7 of the
+     sweep-sheet write-up asks for. Below 1150 it stops centring on the viewport
+     (which covered the market, the last live half of defect 3) and becomes a
+     bottom sheet on the market's own reserve.
+     ========================================================================= */
+  .ds-dialog {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: var(--pm-dock-bottom);
+    transform: none;
+    margin: 0 auto;
+    width: 100%;
+    max-width: 600px;
+    /* The cap is the BODY's budget; the chrome comes out of the same reserve and
+       is added back here because it lives inside the element. */
+    max-height: calc(var(--ss-sheet-max) + var(--pm-sheet-chrome-h));
+    border-radius: 16px 16px 0 0;
+    z-index: 880;
+    box-shadow: 0 -6px 20px -6px rgba(var(--shadow-ink), 0.38);
+  }
+
+  .ds-dialog__chrome {
+    position: relative;
+    align-items: center;
+    height: var(--pm-sheet-chrome-h);
+    padding: 14px var(--ds-pad) 6px;
+  }
+
+  .ds-dialog__handle {
+    display: block;
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    width: 36px;
+    height: 4px;
+    margin-left: -18px;
+    border-radius: 2px;
+    background: var(--rule);
+  }
+
+  /* 14 of top air, two groups of 70.3 with 8 between them, 10 at the foot: the
+     sheet body is 173px at rest and 222px with the overflow warning, AT EVERY
+     PHONE WIDTH AND ON EVERY DEAL, because each axis is exactly one line of
+     chips. Nothing reflows, nothing jumps, and the market behind it never
+     moves. */
+  .ds-dialog__body {
+    padding: 14px var(--ds-pad) 10px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   THE M BAND'S HALF OF THE SAME TAP TARGET, and it turned out to be free.
+
+   #gameRulesButton at 115x28 is the one 44px failure the harness reported at
+   EVERY width in the touch band, and the block above only reaches 1149. At M the
+   button keeps its words - the column is 1280px wide and there is no reason to
+   take them away - so the fix is the height alone: the title bar is 44px tall
+   already, sized by its own 8px of padding around a 28px button, so giving the
+   button the bar's full height and taking the bar's vertical padding to zero
+   leaves the bar at 44 and the page at 1407, measured at 1280 before and after.
+   A tap target grew by 16px and nothing moved.
+   --------------------------------------------------------------------------- */
+@media (min-width: 1150px) and (max-width: 1399px) {
+  .ft-centre-head {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  #gameRulesButton {
+    height: 44px;
+    min-height: 44px;
   }
 }

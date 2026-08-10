@@ -166,15 +166,44 @@ const PHASE_WIDTHS = [430, 390, 360, 768, 1024, 1400];
 // two screenfuls of scroll for a turn. Reported as a gap in the detail line, and
 // deliberately NOT asserted, because failing every phone width on an aspiration
 // would drown the regression signal this table exists to carry.
+// LOWERED AGAIN ON 10/08/2026 BY STAGE 6, THE PHONE STEP MODEL, and this is the
+// largest fall the table has taken or will take: the three phone widths and the
+// tablet drop by 45 to 50 per cent in both positions, and every other row moves
+// too except the four the L rework already bottomed out.
+//
+//   open  360   3033 -> 1513   (-1520, 50.1%)      mid  3398 -> 1878  (-1520)
+//   open  390   3014 -> 1513   (-1501, 49.8%)      mid  3379 -> 1878  (-1501)
+//   open  430   3014 -> 1513   (-1501, 49.8%)      mid  3379 -> 1878  (-1501)
+//   open  768   2471 -> 1293   (-1178, 47.7%)      mid  2654 -> 1476  (-1178)
+//   open  XL    1387 -> 1355   (-32)               mid  1387 -> 1383  (-4)
+//
+// The phone fall is the canvas losing everything that is not one of its five
+// things: your ~400px score column, the fresh-pot gauge, the end-of-game meter,
+// the tasting menus and the flavour panel all become sheets, the card row stops
+// wrapping to two rows, the turn bar halves and pins, and the phase bar goes
+// from three rows to one. The two docks and their 96 + 76 of padding are the
+// only thing this stage ADDS, and they are paid for many times over.
+//
+// THE XL ROWS MOVE FOR THE FIRST TIME SINCE STAGE 4, and it is not a layout
+// change: the spend panel's three buttons, three explanatory sentences and row
+// of per-cupcake buttons become six chips and a count, so the score column is
+// shorter at every band. At XL the page is as tall as its tallest column, so a
+// shorter score column shows up only where it is the tallest thing - hence 32px
+// on the opening and 4 in the mid-game, against 1,520 on a phone.
+//
+// The M band (1399 to 1150) and the four L widths do not move at all. Nothing in
+// this stage reaches them: the model's own query stops at 1149, and the M band's
+// one edit - the rules button growing to a 44px tap target - was measured at
+// 1407 before and after, because the title bar was already 44px tall.
 const TARGET_SCREENS = 2.0;
 const PAGE_HEIGHT_BUDGET = {
   // The 4-player seeded OPENING position, human in seat 0, boards empty.
   open: {
-    2400: 1387, 2181: 1387,                           // was 1453
+    2400: 1355, 2181: 1355,                           // was 1453, then 1387
     2180: 1150, 1920: 1150, 1700: 1150, 1400: 1150,   // was 1546, then 1493
     1399: 1407, 1366: 1407, 1280: 1407, 1150: 1407,   // was 1617
-    1149: 2471, 1024: 2471, 768: 2471,                // was 2524
-    430: 3014,  390: 3014,  360: 3033,                // was 3070 / 3085 / 3330
+    1149: 1293, 1024: 1293, 768: 1293,                // was 2524, then 2471
+    430: 1513,  390: 1513,  360: 1513,                // was 3014 / 3014 / 3033
   },
   // MID-GAME, after one scripted human turn and the bots' replies. Taller than
   // the opening at every width except XL, because four boards now carry tiles
@@ -182,11 +211,11 @@ const PAGE_HEIGHT_BUDGET = {
   // the worst case a phone actually has to scroll, and it had no number at all
   // before 09/08/2026.
   mid: {
-    2400: 1387, 2181: 1387,                           // was 1453
+    2400: 1383, 2181: 1383,                           // was 1453, then 1387
     2180: 1515, 1920: 1515, 1700: 1515, 1400: 1515,   // was 1830, then 1816
     1399: 1589, 1366: 1589, 1280: 1589, 1150: 1589,   // was 1800
-    1149: 2654, 1024: 2654, 768: 2654,                // was 2707
-    430: 3379,  390: 3379,  360: 3398,                // was 3435 / 3450 / 3695
+    1149: 1476, 1024: 1476, 768: 1476,                // was 2707, then 2654
+    430: 1878,  390: 1878,  360: 1878,                // was 3379 / 3379 / 3398
   },
 };
 

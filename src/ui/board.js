@@ -708,7 +708,11 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
             <span class="ft-centre-head__stat">Turn <strong id="turnsDisplay">0</strong></span>
             <!-- The rules are the one control in this column, so it is a FILLED
                  button rather than an outline, and it says what it does. -->
-            <button id="gameRulesButton" class="ft-btn-howto" title="How to play">
+            <!-- THE LABEL IS HIDDEN BELOW 1149, where the button is a 44x44
+                 icon target in a 48px turn bar (stage 6), so the accessible
+                 name has to be stated rather than inferred from a span that is
+                 not always rendered. The icon is never the name of anything. -->
+            <button id="gameRulesButton" class="ft-btn-howto" title="How to play" aria-label="How to Play">
               ${icon('book', 16)}
               <span class="ft-btn-howto__label">How to Play</span>
             </button>
@@ -1206,6 +1210,9 @@ export function updateGameDisplay(gameState) {
   updateStats(gameState);
   updateGameInfo(gameState);
   updatePhaseControls(gameState);
+  // LAST, because it reads the phase bar it may have just added a button to and
+  // the destination choices updateStats has just rendered targets for.
+  applyPhoneSheets(gameState);
 }
 
 function updateMarket(gameState) {
@@ -1735,6 +1742,139 @@ function setupBonusUI(gameState) {
 }
 
 // ---------------------------------------------------------------------------
+// THE PHONE STEP MODEL - THE SHEETS (stage 6, plan section 3)
+//
+// ONE CANVAS BETWEEN TWO FIXED DOCKS, with standard bottom sheets in two sizes.
+// Almost all of it is CSS, because of the one structural rule the whole model
+// hangs on: NOTHING IS RE-PARENTED. A block leaves the canvas by going
+// `position: fixed` where it already sits in the DOM, so every delegated
+// listener board.js binds once - to #workingArea1, #playerBoard1 and
+// #playerScore1 - keeps working untouched, and so does every innerHTML
+// re-render path above them.
+//
+// What is left for JS is exactly three things:
+//
+//   1. ONE ATTRIBUTE, body[data-pm-sheet], which is the whole state machine.
+//      Its value is the id of the open sheet, or absent. style.css turns that
+//      into `visibility: visible` on the one panel it names. `visibility`, never
+//      `display` or `transform`: display:none would drop the cake stand's
+//      [data-dest-row] targets out of layout and break the claim's third step,
+//      and a transform would make a fixed sheet the containing block for its own
+//      fixed descendants - and #cupcakeSupply1 is a fixed descendant of
+//      #playerScore1.
+//   2. THE TWO RULES THAT KEEP THE MODEL COHERENT WHEN A STEP VANISHES:
+//        (a) a sheet never opens by itself, unless the engine has entered a
+//            state in which that sheet is the only legal action;
+//        (b) a sheet is modal only under the same test.
+//      Exactly one state passes: the claim's destination choice, where
+//      ui.destinationChoices is set and nothing but a stand row or the crumb
+//      tray is legal. So autoSkipEmptyClaim can fire with nothing on screen
+//      opening, closing or moving - only the phase bar's own text changes.
+//   3. Escape and swipe-down, the two ways out that are not a button.
+//
+// THE SHEET CHROME SITS INSIDE ITS SHEET, not above it as a separate fixed bar.
+// The arithmetic is identical either way - the 56px comes out of the same
+// budget - and it is what .ds-dialog already does, so the model has one shape
+// rather than two and no chrome to re-position on every render.
+//
+// STAGE 7 OWNS THE RAIL. The top dock reserves its 48px slot here and the four
+// reading panels (#cardProgress, #teaOption, #tastingMenuPanel, #flavourPanel)
+// are already sheets, but nothing opens them until the rail's chips arrive.
+// ---------------------------------------------------------------------------
+
+const PHONE_BAND = '(max-width: 1149px)';
+function isPhoneBand() {
+  return window.matchMedia(PHONE_BAND).matches;
+}
+
+function openSheet(id) {
+  document.body.setAttribute('data-pm-sheet', id);
+  // THE SPEND SHEET IS THE ONE YOU ACT THROUGH, so the board is scrolled into
+  // the space the sheet leaves above it. The cap guarantees the room - 272px of
+  // canvas against a 246px board at every phone width - but it cannot guarantee
+  // the SCROLL POSITION, and at rest the canvas opens on the market with the
+  // board a screen further down. Measured without this, the sheet's first pixel
+  // lands 97px inside the board at 360.
+  //
+  // #playerPanel1 rather than the grid: the panel is a child of .ft-game and
+  // therefore carries the scroll-margin-top that clears the top dock.
+  if (id === 'spend') {
+    const seat = document.getElementById('playerPanel1');
+    if (seat && seat.scrollIntoView) seat.scrollIntoView({ block: 'start', behavior: 'auto' });
+  }
+}
+
+function closeSheet() {
+  document.body.setAttribute('data-pm-sheet', '');
+}
+
+function toggleSheet(id) {
+  if (document.body.getAttribute('data-pm-sheet') === id) closeSheet();
+  else openSheet(id);
+}
+
+// A vertical drag of more than 40px closes the sheet. Bound per sheet rather
+// than delegated, because the sweep sheet is created and destroyed on every
+// gutter tap and its listeners go with it.
+function attachSheetSwipe(el, onClose) {
+  let y0 = null;
+  const down = e => { y0 = (e.touches ? e.touches[0] : e).clientY; };
+  const up = e => {
+    if (y0 === null) return;
+    const y = (e.changedTouches ? e.changedTouches[0] : e).clientY;
+    const travelled = y - y0;
+    y0 = null;
+    if (travelled > 40) onClose();
+  };
+  el.addEventListener('touchstart', down, { passive: true });
+  el.addEventListener('touchend', up, { passive: true });
+  el.addEventListener('mousedown', down);
+  el.addEventListener('mouseup', up);
+}
+
+// Bound once, at module scope, so no render path has to remember it. Escape
+// closes whichever sheet is open; the sweep sheet has its own Escape handler
+// because it is a different object with a different close.
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.body.getAttribute('data-pm-sheet')) closeSheet();
+});
+
+// Called at the end of every updateGameDisplay. Everything here is derived from
+// the engine's own state, so a resumed or rewound game needs no extra bookkeeping.
+let lastSheetPhase = null;
+function applyPhoneSheets(gameState) {
+  const ui = window._gameUI;
+  if (!ui) return;
+  const phase = gameState.gamePhase;
+  const human = gameState.currentPlayerIndex === 0 && gameState.players[0]?.isHuman;
+  const open = document.body.getAttribute('data-pm-sheet') || '';
+
+  if (!isPhoneBand()) {
+    // Above the band every panel is on the canvas and no sheet exists. Clearing
+    // the attribute rather than leaving it stale means a resize back down does
+    // not re-open a sheet the player closed three widths ago.
+    if (open) closeSheet();
+    lastSheetPhase = phase;
+    return;
+  }
+
+  // RULE (a)'s single exception, and the only auto-open in the model.
+  const needsStand = human && phase === 'claim' && Array.isArray(ui.destinationChoices);
+  if (needsStand && open !== 'stand') {
+    openSheet('stand');
+  } else if (!needsStand && open === 'stand' && lastSheetPhase === 'claim' && phase !== 'claim') {
+    closeSheet();
+  }
+
+  // The spend sheet belongs to the step that offers it. When the step is skipped
+  // the pair - button and sheet - simply never appears; nothing opens or closes.
+  const spendable = human && (phase === 'spend' || canBuyExtraTile(gameState));
+  if (open === 'spend' && !spendable) closeSheet();
+
+  lastSheetPhase = phase;
+}
+
+// ---------------------------------------------------------------------------
 // THE SWEEP DIALOG (plan section 6.3, defects 3 and the sweep half of 15)
 //
 // ONE FUNCTION, NOT TWO. showSweepOptionsForRow and showSweepOptionsForCol were
@@ -1870,7 +2010,14 @@ function closeSweepOptions() {
 // what fills that band.
 function placeSweepDialog() {
   if (!sweepDialog) return;
-  if (!window.matchMedia('(min-width: 1150px)').matches) return;
+  if (!window.matchMedia('(min-width: 1150px)').matches) {
+    // BELOW 1150 THE DIALOG IS A BOTTOM SHEET and CSS places it. Any inline
+    // left/top written while the window was wider has to go, or a resize across
+    // the boundary leaves the sheet anchored to a market that has moved.
+    sweepDialog.style.left = '';
+    sweepDialog.style.top = '';
+    return;
+  }
   const container = document.getElementById('marketContainer');
   if (!container) return;
 
@@ -1914,10 +2061,17 @@ function sweepOptionsFor(tiles) {
   };
 }
 
-function sweepOptionHTML(option, index, isRow) {
+function sweepOptionHTML(option, index, isRow, freeCells) {
   const count = option.tiles.length;
-  const inner = option.tiles.map(tile => `
-        <span class="ds-tile ${getColourClass(tile.colour)}">
+  // THE OVERFLOW PREVIEW, ON THE OPTION, BEFORE THE TAP (plan section 5.4).
+  // `freeCells` is the free-cell count read at the moment the sheet opened, so
+  // `keep` is how many of this option's tiles the board could actually take and
+  // everything past it goes back into the bag. The surplus is drawn FROM THE
+  // RIGHT, which is the order the placement step will offer them in.
+  const keep = Math.min(count, freeCells);
+  const lost = count - keep;
+  const inner = option.tiles.map((tile, i) => `
+        <span class="ds-tile ${getColourClass(tile.colour)}${i >= keep ? ' ds-tile--tobag' : ''}">
           <img src="images/symbol-${tile.ingredient}-v3.png" class="ds-tile__icon" alt="">
         </span>`).join('');
 
@@ -1925,8 +2079,10 @@ function sweepOptionHTML(option, index, isRow) {
   // is ever the accessible name of anything, and the chip's face carries no
   // colour name, no ingredient name and no count because the tiles say all
   // three: a colour chip is monochrome, an ingredient chip is mono-silhouette,
-  // and the count is how many tiles are in it.
-  const label = `Take the ${count} ${option.value} tile${count === 1 ? '' : 's'}`;
+  // and the count is how many tiles are in it. The strike is a shape and
+  // survives desaturation; the name is what carries it to a screen reader.
+  let label = `Take the ${count} ${option.value} tile${count === 1 ? '' : 's'}`;
+  if (lost > 0) label += `, ${lost} ${lost === 1 ? 'goes' : 'go'} back to the bag`;
 
   return `
       <button class="ds-opt" type="button" data-type="${option.type}" data-val="${option.value}"
@@ -1954,6 +2110,30 @@ function showSweepOptions(gameState, index, isRow) {
   const options = sweepOptionsFor(tiles);
   const title = isRow ? `Sweep row ${index + 1}` : `Sweep column ${COLUMN_LABELS[index]}`;
 
+  // THE FREE-CELL COUNT, READ AT THE MOMENT THE SHEET OPENS (plan section 18,
+  // stage 6). `board.filter(c => c === null).length` on the current player, and
+  // NOT getSweepPlacementCount - that function is min(pendingSweepTiles.length,
+  // free cells) and there is no pending sweep to measure against until the
+  // declaration this sheet exists to take. A blocked cell is an object, not a
+  // null, so an empty plate correctly counts as no room.
+  const sweeper = gameState.players[gameState.currentPlayerIndex];
+  const freeCells = sweeper.board.filter(c => c === null).length;
+  const worstLost = Math.max(0, ...[...options.colour, ...options.symbol]
+    .map(o => o.tiles.length - freeCells));
+
+  // THE FOOT APPEARS RATHER THAN LIVING THERE (plan section 5.4). A line that is
+  // always there says nothing; a line that appears says read me. It is silent on
+  // 99.68% of sweeps - 20 overflows in 6,280 - and every one of those happened
+  // with one or two spaces left, which is why it names the number rather than
+  // the rule. TWO LINES AT 360 IS A HARD CONSTRAINT: the sheet is 173px before
+  // it against a 240px cap, so the foot has 61px, which is 16 of chrome and two
+  // 12px lines. A first draft of this string ran to four lines and pushed the
+  // sheet past its own cap.
+  const foot = freeCells === 0
+    ? '<b>Your board is full.</b> Everything you sweep goes back to the bag.'
+    : `<b>${freeCells} space${freeCells === 1 ? '' : 's'} left on your board.</b> `
+      + 'The rest go back to the bag, and you choose which.';
+
   // COINCIDENT OPTIONS ARE BOTH SHOWN (decision 28). Nearly seven market lines in
   // ten carry a colour option that takes exactly the same tiles as an ingredient
   // option, so at the extreme the dialog shows the same five tiles twice. The
@@ -1964,20 +2144,23 @@ function showSweepOptions(gameState, index, isRow) {
   dialog.className = 'ds-dialog';
   dialog.setAttribute('role', 'dialog');
   dialog.setAttribute('aria-label', title);
+  dialog.dataset.overflow = worstLost > 0 ? '1' : '0';
   dialog.innerHTML = `
     <div class="ds-dialog__chrome">
+      <span class="ds-dialog__handle" aria-hidden="true"></span>
       <h2 class="ds-dialog__title">${title}</h2>
       <button class="ds-dialog__close" type="button">Close</button>
     </div>
     <div class="ds-dialog__body">
       <div class="ds-group">
         <div class="ds-group__label">By colour</div>
-        <div class="ds-options">${options.colour.map(o => sweepOptionHTML(o, index, isRow)).join('')}</div>
+        <div class="ds-options">${options.colour.map(o => sweepOptionHTML(o, index, isRow, freeCells)).join('')}</div>
       </div>
       <div class="ds-group">
         <div class="ds-group__label">By ingredient</div>
-        <div class="ds-options">${options.symbol.map(o => sweepOptionHTML(o, index, isRow)).join('')}</div>
+        <div class="ds-options">${options.symbol.map(o => sweepOptionHTML(o, index, isRow, freeCells)).join('')}</div>
       </div>
+      <div class="ds-foot">${foot}</div>
     </div>
   `;
   document.body.appendChild(dialog);
@@ -2002,6 +2185,13 @@ function showSweepOptions(gameState, index, isRow) {
 
   sweepKeyHandler = e => { if (e.key === 'Escape') closeSweepOptions(); };
   document.addEventListener('keydown', sweepKeyHandler);
+
+  // THE FOURTH WAY OUT, and it is the phone's (plan section 5.4). Apple: people
+  // expect to swipe a sheet down to dismiss it, and the grab handle in the
+  // chrome is what makes that discoverable. THE SHEET NEVER SCROLLS, which is
+  // exactly what makes the gesture unambiguous - there is no scroll for a
+  // vertical drag to compete with, at any width, on any deal.
+  attachSheetSwipe(dialog, closeSweepOptions);
 
   // Re-anchored rather than re-rendered. The dialog is in document coordinates,
   // so a scroll moves nothing; a RESIZE does, because the market's column can
@@ -3110,7 +3300,21 @@ function updateStats(gameState) {
       ? `<div class="ft-score-breakdown__item"><span><img src="images/symbol-${gameState.flavourOfTheDay}-v3.png" class="ft-score-breakdown__symbol" alt="${gameState.flavourOfTheDay}" title="Flavour of the Day: ${ingredientLabel(gameState.flavourOfTheDay)}"> Flavour${bd.flavourLeading ? ` <span class="ft-score-breakdown__lead" title="Currently holds the most - worth ${FLAVOUR_MAJORITY_VP} VP at the end, and shared if the lead is level">most +${FLAVOUR_MAJORITY_VP}</span>` : ''} <span class="ft-score-breakdown__sub">${bd.flavourTiles} on board</span></span><strong>${bd.flavour}</strong></div>`
       : '';
 
+    // THE SHEET HEAD (stage 6, plan section 3.1). Your own score column and your
+    // cupcake supply are the model's two sheets on this panel, and each carries
+    // its own 56px chrome - a grab handle, a title and Close. Both are
+    // `display: none` above 1149, so nothing on a desktop knows they exist; the
+    // markup is emitted unconditionally so no render path has to consult a media
+    // query. Labelled Close and not Done, because nothing has been done.
+    const sheetHead = (title) => playerIdx !== 0 ? '' : `
+      <div class="pm-sheet-head">
+        <span class="pm-sheet-head__handle" aria-hidden="true"></span>
+        <h2 class="pm-sheet-head__title">${title}</h2>
+        <button class="pm-sheet-head__close" type="button" data-pm-close>Close</button>
+      </div>`;
+
     let html = `
+      ${sheetHead('Your score and cake stand')}
       <div class="ft-score-total">Total: ${bd.total}${oppCupcakes}</div>
       <div class="ft-score-breakdown">
         <div class="ft-score-breakdown__item"><span>Cake stand</span><strong>${bd.standTotal}</strong></div>
@@ -3125,102 +3329,117 @@ function updateStats(gameState) {
     `;
 
     const cupcakeCount = p.cupcakes;
-    // The cupcake button opens BOARD-SPEND mode, which covers two actions with
-    // separate prices and separate per-turn allowances: move a tile
-    // (MOVE_TILE_CUPCAKE_COST) or remove an empty plate to the box
-    // (REMOVE_PLATE_CUPCAKE_COST). The button is live if EITHER is still payable
-    // and unused - the engine prices and gates the actual cell on the click.
+    // The two BOARD SPENDS - move a tile (MOVE_TILE_CUPCAKE_COST) or return an
+    // empty plate to the box (REMOVE_PLATE_CUPCAKE_COST). Both open the same
+    // board-spend mode and the engine prices and gates the actual cell on the
+    // tap, which is why they share ui.cupcakeMode; they are two chips because
+    // they are two prices and two allowances.
     const canMoveTile = p.cupcakes >= MOVE_TILE_CUPCAKE_COST && !gameState.moveUsedThisTurn;
     const canClearPlate = canRemovePlate(gameState);
-    const canUseCupcakes = isCurrentPlayer && gameState.gamePhase === 'spend'
-      && (canMoveTile || canClearPlate);
+    const canMoveTileNow = isCurrentPlayer && gameState.gamePhase === 'spend' && canMoveTile;
+    const canClearPlateNow = isCurrentPlayer && canClearPlate;
+    const canUseCupcakes = canMoveTileNow || canClearPlateNow;
     const cupcakeClass = ui.cupcakeMode ? 'ft-cupcake-supply--active' : '';
-    // The other two paid options, so a player can see the whole menu in one place
-    // rather than discovering them phase by phase.
+    // The other three paid options, so a player can see the whole menu in one
+    // place rather than discovering them phase by phase.
     const canDeal = isCurrentPlayer && canDealCards(gameState);
     const canBuyTile = isCurrentPlayer && canBuyExtraTile(gameState);
     const canReserve = isCurrentPlayer && canReserveCard(gameState);
 
-    // THE COACHING FOR THESE TWO BUTTONS, moved out of the phase bar on 4 August
-    // (plan section 5.4). Both sentences were in the status stack under the
-    // player's board, describing controls that are up here; the extra-tile one
-    // was four wrapped lines at a narrow width and on its own accounted for most
-    // of the 200px the phase bar measured during placement.
+    // -----------------------------------------------------------------------
+    // THE SPEND MENU AS A GRID OF CHIPS - Dean's decision 1 of 10/08/2026, and
+    // the settlement of plan defect 13.
     //
-    // They are rendered per-button rather than as a block so each sits directly
-    // under the control it explains, and so each can disappear on its own the
-    // moment that option stops being available.
-    // REWORDED with the move, 4 August. Two things were wrong once the sentence
-    // sat under the button: "use the button in your cupcake panel" pointed at
-    // itself, and "click the tile" is the wrong verb on the touch devices this
-    // whole plan exists to support. The plural is derived from the constant so
-    // the two cannot drift if the price ever changes - it read "2 cupcake".
+    // The defect: this panel measured 409px of content against a 280px
+    // half-sheet cap at 360, and the cap is not negotiable because two of the
+    // spends are played by tapping your own board THROUGH the open sheet. The
+    // cap is right and the content did not fit it, so the panel is what gives.
     //
-    // 8 AUGUST: this note used to explain the extra tile and its second click
-    // ("then choose the tile you want"). The new spend has no second click at
-    // all, so what the sentence has to carry instead is the ONE thing a player
-    // cannot see - that the new cards are live for this turn's claim.
-    const dealCardsNote = canDeal
-      ? `<span class="ft-cupcake-note ft-cupcake-note--offer">Nothing on the row you can make? Spend ${DEAL_CARDS_CUPCAKE_COST} cupcake${DEAL_CARDS_CUPCAKE_COST === 1 ? '' : 's'} for ${CARDS_PER_DEAL} new cards - and you may claim one of them this turn.</span>`
-      : (gameState.cardsDealtThisTurn ? `<span class="ft-cupcake-note">Cards dealt this turn</span>` : '');
-    // 9 AUGUST: the extra tile is back, so the panel again carries a note whose
-    // action lives at a DIFFERENT STEP from the buttons under it. The two are
-    // never live at the same moment - canBuyExtraTile is sweep-step only,
-    // canDealCards is spend-step only - so at most one offer note ever shows.
+    // Three things went, and between them they are the 409:
+    //   - THE THREE EXPLANATORY SENTENCES, about 120px of the panel at 360.
+    //     They move to the rules modal, which already carries every one of them
+    //     under "3. Spend Cupcakes" and "1. Sweep". What stays behind is STATE
+    //     rather than explanation: how many extra tiles have been bought, and
+    //     whether the deal has been taken.
+    //   - THE ROW OF PER-CUPCAKE BUTTONS. They were the only way into
+    //     board-spend mode, and at twelve cupcakes - the engine's own 1,500-game
+    //     maximum - twelve 36px buttons wrap to three rows. The two board spends
+    //     are chips of their own now, so the supply becomes what it always
+    //     described: a count.
+    //   - THE PRICES OUT OF THE NAMES. A price is a column, not a suffix.
     //
-    // 9 AUGUST (second revision): the tile is UNCAPPED, so the offer no longer
-    // says ONE and the spent-note counts instead of announcing an allowance. The
-    // note stays live between purchases - a player who has bought two and can
-    // still afford a third needs to be told both things at once, so the count
-    // rides along with the offer rather than replacing it.
+    // SIX CHIPS, THREE ROWS OF TWO, and the sixth is derived rather than typed:
+    // a further claim is for sale at getExtraClaimCupcakeCost(), and the A/B
+    // seam can still swing that back to "one claim per turn", at which point
+    // there are five spends and five chips. The rules modal counts them the same
+    // way, from the same call, so the two cannot drift.
+    //
+    // FIVE CHIPS ARE CONTROLS AND THE SIXTH IS NOT. A further claim is taken by
+    // tapping a card during the claim step, so there is no button to press here
+    // and a permanently disabled one would be a lie. It is a chip that states a
+    // price, which is the one thing about it a player cannot see anywhere else.
+    const extraClaimCost = getExtraClaimCupcakeCost();
+    // The price is drawn as an aria-hidden cupcake and a numeral, so the
+    // accessible name has to say it in words - no icon in this set is ever the
+    // accessible name of anything, and "Clear an empty plate 3" is not a price.
+    const spendChip = ({ id, name, price, live, armed, title }) => `
+            <button class="ft-cupcake-spend-btn ft-spend-chip${armed && live ? ' ft-cupcake-spend-btn--active' : ''}"
+                    ${id ? `id="${id}"` : ''} type="button" ${live ? '' : 'disabled'}
+                    aria-label="${name} - ${cupcakePrice(price)}" title="${title}">
+              <span class="ft-spend-chip__name">${name}</span>
+              <span class="ft-spend-chip__price">${icon('cupcake', 14)}<span class="ft-spend-chip__n">${price}</span></span>
+            </button>`;
+
     const extraTilesBought = gameState.extraTilesBoughtThisTurn || 0;
-    const boughtSoFar = extraTilesBought > 0
-      ? ` You have bought ${extraTilesBought} this turn.`
-      : '';
-    const extraTileNote = canBuyTile
-      ? `<span class="ft-cupcake-note ft-cupcake-note--offer">You may spend ${EXTRA_TILE_CUPCAKE_COST} cupcake${EXTRA_TILE_CUPCAKE_COST === 1 ? '' : 's'} for another tile from anywhere on the market - then choose the tile you want. Buy as many as you can pay for.${boughtSoFar}</span>`
-      : (extraTilesBought > 0 ? `<span class="ft-cupcake-note">${extraTilesBought} extra tile${extraTilesBought === 1 ? '' : 's'} bought this turn</span>` : '');
-    const reserveNote = canReserve
-      ? `<span class="ft-cupcake-note">A reserved card is safe from the tea flush - but you cannot claim it until your next turn.</span>`
-      : (p.reservedCards.length >= RESERVE_LIMIT ? `<span class="ft-cupcake-note">Your reserve is full (${RESERVE_LIMIT} card).</span>` : '');
+    // What is left of the notes: two statements of fact, each one line, each
+    // present only while it is true. Neither explains a control.
+    const spendStateLines = [
+      extraTilesBought > 0
+        ? `<span class="ft-cupcake-note">${extraTilesBought} extra tile${extraTilesBought === 1 ? '' : 's'} bought this turn</span>` : '',
+      gameState.cardsDealtThisTurn ? `<span class="ft-cupcake-note">Cards dealt this turn</span>` : '',
+      p.reservedCards.length >= RESERVE_LIMIT ? `<span class="ft-cupcake-note">Your reserve is full (${RESERVE_LIMIT} card)</span>` : '',
+    ].filter(Boolean);
+    // One wrapper rather than three siblings, so three simultaneous statements
+    // cost one gap instead of three inside a sheet with 76px of slack.
+    const spendState = spendStateLines.length
+      ? `<div class="ft-cupcake-state">${spendStateLines.join('')}</div>` : '';
 
     html += `
       <div class="ft-cupcake-supply ${cupcakeClass}" id="cupcakeSupply${playerIdx + 1}">
+        ${sheetHead('Spend cupcakes')}
         <div class="ft-cupcake-header">
           <span class="ft-cupcake-label">Cupcakes</span>
-          <span class="ft-cupcake-help-text">${clickVerb()} to move a tile (${MOVE_TILE_CUPCAKE_COST}) or remove an empty plate (${REMOVE_PLATE_CUPCAKE_COST})</span>
-        </div>
-        <div class="ft-cupcake-icons">
-          ${cupcakeCount > 0 ? Array(cupcakeCount).fill().map((_, i) => `
-            <button class="ft-cupcake-btn ${!canUseCupcakes ? 'ft-cupcake-btn--disabled' : 'ft-cupcake-btn--active'}"
-                    data-cupcake-index="${i}"
-                    title="${clickVerb()} to move a tile or remove an empty plate (${canUseCupcakes ? 'available' : 'unavailable'})"
-                    ${!canUseCupcakes ? 'disabled' : ''}>
-              <img src="images/cupcake.png" class="ft-cupcake-icon" alt="cupcake" />
-            </button>
-          `).join('') : '<span class="ft-cupcake-empty">You have no cupcakes left</span>'}
+          <span class="ft-cupcake-count">
+            <img src="images/cupcake.png" class="ft-cupcake-count__icon" alt="" />
+            <strong>${cupcakeCount}</strong>
+          </span>
         </div>
         ${isCurrentPlayer && p.isHuman ? `
           <div class="ft-cupcake-spends">
-            <button class="ft-cupcake-spend-btn ${ui.extraTileMode ? 'ft-cupcake-spend-btn--active' : ''}"
-                    id="buyExtraTileBtn" ${canBuyTile ? '' : 'disabled'}
-                    title="At the sweep step only, as often as you can pay: take any one tile from the market and place it with your swept tiles">
-              +1 tile from the market (${cupcakePrice(EXTRA_TILE_CUPCAKE_COST)})
-            </button>
-            ${extraTileNote}
-            <button class="ft-cupcake-spend-btn"
-                    id="dealCardsBtn" ${canDeal ? '' : 'disabled'}
-                    title="At the spend step, once per turn: deal ${CARDS_PER_DEAL} new cards onto the card row. You may claim one of them this turn.">
-              +${CARDS_PER_DEAL} new cards (${cupcakePrice(DEAL_CARDS_CUPCAKE_COST)})
-            </button>
-            ${dealCardsNote}
-            <button class="ft-cupcake-spend-btn ${ui.reserveMode ? 'ft-cupcake-spend-btn--active' : ''}"
-                    id="reserveCardBtn" ${canReserve ? '' : 'disabled'}
-                    title="Take one card from the market into your reserve. You may not claim it this turn, and your reserve holds ${RESERVE_LIMIT} card.">
-              Reserve a card (${cupcakePrice(RESERVE_CUPCAKE_COST)})
-            </button>
-            ${reserveNote}
-          </div>` : ''}
+            ${spendChip({ id: 'moveTileBtn', name: 'Move a tile', price: MOVE_TILE_CUPCAKE_COST,
+                          live: canMoveTileNow, armed: ui.cupcakeMode,
+                          title: 'At the spend step, once per turn: move one of your tiles to an empty cell on your board.' })}
+            ${spendChip({ id: 'clearPlateBtn', name: 'Clear an empty plate', price: REMOVE_PLATE_CUPCAKE_COST,
+                          live: canClearPlateNow, armed: ui.cupcakeMode,
+                          title: 'At the spend step, once per turn: return one empty plate from your board to the box, freeing that cell.' })}
+            ${spendChip({ id: 'buyExtraTileBtn', name: 'Extra market tile', price: EXTRA_TILE_CUPCAKE_COST,
+                          live: canBuyTile, armed: ui.extraTileMode,
+                          title: 'While you are placing, as often as you can pay: take any one tile from the market and place it with your swept tiles.' })}
+            ${spendChip({ id: 'dealCardsBtn', name: `Deal ${CARDS_PER_DEAL} new cards`, price: DEAL_CARDS_CUPCAKE_COST,
+                          live: canDeal, armed: false,
+                          title: `At the spend step, once per turn: deal ${CARDS_PER_DEAL} new cards onto the card row. You may claim one of them this turn.` })}
+            ${spendChip({ id: 'reserveCardBtn', name: 'Reserve a card', price: RESERVE_CUPCAKE_COST,
+                          live: canReserve, armed: ui.reserveMode,
+                          title: `Take one card from the market into your reserve. You may not claim it this turn, and your reserve holds ${RESERVE_LIMIT} card.` })}
+            ${extraClaimCost === null ? '' : `
+            <span class="ft-cupcake-spend-btn ft-spend-chip ft-spend-chip--note"
+                  aria-label="Another card - ${cupcakePrice(extraClaimCost)}"
+                  title="At the claim step: your first claim is free, and each further one costs ${cupcakePrice(extraClaimCost)}. Taken by tapping the card.">
+              <span class="ft-spend-chip__name">Another card</span>
+              <span class="ft-spend-chip__price">${icon('cupcake', 14)}<span class="ft-spend-chip__n">${extraClaimCost}</span></span>
+            </span>`}
+          </div>
+          ${spendState}` : ''}
         <span class="ft-cupcake-points">Cupcakes score no points - they break ties</span>
       </div>
     `;
@@ -3239,12 +3458,23 @@ function updateStats(gameState) {
       }
     }
 
+    // The sheet head's Close, on your own panel only. It is the same close for
+    // both sheets on it, because only one is ever open.
+    statsEl.querySelectorAll('[data-pm-close]').forEach(btn => {
+      btn.addEventListener('click', () => closeSheet());
+    });
+    if (playerIdx === 0) {
+      statsEl.querySelectorAll('.pm-sheet-head').forEach(head => attachSheetSwipe(head, closeSheet));
+    }
+
+    // BOTH BOARD-SPEND CHIPS OPEN THE SAME MODE, and that is the engine's shape
+    // rather than a shortcut: cupcakeMode arms your board, and the cell you then
+    // tap decides which of the two spends you are making and what it costs. The
+    // chips are separate because the prices and the allowances are.
     if (isCurrentPlayer && canUseCupcakes && ui.onCupcakeClick) {
-      const cupcakeBtns = statsEl.querySelectorAll('.ft-cupcake-btn--active');
-      cupcakeBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-          ui.onCupcakeClick();
-        });
+      ['#moveTileBtn', '#clearPlateBtn'].forEach(sel => {
+        const btn = statsEl.querySelector(`${sel}:not([disabled])`);
+        if (btn) btn.addEventListener('click', () => ui.onCupcakeClick());
       });
     }
 
@@ -3319,14 +3549,49 @@ function updatePhaseControls(gameState) {
   // panel, beside the buttons that spend them.
   const ui = window._gameUI;
   const canUndo = ui?.canUndo === true;
-  const undoBtn = canUndo ? `<button id="undoBtn" class="ft-btn ft-btn--secondary ft-btn--small">${icon('undo', 16)} Undo</button>` : '';
+  const undoBtn = canUndo ? `<button id="undoBtn" class="ft-btn ft-btn--secondary ft-btn--small ft-btn--undo">${icon('undo', 16)} <span class="ft-btn__label">Undo</span></button>` : '';
+
+  // THE BAR IS ONE ROW ON A PHONE (stage 6, plan section 3.5), compacted from
+  // three, and this wrapper is what makes that a layout rather than a rewrite:
+  // the instruction and the status figure become ONE column that shares the row
+  // with the controls, instead of two rows above them. Above 1149 it is
+  // `display: contents`, so the desktop bar renders exactly as it did - the two
+  // children are still block-level siblings carrying their own margins.
+  const barText = (instruction, status = '') =>
+    `<div class="ft-phase-bar__text">
+          <div class="ft-phase-bar__instruction">${instruction}</div>
+          ${status}
+        </div>`;
+
+  // THE SHEET OPENER. The phase bar's own button is the way into the spend
+  // sheet, so a step that has no sheet simply never shows the pair - which is
+  // what makes a vanished step invisible. It is `display: none` above 1149,
+  // where the panel is on the canvas and there is no sheet to open.
+  //
+  // ITS CONDITION IS NOT "the spend phase", AND THAT IS A PLAN DEFECT rather
+  // than a liberty. Plan section 3.2 gives the place phase no sheet at all, and
+  // section 3.1 counts FIVE spends - but the extra tile was restored on
+  // 9 August and canBuyExtraTile gates on `gamePhase === 'place'`, so on a
+  // phone the sixth spend would be unbuyable for the whole game. The button
+  // follows the engine: it appears wherever a spend is legal.
+  //
+  // IT IS THE ICON ALONE, with the word as its accessible name. Measured at 360:
+  // the bar's inner width is 320px, three buttons and their gaps take 234 of it,
+  // and the instruction then has 86px - two lines of about fourteen characters,
+  // which ellipsises "Tap a tile, then tap a space". The command line is what
+  // the bar is FOR, so the word that costs it seventy pixels comes off the one
+  // control whose glyph is the game's own currency - and in the spend step the
+  // instruction beside it already reads "Spend cupcakes (optional)".
+  const spendable = gameState.gamePhase === 'spend' || canBuyExtraTile(gameState);
+  const spendSheetBtn = spendable
+    ? `<button id="openSpendSheet" type="button" class="ft-btn ft-btn--secondary ft-btn--small ft-btn--sheet" aria-label="Spend cupcakes" title="Spend cupcakes">${icon('cupcake', 16)}<span class="ft-btn__label"> Cupcakes</span></button>`
+    : '';
   let html = '';
 
   if (gameState.gamePhase === 'sweep' && gameState.bonusTileAvailable) {
     html = `
       <div class="ft-phase-bar">
-        <div class="ft-phase-bar__instruction">Bonus tile available!</div>
-        <div class="ft-phase-bar__status success">${clickVerb()} any market tile to claim it</div>
+        ${barText('Bonus tile available!', `<div class="ft-phase-bar__status success">${clickVerb()} any market tile to claim it</div>`)}
         <div class="ft-phase-bar__controls">
           ${undoBtn}
         </div>
@@ -3343,7 +3608,7 @@ function updatePhaseControls(gameState) {
     // about - see updateTeaOption. The bar keeps the command and nothing else.
     html = `
       <div class="ft-phase-bar">
-        <div class="ft-phase-bar__instruction">Sweep a row or column above</div>
+        ${barText('Sweep a row or column above')}
         <div class="ft-phase-bar__controls">
           ${undoBtn}
         </div>
@@ -3375,16 +3640,29 @@ function updatePhaseControls(gameState) {
     // never fires there - while the tap path has been implemented in this file
     // since Phase B and was the only thing that worked. A player was being told
     // to do the one thing they could not do.
+    //
+    // 10 AUGUST (stage 6): the overflow line is SHORTER, because a one-row bar
+    // is what it now has to fit into. It said "Not enough room - place 3, and
+    // the other 2 go back into the bag" - sixty-two characters against a text
+    // column of about 200px at 360, which is four lines and a bar half again as
+    // tall as its dock. Plan section 16 licenses exactly this: the bar is
+    // compacted rather than split, and "its long lines are largely deleted".
+    // Nothing is lost - the count is in the status beside it and the
+    // consequence is printed on the button that commits it.
     const placeInstruction = goingBack > 0
-      ? `Not enough room - place ${required}, and the other ${goingBack} go back into the bag`
+      ? `Place ${required}, the other ${goingBack} go back`
       : (isTouchInput() ? 'Tap a tile, then tap a space' : 'Drag tiles onto your board');
     html = `
       <div class="ft-phase-bar">
-        <div class="ft-phase-bar__instruction">${placeInstruction}</div>
-        <div class="ft-phase-bar__status">Placed: <strong>${placementCount}/${required}</strong></div>
+        ${barText(placeInstruction, `<div class="ft-phase-bar__status">Placed: <strong>${placementCount}/${required}</strong></div>`)}
         <div class="ft-phase-bar__controls">
           ${undoBtn}
-          <button id="placementDone" class="ft-btn ft-btn--primary ft-btn--small" ${!allPlaced ? 'disabled' : ''}>${goingBack > 0 ? 'Done - return the rest' : 'Done'}</button>
+          ${spendSheetBtn}
+          <!-- ONE LABEL, NOT TWO. "Done - return the rest" measured 177px of a
+               344px bar at 360 and left the instruction 83px, which ellipsised
+               the command. It was also the same fact twice: the line beside it
+               already names the number that goes back. -->
+          <button id="placementDone" class="ft-btn ft-btn--primary ft-btn--small" ${!allPlaced ? 'disabled' : ''}>Done</button>
         </div>
       </div>
     `;
@@ -3401,14 +3679,15 @@ function updatePhaseControls(gameState) {
     // copy of the same text, after the phase bar's own cupcake hint and the
     // panel's help line.
     const moveOptions = gameState.moveUsedThisTurn
-      ? `<div class="ft-phase-bar__instruction">You've used your move for this turn</div>`
-      : `<div class="ft-phase-bar__instruction">Spend cupcakes (optional)</div>`;
+      ? `You've used your move for this turn`
+      : `Spend cupcakes (optional)`;
 
     html = `
       <div class="ft-phase-bar">
-        ${moveOptions}
+        ${barText(moveOptions)}
         <div class="ft-phase-bar__controls">
           ${undoBtn}
+          ${spendSheetBtn}
           <button id="movePhaseNext" class="ft-btn ft-btn--primary ft-btn--small">Next</button>
         </div>
       </div>
@@ -3419,8 +3698,7 @@ function updatePhaseControls(gameState) {
     if (Array.isArray(ui.destinationChoices)) {
       html = `
         <div class="ft-phase-bar">
-          <div class="ft-phase-bar__instruction">Choose a destination for the removed tile</div>
-          <div class="ft-phase-bar__status success">${clickVerb()} a highlighted stand row or your crumb tray</div>
+          ${barText('Choose a destination for the removed tile', `<div class="ft-phase-bar__status success">${clickVerb()} a lit row or the crumb tray</div>`)}
           <div class="ft-phase-bar__controls">
             <button id="cancelClaim" class="ft-btn ft-btn--secondary ft-btn--small">Cancel</button>
           </div>
@@ -3429,8 +3707,7 @@ function updatePhaseControls(gameState) {
     } else if (ui.removableTiles && ui.removableTiles.length > 0) {
       html = `
         <div class="ft-phase-bar">
-          <div class="ft-phase-bar__instruction">Select a tile to remove</div>
-          <div class="ft-phase-bar__status danger">${clickVerb()} a highlighted tile</div>
+          ${barText('Select a tile to remove', `<div class="ft-phase-bar__status danger">${clickVerb()} a highlighted tile</div>`)}
           <div class="ft-phase-bar__controls">
             <button id="cancelClaim" class="ft-btn ft-btn--secondary ft-btn--small">Cancel</button>
           </div>
@@ -3455,7 +3732,7 @@ function updatePhaseControls(gameState) {
       if (claimableCards.length === 0) {
         html = `
           <div class="ft-phase-bar">
-            <div class="ft-phase-bar__instruction">No patterns match</div>
+            ${barText('No patterns match')}
             <div class="ft-phase-bar__controls">
               ${undoBtn}
               <button id="skipClaim" class="ft-btn ft-btn--secondary ft-btn--small">Skip Claim</button>
@@ -3476,13 +3753,17 @@ function updatePhaseControls(gameState) {
           : `${clickVerb()} a card to claim it`;
         // Their first claim was free; this names what the next one costs against
         // what they hold, which is the comparison the decision actually needs.
+        // 10 AUGUST (stage 6): "- or skip and end your turn" comes off. The
+        // Skip Claim button is the next thing in the bar and says it better; on
+        // a one-row bar the sentence was ellipsised at 360 and the comparison
+        // the decision actually needs - what you hold against what it costs -
+        // is the half that was being cut.
         const status = isFurther
-          ? `<div class="ft-phase-bar__status">You have ${currentPlayer.cupcakes} cupcake${currentPlayer.cupcakes === 1 ? '' : 's'} - or skip and end your turn</div>`
+          ? `<div class="ft-phase-bar__status">You have ${currentPlayer.cupcakes} cupcake${currentPlayer.cupcakes === 1 ? '' : 's'}</div>`
           : '';
         html = `
           <div class="ft-phase-bar">
-            <div class="ft-phase-bar__instruction">${instruction}</div>
-            ${status}
+            ${barText(instruction, status)}
             <div class="ft-phase-bar__controls">
               ${undoBtn}
               <button id="skipClaim" class="ft-btn ft-btn--secondary ft-btn--small">Skip Claim</button>
@@ -3503,14 +3784,13 @@ function updatePhaseControls(gameState) {
     const claimUsed = gameState.claimsThisTurn > 0
       ? `<div class="ft-phase-bar__status">${
           getExtraClaimCupcakeCost() === null
-            ? 'You have claimed this turn - only one claim per turn'
-            : 'No cupcakes left for another card'
+            ? 'Only one claim per turn'
+            : 'No cupcakes left'
         }</div>`
       : '';
     html = `
       <div class="ft-phase-bar">
-        <div class="ft-phase-bar__instruction">Turn complete</div>
-        ${claimUsed}
+        ${barText('Turn complete', claimUsed)}
         <div class="ft-phase-bar__controls">
           ${undoBtn}
           <button id="confirmTurn" class="ft-btn ft-btn--primary ft-btn--small">Confirm Turn ${icon('arrow-right', 16)}</button>
@@ -3520,6 +3800,14 @@ function updatePhaseControls(gameState) {
   }
 
   controls.innerHTML = html;
+
+  // The sheet opener. It toggles, so the same button both shows and dismisses
+  // the sheet - which is what a held control means, and the route a player finds
+  // without being told.
+  const spendSheetEl = controls.querySelector('#openSpendSheet');
+  if (spendSheetEl) {
+    spendSheetEl.addEventListener('click', () => toggleSheet('spend'));
+  }
 
   const undoBtnEl = controls.querySelector('#undoBtn');
   if (undoBtnEl) {
