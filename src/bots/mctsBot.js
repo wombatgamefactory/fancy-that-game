@@ -1,8 +1,8 @@
-import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, declineBonusTile, dealCards, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, calculateFinalScores, canClaimMore, getLegalDestinations, countBoardIngredient, STAND_ROW_VALUES, REWARD_CARDS, BOARD_SIZE, getPatternMatches, getPatternWindows, TASTING_MENU_VP, FLAVOUR_VP_PER_TILE } from '../engine/game.js';
-import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacements, decideClaim as greedyClaim, decideMove as greedyMove, decideRemovePlate as greedyRemovePlate, decideReserve as greedyReserve, decideDealCards as greedyDealCards, decideExtraTile as greedyExtraTile, rankSweeps, rankBonusTiles } from './basicBot.js';
+import { getValidSweeps, getValidPlacements, sweep, takeBonusTile, declineBonusTile, dealCards, place, claim, skipClaim, skipSpend, moveTile, removePlate, refill, calculateFinalScores, canClaimMore, getLegalDestinations, countBoardIngredient, STAND_ROW_VALUES, REWARD_CARDS, BOARD_SIZE, getPatternMatches, getPatternWindows, TASTING_MENU_VP, FLAVOUR_VP_PER_TILE } from '../engine/game.js';
+import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacements, decideClaim as greedyClaim, decideMove as greedyMove, decideRemovePlate as greedyRemovePlate, decideDealCards as greedyDealCards, decideExtraTile as greedyExtraTile, rankSweeps, rankBonusTiles } from './basicBot.js';
 
-// The PAID cupcake decisions taken here - the reserve (3 August), the 2-card
-// deal (8 August) and the extra tile (restored 9 August) - are delegated to the
+// The PAID cupcake decisions taken here - the 2-card deal (8 August) and the
+// extra tile (restored 9 August) - are delegated to the
 // basicBot heuristics rather than expanded into the MCTS move space. Adding any
 // of them as a tree action would balloon branching and rollout cost; the shared
 // basicBot core makes it a clean one-function delegation, and the same greedy
@@ -23,9 +23,8 @@ import { decideBonusTile as greedyBonusTile, decidePlacements as greedyPlacement
 // now brews the pot and rotates in one call, and a playout never parks mid-round.
 // The trigger's real decision lives in the sweep, where rankSweeps already prices
 // it (see symbolTriggerValue in basicBot).
-export function decideReserve(gameState) {
-  return greedyReserve(gameState);
-}
+// (decideReserve delegated to the basicBot heuristic here until 11 August, when
+// the paid reserve was deleted from the game.)
 
 export function decideDealCards(gameState) {
   return greedyDealCards(gameState);
@@ -180,10 +179,8 @@ function cloneState(state) {
       stand: p.stand.map(r => ({ ...r, tiles: [...r.tiles] })),
       crumbTray: [...p.crumbTray],
       claimedCards: [...p.claimedCards],
-      // MUST be copied: the reserve became an ARRAY when the one-card cap was
-      // dropped (1 Aug), and a rollout that reserves or completes a card would
-      // otherwise push/splice the REAL player's reserve.
-      reservedCards: [...p.reservedCards],
+      // (reservedCards was deep-copied here until 11 August; the reserve is
+      // deleted, so there is no per-player card array left to alias.)
       // MUST be copied - see the Tasting Menu note above. claim() pushes the taken
       // menu id onto this, so a shared reference scores rollout menus for real.
       tastingMenus: [...p.tastingMenus],
@@ -427,18 +424,17 @@ function getActionsForPhase(state) {
     return ['greedy', 'ingredient', 'spread'];
   } else if (phase === 'spend') {
     // Offer the heuristic cupcake move (complete a card we couldn't otherwise
-    // claim) and the heuristic paid reserve alongside skipping; the search decides
-    // if either pays off. They are offered as ALTERNATIVES rather than as a
-    // combined action - the pair is legal together, but enumerating the cross
+    // claim) and the heuristic plate removal alongside skipping; the search
+    // decides if either pays off. They are offered as ALTERNATIVES rather than as
+    // a combined action - the pair is legal together, but enumerating the cross
     // product would double the branching here for a combination the greedy policy
-    // inside the rollouts already explores.
+    // inside the rollouts already explores. (A third alternative, the paid
+    // reserve, was offered until 11 August.)
     const actions = [];
     const move = greedyMove(state);
     if (move) actions.push({ kind: 'move', ...move });
     const plateIndex = greedyRemovePlate(state);
     if (plateIndex !== null && plateIndex !== undefined) actions.push({ kind: 'removePlate', index: plateIndex });
-    const reserveId = greedyReserve(state);
-    if (reserveId !== null && reserveId !== undefined) actions.push({ kind: 'reserve', cardId: reserveId });
     actions.push(null); // spend nothing
     return actions;
   } else if (phase === 'claim') {
@@ -496,14 +492,12 @@ function applyAction(state, action) {
       return cloned;
     } else if (phase === 'spend') {
       // A spend action is tagged {kind}: 'move' carries {fromIndex, toIndex},
-      // 'reserve' carries {cardId}, null spends nothing. Either way the phase
+      // 'removePlate' carries {index}, null spends nothing. Either way the phase
       // then advances - each allowance is once per turn.
       if (action && action.kind === 'move') {
         moveTile(cloned, action.fromIndex, action.toIndex);
       } else if (action && action.kind === 'removePlate') {
         removePlate(cloned, action.index);
-      } else if (action && action.kind === 'reserve') {
-        reserveCard(cloned, action.cardId);
       }
       skipSpend(cloned);
       return cloned;
@@ -638,7 +632,7 @@ function rollout(state, playerIndex) {
         place(cloned, greedyPlacements(cloned));
       } else if (cloned.gamePhase === 'spend') {
         // Spend the cupcakes in playouts too — an otherwise unclaimable card
-        // completed by a move, and a card banked into the reserve, are both real
+        // completed by a move, and a cell bought back from a plate, are both real
         // parts of both players' strength now that cupcakes buy rather than score.
         const mv = greedyMove(cloned);
         if (mv) moveTile(cloned, mv.fromIndex, mv.toIndex);
@@ -655,8 +649,6 @@ function rollout(state, playerIndex) {
         // heuristic keeps the decision blind, because decideDealCards prices the
         // deck as a distribution and never reads gameDeck.
         if (greedyDealCards(cloned)) dealCards(cloned);
-        const reserveId = greedyReserve(cloned);
-        if (reserveId !== null && reserveId !== undefined) reserveCard(cloned, reserveId);
         skipSpend(cloned);
       } else if (cloned.gamePhase === 'claim') {
         const claimDec = greedyClaim(cloned);

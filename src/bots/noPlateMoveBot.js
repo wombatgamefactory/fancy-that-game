@@ -30,7 +30,7 @@
 // on is missing from this file, so a widening win gap eventually stops meaning
 // anything about plates. Re-snapshot it or delete it once the plate numbers are
 // settled.
-import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleTeapotSymbols, getMoveCost, canReserveCard, canClaimMore, countBoardIngredient, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE } from '../engine/game.js';
+import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getTotalCardsClaimed, getVisibleTeapotSymbols, getMoveCost, canClaimMore, countBoardIngredient, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE } from '../engine/game.js';
 
 // The claims-remaining horizon, re-denominated in the 6 August clock (a full
 // board) rather than the deleted plate pool. Copied from basicBot deliberately -
@@ -647,65 +647,19 @@ export function refreshWouldRestockBoard(gameState) {
 // dud costs nothing but the take - the floor is kept as a "not worth it" bar and
 // still rises once the game is nearly over, but it is now the obvious knob to
 // re-tune if bots look too shy about reserving.
-export function decideReserve(gameState) {
-  if (!canReserveCard(gameState)) return null;
-  const player = gameState.players[gameState.currentPlayerIndex];
+// (decideReserve / decideTeaReserve stood here. DELETED 11 AUGUST with the paid
+// reserve itself - see the engine. The scoring constants above it are left in
+// place as the record of what was measured; nothing calls them any more.)
 
-  // Roughly how many more claims this player gets before the card-count end
-  // condition fires. The same public estimate decideDestination uses.
-  const myRemainingClaims = turnsRemaining(gameState);
-  const maxMissing = myRemainingClaims <= RESERVE_LATE_CLAIMS
-    ? RESERVE_LATE_MAX_MISSING
-    : RESERVE_MAX_MISSING;
-
-  // A card we could simply CLAIM this turn is never worth reserving - the rule
-  // forbids claiming it on the turn it was reserved, so paying to reserve it
-  // would cost a cupcake to delay a claim we already had.
-  const claimableNow = new Set();
-  for (const card of gameState.cardMarket) {
-    if (getPatternMatches(player.board, card.pattern).length > 0) claimableNow.add(card.id);
-  }
-
-  // Is the row about to be flushed? The symbol half is the engine's isTeaDue,
-  // deliberately; the bag half is what turns "the market needs refilling" into "a
-  // pot is actually poured". Since 4 August isTeaDue no longer looks at the bag,
-  // and a due pot with an EMPTY bag brews nothing at all - it triggers the end of
-  // the game instead, with no card flush - so a reserve bought to rescue a card
-  // from that firing would be a wasted cupcake. If a pot does brew, everything in
-  // the row is gone before our next turn and the reserve is the only thing that
-  // can save one, which is the whole reason the card flush was kept when the
-  // reserve round was deleted.
-  const flushImminent = gameState.bag.length > 0
-    && getVisibleTeapotSymbols(gameState) >= REFRESH_THRESHOLD;
-
-  let bestId = null;
-  // The bar is the HIGHER of the two floors, not their sum. RESERVE_MIN_VALUE is
-  // the old "not worth the slot" bar from the free era and RESERVE_CUPCAKE_VALUE
-  // is what the cupcake buys elsewhere; adding them charged the reserve twice and
-  // left the bot reserving almost nothing.
-  let bestValue = Math.max(RESERVE_MIN_VALUE, RESERVE_CUPCAKE_VALUE);
-  for (const card of gameState.cardMarket) {
-    if (claimableNow.has(card.id)) continue;
-    const mm = minMissingForCard(player.board, card);
-    if (mm === Infinity || mm > maxMissing) continue; // no viable window, or hopeless
-    const odds = RESERVE_COMPLETION_ODDS[mm] ?? 0;
-    let value = ((card.vp || 0) + CLAIM_EXTRA) * odds;
-    if (flushImminent) value += RESERVE_FLUSH_RESCUE_VALUE * odds;
-    if (value > bestValue) {
-      bestValue = value;
-      bestId = card.id;
-    }
-  }
-  return bestId;
-}
 
 // Pre-3-August name, when reserving was a free step of the tea round driven by a
 // separate reserverIndex. Kept so an old driver fails soft rather than silently
 // never reserving; it ignores the index because there is only one reserver now -
 // the player whose turn it is.
-export function decideTeaReserve(gameState) {
-  return decideReserve(gameState);
-}
+// (decideReserve / decideTeaReserve stood here. DELETED 11 AUGUST with the paid
+// reserve itself - see the engine. The scoring constants above it are left in
+// place as the record of what was measured; nothing calls them any more.)
+
 
 // (decideExtraTile stood here. It was cut on 8 August when the rule it served was
 // deleted, and the rule came back on 9 August - but this copy has NOT been
@@ -839,7 +793,7 @@ export function decideMove(gameState) {
   // Claimable candidates are the market cards PLUS this player's reserved cards
   // (which complete as normal claims). A cupcake move that finishes any of them
   // is fair game.
-  const candidateCards = [...gameState.cardMarket, ...player.reservedCards];
+  const candidateCards = [...gameState.cardMarket];
 
   let bestNowVp = 0;
   const matchedNow = new Set();
@@ -947,7 +901,7 @@ export function decideClaim(gameState) {
 
   // Candidates are the market cards PLUS this player's reserved cards, which
   // complete as normal claims (claim() resolves a reserved id transparently).
-  const candidateCards = [...gameState.cardMarket, ...currentPlayer.reservedCards];
+  const candidateCards = [...gameState.cardMarket];
 
   // Find all claimable cards.
   const claimableCards = [];
@@ -962,7 +916,7 @@ export function decideClaim(gameState) {
     return null; // Skip claim
   }
 
-  const reservedIds = new Set(currentPlayer.reservedCards.map(c => c.id));
+  const reservedIds = new Set(); // the reserve is deleted (11 August) - always empty
   // Is the card row itself about to be flushed? Since 1 August this is a
   // CERTAINTY rather than a risk: if the threshold is met and the bag can still
   // refill, tea fires at the end of this very turn and the whole row goes to the

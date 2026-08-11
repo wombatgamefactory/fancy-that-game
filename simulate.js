@@ -1,7 +1,7 @@
-import { createGame, sweep, takeBonusTile, declineBonusTile, dealCards, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, getValidSweeps, getValidPlacements, calculateFinalScores, getWinningPlayers, STAND_ROW_VALUES, getStartingCupcakes, getTastingMenusEnabled, setTastingMenusEnabled, getStandIngredients, menuDeficit, TASTING_MENU_VP, getTastingMenuCount, TASTING_MENUS, getFlavourEnabled, setFlavourEnabled, getFlavourCount, getFlavourLeaders, isFlavourInPlay, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP,
+import { createGame, sweep, takeBonusTile, declineBonusTile, dealCards, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, refill, getValidSweeps, getValidPlacements, calculateFinalScores, getWinningPlayers, STAND_ROW_VALUES, getStartingCupcakes, getTastingMenusEnabled, setTastingMenusEnabled, getStandIngredients, menuDeficit, TASTING_MENU_VP, getTastingMenuCount, TASTING_MENUS, getFlavourEnabled, setFlavourEnabled, getFlavourCount, getFlavourLeaders, isFlavourInPlay, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP,
   // The cupcake price ladder, imported so metric 8 prints the LIVE prices. It
   // printed "(2ea)" and "(3ea)" as typed literals until 7 August.
-  MOVE_TILE_CUPCAKE_COST, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, RESERVE_CUPCAKE_COST,
+  MOVE_TILE_CUPCAKE_COST, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, MAX_MARKET_CARDS,
   // The extra-tile cap and its A/B seam (9 August, second revision).
   getMaxExtraTilesPerTurn, setMaxExtraTilesPerTurn,
   // The starting-cupcake table and its seam (9 August, second revision).
@@ -155,17 +155,12 @@ function runGame(playerConfigs, botStrategy) {
           gameState = removePlate(gameState, plateIndex);
         }
         // Paid 2-card deal (8 August): 1 cupcake to put CARDS_PER_DEAL new cards
-        // on the row. Resolved BEFORE the reserve and before the claim step,
-        // because both of those may want to act on what it turns up.
+        // on the row. Resolved before the claim step, which may want to act on
+        // what it turns up.
         if (strategy.decideDealCards && strategy.decideDealCards(gameState)) {
           gameState = dealCards(gameState);
         }
-        // Paid reserve (3 August): 1 cupcake to take a market card into the
-        // personal reserve. Not claimable this same turn.
-        const reserveId = strategy.decideReserve ? strategy.decideReserve(gameState) : null;
-        if (reserveId !== null && reserveId !== undefined) {
-          gameState = reserveCard(gameState, reserveId);
-        }
+        // (The paid reserve was driven here from 3 August. Deleted 11 August.)
         gameState = skipSpend(gameState);
         break;
       }
@@ -308,14 +303,9 @@ function runGame(playerConfigs, botStrategy) {
     flavourDecided = withoutSeats !== winnerSeats.join(',');
   }
 
-  // A reserve is "completed" when the reserving player's claimedCards contains
-  // the reserved card's id (claim() pushes it there). Since 3 August every
-  // reserve was PAID for, so an uncompleted one is a wasted cupcake, not merely
-  // a declined freebie.
-  let reservesCompleted = 0;
-  for (const r of statsCollector.reserves) {
-    if (gameState.players[r.playerId].claimedCards.includes(r.cardId)) reservesCompleted++;
-  }
+  // (Reserve completion was computed here. The reserve is deleted (11 August),
+  // so statsCollector.reserves is always empty and this is always 0.)
+  const reservesCompleted = 0;
 
   // Metric 7 context: cards burned by tea flushes. A card that ENTERED the row
   // and left it without being claimed by anybody went to the discard on a flush.
@@ -653,7 +643,7 @@ console.log(`At game end:       mean=${meanOf(endRowSizes).toFixed(2)}, max=${ma
 
 // ---------------------------------------------------------------------------
 // 4. CARD-LOCK INCIDENCE. A locked turn is one where the active player reached
-//    their claim step with no legal claim against the whole row OR their reserve.
+//    their claim step with no legal claim anywhere on the card row.
 //    The 27 July lock (every card wanting a colour absent from market and boards)
 //    should be structurally impossible to SUSTAIN now, because the row grows by a
 //    card every single turn - so the streak line is the one that decides it.
@@ -687,28 +677,36 @@ console.log(`Claimable cards/turn:    mean=${meanOf(reports.map(r => r.meanClaim
 console.log(`  distribution:          ${histLine(claimableHist)} (cards claimable when the claim step opened)`);
 
 // ---------------------------------------------------------------------------
-// 6. CLAIMS FROM PAID RESERVES (3 August: the free tea-round reserve is gone).
+// 6. THE CARD ROW AT ITS CAP - the metric that replaced "claims from reserves"
+//    on 11 August, when the reserve was deleted and the tea flush with it.
+//
+//    WHY THIS ONE. The flush was the only thing that ever SHRANK the row, so a
+//    row at MAX_MARKET_CARDS now only moves when somebody claims from it. If a
+//    table can sit at the cap for long stretches, the 30 July frozen-market
+//    failure is back at the top of the range instead of the bottom, and the paid
+//    2-card deal cannot help (it needs room for both cards). This share is the
+//    early warning.
 // ---------------------------------------------------------------------------
-const reserveClaims = sumOf(reports.map(r => r.reserveClaims));
 const totalClaims = sumOf(reports.map(r => r.totalCardsClaimed));
-const reservesTaken = sumOf(reports.map(r => r.reservesTaken));
-const reservesCompleted = sumOf(games.map(g => g.reservesCompleted));
-console.log(`\n=== 6. CLAIMS FROM PAID RESERVES ===\n`);
-console.log(`From reserve:      ${reserveClaims}/${totalClaims} claims (${pct(reserveClaims, totalClaims)})`);
-console.log(`Reserves taken:    ${reservesTaken} (mean/game=${(reservesTaken / nGames).toFixed(2)}), completed ${reservesCompleted} (${pct(reservesCompleted, reservesTaken)})`);
-console.log(`  Every reserve now COSTS A CUPCAKE, so an uncompleted one is a wasted spend rather`);
-console.log(`  than a declined freebie. The free version completed 47.7 / 46.2 / 35.8% at 2/3/4p.`);
+const atCap = allRowSizes.filter(n => n >= MAX_MARKET_CARDS).length;
+console.log(`\n=== 6. CARD ROW AT THE CAP (${allRowSizes.length} turn samples) ===\n`);
+console.log(`Turns starting at the cap (${MAX_MARKET_CARDS}): ${atCap}/${allRowSizes.length} (${pct(atCap, allRowSizes.length)})`);
+console.log(`  The row grows by one every turn and shrinks only when somebody claims. Since`);
+console.log(`  11 August no pot of tea flushes it, so this is the staleness watch: a high`);
+console.log(`  share means the row is standing still and the paid 2-card deal is locked out.`);
 
 // ---------------------------------------------------------------------------
-// 7. DECK RESHUFFLES. Expected to be routine now: about a card a turn dealt out,
-//    plus a whole row burned at every flush.
+// 7. DECK RESHUFFLES. Expected to be ZERO since 11 August: the tea flush was the
+//    discard pile's only source, and a deck of 50 against a row that grows one a
+//    turn cannot run dry. A non-zero figure here means something is discarding
+//    cards again and the "one-way deck" assumption in the engine has broken.
 // ---------------------------------------------------------------------------
 const reshuffles = reports.map(r => r.deckReshuffles);
 const flushBurn = games.map(g => g.cardsDiscardedByFlushes);
 console.log(`\n=== 7. DECK RESHUFFLES ===\n`);
-console.log(`Per game:          mean=${meanOf(reshuffles).toFixed(2)}, min=${minOf(reshuffles)}, max=${maxOf(reshuffles)}`);
+console.log(`Per game:          mean=${meanOf(reshuffles).toFixed(2)}, min=${minOf(reshuffles)}, max=${maxOf(reshuffles)}  (expected 0)`);
 console.log(`Games with >=1:    ${reshuffles.filter(v => v > 0).length}/${nGames}`);
-console.log(`Cards burned by flushes: mean/game=${meanOf(flushBurn).toFixed(2)} (the reason reshuffles are routine)`);
+console.log(`Cards that left the row unclaimed: mean/game=${meanOf(flushBurn).toFixed(2)} (expected 0 - nothing burns the row now)`);
 
 // ---------------------------------------------------------------------------
 // 8. CUPCAKE ECONOMY. Influx by source, spend by use, and the PHYSICAL SUPPLY
@@ -720,7 +718,7 @@ console.log(`Cards burned by flushes: mean/game=${meanOf(flushBurn).toFixed(2)} 
 //    24 July, so the supply lines MEASURE and enforce nothing.
 // ---------------------------------------------------------------------------
 const influx = { start: 0, pot: 0, plates: 0 };
-const spend = { moveTile: 0, extraTile: 0, removePlate: 0, dealCards: 0, reserve: 0, extraClaim: 0 };
+const spend = { moveTile: 0, extraTile: 0, removePlate: 0, dealCards: 0, reserve: 0, extraClaim: 0 }; // reserve stays 0 - deleted 11 August
 for (const r of reports) {
   addInto(influx, r.cupcakeInfluxTotals);
   addInto(spend, r.cupcakeSpendTotals);
@@ -744,8 +742,8 @@ console.log(`  mean/player:     start=${(influx.start / nPlayers).toFixed(2)}, p
 // under the 7 August one, which is the third time a stale literal has survived a
 // repricing in this project. The divide-by-price line below is derived for the
 // same reason.
-console.log(`Spend by use:      move tile=${spend.moveTile} (${MOVE_TILE_CUPCAKE_COST}ea), extra tile=${spend.extraTile} (${EXTRA_TILE_CUPCAKE_COST}ea), deal ${CARDS_PER_DEAL} cards=${spend.dealCards} (${DEAL_CARDS_CUPCAKE_COST}ea), remove plate=${spend.removePlate} (${REMOVE_PLATE_CUPCAKE_COST}ea), reserve=${spend.reserve} (${RESERVE_CUPCAKE_COST}ea), extra claim=${spend.extraClaim} (disabled)`);
-console.log(`  times bought:    move tile=${(spend.moveTile / MOVE_TILE_CUPCAKE_COST).toFixed(0)}, extra tile=${(spend.extraTile / EXTRA_TILE_CUPCAKE_COST).toFixed(0)}, deal cards=${(spend.dealCards / DEAL_CARDS_CUPCAKE_COST).toFixed(0)}, remove plate=${(spend.removePlate / REMOVE_PLATE_CUPCAKE_COST).toFixed(0)}, reserve=${(spend.reserve / RESERVE_CUPCAKE_COST).toFixed(0)}`);
+console.log(`Spend by use:      move tile=${spend.moveTile} (${MOVE_TILE_CUPCAKE_COST}ea), extra tile=${spend.extraTile} (${EXTRA_TILE_CUPCAKE_COST}ea), deal ${CARDS_PER_DEAL} cards=${spend.dealCards} (${DEAL_CARDS_CUPCAKE_COST}ea), remove plate=${spend.removePlate} (${REMOVE_PLATE_CUPCAKE_COST}ea), extra claim=${spend.extraClaim} (disabled)`);
+console.log(`  times bought:    move tile=${(spend.moveTile / MOVE_TILE_CUPCAKE_COST).toFixed(0)}, extra tile=${(spend.extraTile / EXTRA_TILE_CUPCAKE_COST).toFixed(0)}, deal cards=${(spend.dealCards / DEAL_CARDS_CUPCAKE_COST).toFixed(0)}, remove plate=${(spend.removePlate / REMOVE_PLATE_CUPCAKE_COST).toFixed(0)}`);
 console.log(`  total spent:     ${spendTotal} = ${pct(spendTotal, influxTotal)} of influx (was 47-51% when hoarding paid 1 VP each)`);
 console.log(`  PRICES ARE CUPCAKES, NOT ACTIONS: the line above divides each figure by its`);
 console.log(`  price, so a spend at ${REMOVE_PLATE_CUPCAKE_COST} showing the same cupcake total as one at 1 is`);

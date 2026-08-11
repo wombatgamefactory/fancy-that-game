@@ -41,10 +41,9 @@
 import {
   createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, canBuyExtraTile,
   place, claim, skipClaim, skipSpend, moveTile, removePlate, canRemovePlate,
-  getMoveCost, reserveCard, canReserveCard, refill, calculateFinalScores,
+  getMoveCost, refill, calculateFinalScores,
   getTotalCardsClaimed, getValidPlacements, canClaimMore, getSweepPlacementCount,
   MOVE_TILE_CUPCAKE_COST, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST,
-  RESERVE_CUPCAKE_COST,
   // 4 August: the tile-market and equal-turns blocks arm the tea trigger by hand,
   // which means uncovering the printed teapot cells rather than assuming indices.
   TEAPOT_SYMBOL_CELLS,
@@ -168,7 +167,6 @@ check('a new game deals 25 tiles to the market and leaves the rest in the bag', 
 // took charge of the game's clock on 6 August and nobody could afford it.
 check('the cupcake menu is priced 1 / 1 / 1 / 2', () => {
   eq(MOVE_TILE_CUPCAKE_COST, 1, 'move a tile');
-  eq(RESERVE_CUPCAKE_COST, 1, 'reserve a card');
   eq(EXTRA_TILE_CUPCAKE_COST, 1, 'take an extra tile');
   eq(REMOVE_PLATE_CUPCAKE_COST, 2, 'remove an empty plate');
 });
@@ -177,12 +175,15 @@ check('an extra tile charges 1 cupcake again', () => {
   const s = newGame(2);
   const p = s.players[0];
   s.currentPlayerIndex = 0;
-  s.gamePhase = 'place';
+  // AT THE SPEND STEP since 10 August, and the tile is placed as it is bought,
+  // so the call names a board cell as well. (This block said 'place' and passed
+  // no cell until 11 August, and had been failing since the move.)
+  s.gamePhase = 'spend';
   s.pendingSweepTiles = [];
   p.cupcakes = 4;
   const idx = s.market.findIndex(t => t !== null);
   assert(canBuyExtraTile(s), 'should be able to buy with 4 cupcakes');
-  takeExtraTile(s, idx);
+  takeExtraTile(s, idx, getValidPlacements(p.board)[0]);
   eq(p.cupcakes, 4 - EXTRA_TILE_CUPCAKE_COST, 'charged the extra-tile price');
 });
 
@@ -190,11 +191,12 @@ check('an extra tile is refused at 0 cupcakes, and 1 is now enough', () => {
   const s = newGame(2);
   const p = s.players[0];
   s.currentPlayerIndex = 0;
-  s.gamePhase = 'place';
+  s.gamePhase = 'spend';   // the spend step since 10 August - see the block above
   s.pendingSweepTiles = [];
   p.cupcakes = 0;
   assert(!canBuyExtraTile(s), 'canBuyExtraTile should refuse at 0 cupcakes');
-  threw(() => takeExtraTile(s, s.market.findIndex(t => t !== null)), 'Not enough cupcakes');
+  threw(() => takeExtraTile(s, s.market.findIndex(t => t !== null), getValidPlacements(p.board)[0]),
+    'Not enough cupcakes');
   // The 7 August repricing, asserted from the other side: what used to be one
   // cupcake short is now exactly the price.
   p.cupcakes = 1;
@@ -305,19 +307,19 @@ check('a removal is refused outside the spend phase', () => {
 
 // --- 5. THE ALLOWANCES ARE INDEPENDENT -------------------------------------
 
-check('a move, a removal and a reserve can all happen on the same turn', () => {
+// (This used to be "a move, a removal AND A RESERVE can all happen on the same
+// turn". The reserve is deleted - 11 August - so the independence claim is over
+// the two allowances that are left.)
+check('a move and a removal can both happen on the same turn', () => {
   const { s, p } = spendState(2, 9);
   p.board[0] = { colour: 'pink', ingredient: 'lemon' };
   p.board[7] = { type: 'blocked' };
-  const cardId = s.cardMarket[0].id;
 
   moveTile(s, 0, 24);
   removePlate(s, 7);
-  assert(canReserveCard(s), 'the reserve is still available after the other two');
-  reserveCard(s, cardId);
 
-  eq(p.cupcakes, 9 - MOVE_TILE_CUPCAKE_COST - REMOVE_PLATE_CUPCAKE_COST - RESERVE_CUPCAKE_COST,
-    'all three were charged');
+  eq(p.cupcakes, 9 - MOVE_TILE_CUPCAKE_COST - REMOVE_PLATE_CUPCAKE_COST,
+    'both were charged');
   assert(s.moveUsedThisTurn, 'move allowance spent');
   assert(s.plateRemovedThisTurn, 'removal allowance spent');
 });
@@ -364,8 +366,6 @@ function playOut(playerCount, maxSteps = 2000) {
         if (m) s = moveTile(s, m.fromIndex, m.toIndex);
         const rp = bot.decideRemovePlate(s);
         if (rp !== null && rp !== undefined) s = removePlate(s, rp);
-        const rc = bot.decideReserve(s);
-        if (rc !== null && rc !== undefined) s = reserveCard(s, rc);
         s = skipSpend(s);
         break;
       }
@@ -521,8 +521,13 @@ check('a pot due against an empty bag is a NO-OP, not an ending', () => {
   eq(s.market.filter(t => t !== null).length, 25 - TEAPOT_SYMBOL_CELLS.length,
     'no tiles were dealt - the pot did not happen');
   eq(s.players[0].cupcakes, cupcakesBefore, 'no cupcake was paid');
-  eq(JSON.stringify(s.cardMarket.map(c => c.id)), JSON.stringify(rowBefore),
-    'and the card row was not flushed');
+  // THE END-OF-TURN CARD IS STILL DEALT (11 August): the deal used to be skipped
+  // on any turn tea was due, because the pot flushed the row. No flush, no
+  // exception - the row grows by one on this turn like any other, and the cards
+  // that were on it are all still on it.
+  eq(JSON.stringify(s.cardMarket.map(c => c.id).slice(0, rowBefore.length)), JSON.stringify(rowBefore),
+    'and nothing was taken off the card row');
+  eq(s.cardMarket.length, rowBefore.length + 1, 'the ordinary end-of-turn card was dealt on top');
   eq(s.currentPlayerIndex, 1, 'the turn simply passed on');
 
   // And it stays a no-op - a second dry turn does not accumulate into an ending.

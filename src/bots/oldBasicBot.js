@@ -373,22 +373,10 @@ export function refreshWouldRestockBoard(gameState) {
 // cards win); passes if every card is hopeless (best window missing >
 // RESERVE_MAX_MISSING, or no viable window at all). The reserve itself is
 // uncapped since 1 Aug, so a held card never blocks a take.
-export function decideTeaReserve(gameState, reserverIndex) {
-  const player = gameState.players[reserverIndex];
+// (decideReserve / decideTeaReserve stood here. DELETED 11 AUGUST with the paid
+// reserve itself - see the engine. The scoring constants above it are left in
+// place as the record of what was measured; nothing calls them any more.)
 
-  let bestId = null;
-  let bestScore = -Infinity;
-  for (const card of gameState.cardMarket) {
-    const mm = minMissingForCard(player.board, card);
-    if (mm === Infinity || mm > RESERVE_MAX_MISSING) continue; // hopeless
-    const score = (card.vp || 0) / (1 + mm);
-    if (score > bestScore) {
-      bestScore = score;
-      bestId = card.id;
-    }
-  }
-  return bestId;
-}
 
 // Market indices ranked best-first as bonus-tile picks. Exported so the MCTS
 // bot can prune its search to the most promising candidates.
@@ -500,7 +488,7 @@ export function decideMove(gameState) {
   // Claimable candidates are the market cards PLUS this player's reserved cards
   // (which complete as normal claims). A cupcake move that finishes any of them
   // is fair game.
-  const candidateCards = [...gameState.cardMarket, ...player.reservedCards];
+  const candidateCards = [...gameState.cardMarket];
 
   let bestNowVp = 0;
   const matchedNow = new Set();
@@ -577,7 +565,7 @@ export function decideClaim(gameState) {
 
   // Candidates are the market cards PLUS this player's reserved cards, which
   // complete as normal claims (claim() resolves a reserved id transparently).
-  const candidateCards = [...gameState.cardMarket, ...currentPlayer.reservedCards];
+  const candidateCards = [...gameState.cardMarket];
 
   // Find all claimable cards.
   const claimableCards = [];
@@ -667,4 +655,4 @@ export function decideClaim(gameState) {
 // deleted, and goes back on it on 9 August with the restoration. decideDealCards
 // stays: it took the extra tile's slot on the menu for a day and now sits beside
 // it, and it was never a rename of it.
-export { decideReserve, decideDealCards, decideExtraTile } from './basicBot.js';
+export { decideDealCards, decideExtraTile } from './basicBot.js';

@@ -1,18 +1,17 @@
 import { getValidSweeps, getValidPlacements, getPatternMatches, canClaimMore } from '../engine/game.js';
-import { decideDestination, decideReserve as basicReserve, decideDealCards as basicDealCards, decideExtraTile as basicExtraTile, decideMove as basicMove, decideRemovePlate as basicRemovePlate } from './basicBot.js';
+import { decideDestination, decideDealCards as basicDealCards, decideExtraTile as basicExtraTile, decideMove as basicMove, decideRemovePlate as basicRemovePlate } from './basicBot.js';
 
 // decideOrderTea is gone (1 August): tea is no longer a decision, it fires from
 // the engine at the end of any turn that leaves four teapots showing. The tea
 // ROUND is gone too (3 August), and with it the free reserve.
 //
-// The two PAID decisions that replaced it - reserving a card and buying an extra
-// tile - are real decisions, and both reuse the basicBot heuristics (cheap window
-// scans, no rollout cost). The fast bot is random about sweeps and placements
-// precisely so the cupcake economy is the part being measured; leaving these two
-// random would make every cupcake figure noise.
-export function decideReserve(gameState) {
-  return basicReserve(gameState);
-}
+// The PAID decisions that replaced it reuse the basicBot heuristics (cheap
+// window scans, no rollout cost). The fast bot is random about sweeps and
+// placements precisely so the cupcake economy is the part being measured;
+// leaving those random would make every cupcake figure noise.
+//
+// (One of them was the paid RESERVE, delegated here from 3 August. It was
+// deleted from the game on 11 August and this delegation went with it.)
 
 // CAVEAT worth knowing when reading fast-bot cupcake numbers: basicExtraTile
 // projects the board forward using basicBot's placement plan, and this bot places
@@ -100,9 +99,9 @@ export function decideClaim(gameState) {
   if (!canClaimMore(gameState)) return null;
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
-  // Candidates are the market cards plus this player's reserved cards (which
+  // Candidates are the shared card row (the personal reserve is deleted, which
   // complete as normal claims). Find the first claimable one and pick a tile.
-  const candidateCards = [...gameState.cardMarket, ...currentPlayer.reservedCards];
+  const candidateCards = gameState.cardMarket;
 
   for (const card of candidateCards) {
     const matches = getPatternMatches(currentPlayer.board, card.pattern);

@@ -5260,7 +5260,13 @@ select:focus {
   font-size: 10px;
 }
 
-/* Market cards invite a click during a human's reserve step. */
+/* DEAD SINCE 11 AUGUST: the paid reserve is deleted, so nothing sets
+   .ft-card--reservable any more. The rules are kept unchanged rather than
+   removed - they are the worked answer to "how does an armed spend show itself
+   on a phone", and the next spend that arms something outside the sheet should
+   take this vocabulary rather than reinvent it.
+
+   Market cards invite a click during a human's reserve step. */
 /* ARMED, AND IT HAS TO SHOW (10 August). This carried a pointer cursor and a
    hover lift and nothing else, which is no affordance at all on the device where
    the reserve is hardest to use: a phone has no hover and no cursor, so a player
@@ -5282,7 +5288,12 @@ select:focus {
   box-shadow: 0 6px 16px rgba(193, 123, 92, 0.45);
 }
 
-/* "On order" reserved-card slot in a player panel.
+/* DEAD SINCE 11 AUGUST: the reserve is deleted, renderOnOrderSlot with it, and
+   nothing emits .ft-on-order. Kept for the record of what it solved - see the
+   note below, which is the only written account of the desktop rail's one
+   unbounded height term and how it was capped.
+
+   "On order" reserved-card slot in a player panel.
 
    DEFECT 5, AND IT IS DEAN'S DECISION 2 OF 10/08/2026. Until stage 5 this was a
    wrapping ROW of full 150px cards, which cost 171px of column height per

@@ -192,16 +192,15 @@ check('2c: IT DOES NOT COUNT CRUMB-TRAY TILES', () => {
   eq(getFlavourCount(s, p), 0, 'AND THE COUNT IS ZERO');
 });
 
-check('2c2: IT DOES NOT COUNT RESERVED CARDS OR ANYTHING ELSE OFF THE BOARD', () => {
+check('2c2: IT DOES NOT COUNT ANYTHING OFF THE BOARD', () => {
   // The rule names the player board, so the enumeration is board vs everything.
-  // The reserve holds CARDS rather than tiles, so it cannot contribute even in
-  // principle - asserted anyway, because "not the reserve" is in the stated rule
-  // and a future container would land in the same gap.
+  // (It also stocked the personal RESERVE here, because "not the reserve" was in
+  // the stated rule. The reserve is deleted - 11 August - so the stand and the
+  // crumb tray are the whole of "everything else" now.)
   const s = newGame(2, { flavour: 'lemon' });
   const p = s.players[0];
   stockStand(p, 0, 'lemon', 2);
   p.crumbTray.push({ colour: 'yellow', ingredient: 'lemon' });
-  p.reservedCards.push(REWARD_CARDS.find(c => c.id === 1));
   stockBoard(p, 'lemon', 1);
   eq(getFlavourCount(s, p), 1, 'exactly the ONE tile on the board');
 });

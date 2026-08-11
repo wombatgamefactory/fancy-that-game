@@ -1,7 +1,7 @@
 // A/B ARM for the 8 August rule change, to be run against basicBot in arena.js.
 //
 // THE QUESTION IT ANSWERS. basicBot prices the paid 2-card deal as a lottery and
-// clears it against RESERVE_CUPCAKE_VALUE (2 VP), and probe-dealcards-2026-08-08
+// clears it against CUPCAKE_VALUE (2 VP), and probe-dealcards-2026-08-08
 // measured that bar as UNREACHABLE: at a card-locked spend step the chance that
 // at least one of the two dealt cards is immediately claimable is 8-9%, worth
 // about 0.33 VP, and 2.0 VP is cleared on 0.0% of steps. So basicBot never buys
@@ -22,7 +22,7 @@
 // exactly one decision.
 export {
   decideSweep, decideBonusTile, decidePlacements, decideClaim, decideDestination,
-  decideMove, decideRemovePlate, decideReserve, decideTeaReserve,
+  decideMove, decideRemovePlate,
   rankSweeps, rankBonusTiles, refreshWouldRestockBoard,
 } from './basicBot.js';
 
@@ -40,8 +40,7 @@ const CLAIM_EXTRA = 2; // basicBot's banked-sacrifice constant
 export function decideDealCards(gameState) {
   if (!canDealCards(gameState)) return false;
   const player = gameState.players[gameState.currentPlayerIndex];
-  const cards = [...gameState.cardMarket, ...player.reservedCards]
-    .filter(c => c.id !== gameState.reservedCardIdThisTurn);
+  const cards = gameState.cardMarket;
   for (const card of cards) {
     if (getPatternMatches(player.board, card.pattern).length > 0) return false; // not locked
   }

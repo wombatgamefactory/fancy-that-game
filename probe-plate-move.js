@@ -20,7 +20,7 @@
 // written for: move the plate, and the window needs just that one cell filled.
 // If that line is a fraction of a percent the rule is decoration; if it is
 // several percent of spend steps it is a real decision and the bot must play it.
-import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, takeExtraTile, refill, calculateFinalScores, getPatternWindows, getValidPlacements, REMOVE_PLATE_CUPCAKE_COST } from './src/engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, takeExtraTile, refill, calculateFinalScores, getPatternWindows, getValidPlacements, REMOVE_PLATE_CUPCAKE_COST } from './src/engine/game.js';
 import * as bot from './src/bots/basicBot.js';
 
 function runGame(pc, t) {
@@ -53,7 +53,7 @@ function runGame(pc, t) {
         // The best plate-blocked window across every card we could claim.
         // "gap" = how many cells still need a tile once the plate is gone.
         let best = null;
-        for (const card of [...s.cardMarket, ...p.reservedCards]) {
+        for (const card of [...s.cardMarket]) {
           for (const win of getPatternWindows(p.board, card.pattern, { allowBlocked: true })) {
             if (win.blocked.length !== 1) continue; // one removal per turn
             const gap = win.missing.length + 1; // the freed cell needs a tile too
@@ -75,8 +75,6 @@ function runGame(pc, t) {
           if (wasPlate) t.firedPlate++; else t.firedTile++;
           s = moveTile(s, m.fromIndex, m.toIndex);
         }
-        const rc = bot.decideReserve(s);
-        if (rc !== null && rc !== undefined) s = reserveCard(s, rc);
         s = skipSpend(s);
         break;
       }

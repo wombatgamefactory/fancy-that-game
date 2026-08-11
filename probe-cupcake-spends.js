@@ -13,14 +13,13 @@
 //
 // It also measures how much of the residual is a board-geometry problem (no free
 // cell at all), which no amount of market access can buy.
-import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, takeExtraTile, refill, calculateFinalScores, getPatternMatches, getValidPlacements } from './src/engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, takeExtraTile, refill, calculateFinalScores, getPatternMatches, getValidPlacements } from './src/engine/game.js';
 import { createStatsCollector } from './src/engine/statsCollector.js';
 import * as bot from './src/bots/basicBot.js';
 
 function claimableCount(player, gameState) {
   let n = 0;
   for (const c of gameState.cardMarket) if (getPatternMatches(player.board, c.pattern).length > 0) n++;
-  for (const r of player.reservedCards) if (getPatternMatches(player.board, r.pattern).length > 0) n++;
   return n;
 }
 
@@ -35,7 +34,6 @@ function extraTileUnlocks(player, gameState) {
       const board = player.board.slice();
       board[idx] = { colour, ingredient: 'probe' };
       for (const c of gameState.cardMarket) if (getPatternMatches(board, c.pattern).length > 0) return true;
-      for (const r of player.reservedCards) if (getPatternMatches(board, r.pattern).length > 0) return true;
     }
   }
   return false;
@@ -65,8 +63,7 @@ function runGame(pc) {
         if (m) s = moveTile(s, m.fromIndex, m.toIndex);
         const rp = bot.decideRemovePlate ? bot.decideRemovePlate(s) : null;
         if (rp !== null && rp !== undefined) s = removePlate(s, rp);
-        const rc = bot.decideReserve ? bot.decideReserve(s) : null;
-        if (rc !== null && rc !== undefined) s = reserveCard(s, rc);
+        // (the paid reserve was driven here until 11 August, when it was deleted)
         s = skipSpend(s); break; }
       case 'claim': {
         const p = s.players[s.currentPlayerIndex];

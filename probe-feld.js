@@ -3,7 +3,7 @@
 // often is the crumb tray chosen, (4) what does the pre-agreed extra-claim
 // cupcake variant do to all of the above. Read-only with respect to the engine -
 // the only thing it touches is the documented setExtraClaimCupcakeCost seam.
-import { createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, calculateFinalScores, STAND_ROW_VALUES, setExtraClaimCupcakeCost, EXTRA_CLAIM_CUPCAKE_COST } from './src/engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, refill, calculateFinalScores, STAND_ROW_VALUES, setExtraClaimCupcakeCost, EXTRA_CLAIM_CUPCAKE_COST } from './src/engine/game.js';
 import { createStatsCollector } from './src/engine/statsCollector.js';
 import * as basicBot from './src/bots/basicBot.js';
 
@@ -49,11 +49,7 @@ function runGame(playerConfigs) {
         if (m) { spendTurns.push(turnNow); gameState = moveTile(gameState, m.fromIndex, m.toIndex); }
         const rp = strategy.decideRemovePlate ? strategy.decideRemovePlate(gameState) : null;
         if (rp !== null && rp !== undefined) { spendTurns.push(turnNow); gameState = removePlate(gameState, rp); }
-        const rc = strategy.decideReserve ? strategy.decideReserve(gameState) : null;
-        if (rc !== null && rc !== undefined) {
-          spendTurns.push(turnNow);
-          gameState = reserveCard(gameState, rc);
-        }
+        // (the paid reserve was driven here until 11 August, when it was deleted)
         gameState = skipSpend(gameState);
         break;
       }

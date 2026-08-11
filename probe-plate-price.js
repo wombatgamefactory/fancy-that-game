@@ -23,7 +23,7 @@
 // This prints the distribution of the value the bot computes, so the gap can be
 // read directly: how far under the hurdle the opportunities sit, and what
 // fraction would be bought at each candidate price.
-import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, takeExtraTile, refill, calculateFinalScores, getPatternWindows, getValidPlacements, REMOVE_PLATE_CUPCAKE_COST } from './src/engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, takeExtraTile, refill, calculateFinalScores, getPatternWindows, getValidPlacements, REMOVE_PLATE_CUPCAKE_COST } from './src/engine/game.js';
 import * as bot from './src/bots/basicBot.js';
 
 // Mirror of the odds table and weights inside basicBot.decideRemovePlate. Duplicated
@@ -62,7 +62,7 @@ function runGame(pc, t) {
       }
       case 'spend': {
         const p = s.players[s.currentPlayerIndex];
-        const cards = [...s.cardMarket, ...p.reservedCards];
+        const cards = [...s.cardMarket];
         if (p.cupcakes >= REMOVE_PLATE_CUPCAKE_COST) {
           // Best GROSS value available from clearing one plate, ignoring price.
           let bestGross = 0;
@@ -92,8 +92,6 @@ function runGame(pc, t) {
 
         const m = bot.decideMove(s);
         if (m) s = moveTile(s, m.fromIndex, m.toIndex);
-        const rc = bot.decideReserve(s);
-        if (rc !== null && rc !== undefined) s = reserveCard(s, rc);
         s = skipSpend(s);
         break;
       }

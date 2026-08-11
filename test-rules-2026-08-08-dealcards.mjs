@@ -61,9 +61,10 @@ try {
   check('a second deal throws', false);
 } catch (e) { check('a second deal throws', true); }
 
-// THE POINT OF THE RULE: the dealt cards are live for this turn's claim. The
-// reserve lock must NOT have been set by the deal.
-check('a dealt card is not blocked from this turn\'s claim', gs.reservedCardIdThisTurn === null);
+// THE POINT OF THE RULE: the dealt cards are live for this turn's claim. There
+// is no same-turn lock of any kind left in the game - the reserve carried the
+// only one and it was deleted on 11 August - so the assertion is that the dealt
+// cards are on the row and claimable, which the next check makes.
 const dealt = gs.cardMarket.slice(rowBefore);
 check(`${CARDS_PER_DEAL} dealt cards are face up on the row`, dealt.length === CARDS_PER_DEAL && dealt.every(c => c && c.id));
 

@@ -25,7 +25,7 @@
 // Plus terminal unspent cupcakes, for the "is anyone even short of them" question.
 import {
   createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim,
-  skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, calculateFinalScores,
+  skipClaim, skipSpend, moveTile, removePlate, refill, calculateFinalScores,
   getPatternMatches, getValidPlacements, getMoveCost,
   MOVE_TILE_CUPCAKE_COST, EXTRA_TILE_CUPCAKE_COST,
 } from './src/engine/game.js';
@@ -35,7 +35,7 @@ import * as bot from './src/bots/basicBot.js';
 const GAMES = parseInt(process.argv[2] || '400', 10);
 
 function candidateCards(gameState, player) {
-  return [...gameState.cardMarket, ...player.reservedCards];
+  return [...gameState.cardMarket];
 }
 
 function isLocked(board, cards) {
@@ -122,7 +122,7 @@ function runGame(playerCount, acc) {
         // which is the same basis decideExtraTile uses.
         {
           const player = s.players[s.currentPlayerIndex];
-          const cards = candidateCards(s, player).filter(c => c.id !== s.reservedCardIdThisTurn);
+          const cards = candidateCards(s, player);
           const projected = [...player.board];
           const plan = s.pendingSweepTiles.length > 0 ? bot.decidePlacements(s) : [];
           for (let i = 0; i < plan.length; i++) if (plan[i] >= 0) projected[plan[i]] = s.pendingSweepTiles[i];
@@ -154,13 +154,12 @@ function runGame(playerCount, acc) {
         if (md) { s = moveTile(s, md.fromIndex, md.toIndex); acc.movesMade++; }
         const rp = bot.decideRemovePlate ? bot.decideRemovePlate(s) : null;
         if (rp !== null && rp !== undefined) s = removePlate(s, rp);
-        const rid = bot.decideReserve ? bot.decideReserve(s) : null;
-        if (rid !== null && rid !== undefined) { s = reserveCard(s, rid); acc.reservesMade++; }
+        // (the paid reserve was driven here until 11 August, when it was deleted)
 
         // --- MEASUREMENT C: is a SECOND move wanted? --------------------------
         {
           const player = s.players[s.currentPlayerIndex];
-          const cards = candidateCards(s, player).filter(c => c.id !== s.reservedCardIdThisTurn);
+          const cards = candidateCards(s, player);
           if (cards.length > 0 && isLocked(player.board, cards)) {
             acc.lockedAfterSpend++;
             if (unlockableWithOneMove(player.board, cards)) {

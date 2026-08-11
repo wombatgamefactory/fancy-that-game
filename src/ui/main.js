@@ -1,4 +1,4 @@
-import { createGame, sweep, takeBonusTile, declineBonusTile, dealCards, canDealCards, takeExtraTile, canBuyExtraTile, place, claim, skipClaim, skipSpend, refill, moveTile, removePlate, canRemovePlate, getMoveCost, reserveCard, canReserveCard, canClaimMore, getValidSweeps, getValidPlacements, getPatternMatches, getWinningPlayers, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, dealCards, canDealCards, takeExtraTile, canBuyExtraTile, place, claim, skipClaim, skipSpend, refill, moveTile, removePlate, canRemovePlate, getMoveCost, canClaimMore, getValidSweeps, getValidPlacements, getPatternMatches, getWinningPlayers, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
 import { renderSetupScreen, renderGameScreen, updateGameDisplay, setThinkingState, setThinkingProgress, renderEndScreen, showToast, getRailSaveState, restoreRailSaveState, resetRailState } from './board.js';
 import {
   runTransition, predictSweep, tileName, marketCell, trayTileFor, boardCell,
@@ -161,7 +161,6 @@ function undoAction() {
     window._gameUI.destinationChoices = null;
     window._gameUI.cupcakeMode = false;
     window._gameUI.extraTileMode = false;
-    window._gameUI.reserveMode = false;
   }
   // THE UNDO SNAPS, and the count snaps with it: every tile object in the game is
   // new after the round trip, so a count left mid-tween would be counting a seat
@@ -267,9 +266,7 @@ function mountGameScreen() {
     onExtraTilePlace,
     onExtraTileToggle,
     onDealCards,
-    onReserveCard,
     onRemovePlate,
-    onReserveToggle,
   });
   window.scrollTo(0, 0);
   startMotion();
@@ -630,28 +627,9 @@ function onDealCards() {
   }
 }
 
-// SPEND 1 CUPCAKE: RESERVE A CARD (3 August). Offered at the spend step on the
-// player's own turn. The reserve holds one card, and the card cannot be claimed
-// on the turn it was reserved - the engine enforces both.
-function onReserveCard(cardId) {
-  if (!canReserveCard(gameState)) return;
-  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-  if (!currentPlayer.isHuman) return;
-  try {
-    pushUndoSnapshot();
-    reserveCard(gameState, cardId);
-    window._gameUI.reserveMode = false;
-    updateDisplay();
-  } catch (e) {
-    showToast(e.message);
-  }
-}
-
-function onReserveToggle() {
-  if (!canReserveCard(gameState)) return;
-  window._gameUI.reserveMode = !window._gameUI.reserveMode;
-  updateDisplay();
-}
+// (onReserveCard and onReserveToggle stood here - the spend-step handler and its
+// arming toggle for "spend 1 cupcake to reserve a card". DELETED 11 AUGUST with
+// the action itself; ui.reserveMode goes with them.)
 
 // onOrderTea DELETED 1 AUGUST, and the whole TEA RESERVE ROUND deleted 3 August.
 //
@@ -661,9 +639,11 @@ function onReserveToggle() {
 // through onTeaReserve / driveTeaReserves and rendered with its own banner.
 //
 // None of that exists now. A fresh pot is mechanical and single-player: refill()
-// flushes the card row, pays the tea player TEA_POT_REWARD, flushes and redeals
-// the tiles, and rotates the turn - all in the one synchronous call. Reserving is
-// a PAID action a player takes on their own turn instead (onReserveCard).
+// pays the tea player TEA_POT_REWARD, fills the empty market cells from the bag,
+// and rotates the turn - all in the one synchronous call. It does NOT touch the
+// card row (11 August), so there is nothing on the card side for the UI to
+// animate or explain when a pot fires. The PAID RESERVE that replaced the tea
+// round on 3 August is deleted too (11 August).
 //
 // Undo was never a concern for a tea round and still is not: confirmTurn clears
 // the undo stack before calling refill, so by the time tea fires the turn it
@@ -682,7 +662,7 @@ function autoSkipEmptyClaim() {
   // canClaimMore is unconditionally true since 6 August (empty plates are
   // unlimited), so in practice this is now just "is anything claimable". The call
   // is kept as the engine's hook for a future claim limit - see canClaimMore.
-  const cards = [...gameState.cardMarket, ...currentPlayer.reservedCards];
+  const cards = gameState.cardMarket;
   const anyMatch = canClaimMore(gameState)
     && cards.some(card => getPatternMatches(currentPlayer.board, card.pattern).length > 0);
   if (anyMatch) return;
@@ -807,15 +787,10 @@ async function autoPlayGame() {
             removePlate(gameState, plateIndex);
           }
           // Paid 2-card deal (8 August): 1 cupcake for 2 new cards on the row,
-          // resolved before the reserve and before the claim step so both can act
-          // on what it turns up.
+          // resolved before the claim step so the claim can act on what it turns
+          // up. (The paid reserve was driven here too until 11 August.)
           if (bot.decideDealCards && bot.decideDealCards(gameState)) {
             dealCards(gameState);
-          }
-          // Paid reserve: 1 cupcake for a market card, not claimable this turn.
-          const reserveId = bot.decideReserve ? bot.decideReserve(gameState) : null;
-          if (reserveId !== null && reserveId !== undefined) {
-            reserveCard(gameState, reserveId);
           }
           skipSpend(gameState);
         } else if (gameState.gamePhase === 'claim') {
@@ -911,8 +886,8 @@ function onGameEnd() {
 //   onSkipClaim,      nothing travels and nothing is worth a sound: a step that
 //   onSkipMove        was skipped is not an event.
 //   onDealCards,      the row changes under the player's own tap and the change
-//   onReserveCard,    is the picture. A cue here would be a fifth cue, and the
-//   onRemovePlate     vocabulary has four.
+//   onRemovePlate     is the picture. A cue here would be a fifth cue, and the
+//                     vocabulary has four.
 //
 // And the tap-back is silent BY CONSTRUCTION rather than by rule: unplaceTile
 // deletes a key from ui.placementMap rather than setting one, and the settle

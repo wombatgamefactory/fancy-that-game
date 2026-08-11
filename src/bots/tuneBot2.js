@@ -573,30 +573,10 @@ export function refreshWouldRestockBoard(gameState) {
 // dud costs nothing but the take - the floor is kept as a "not worth it" bar and
 // still rises once the game is nearly over, but it is now the obvious knob to
 // re-tune if bots look too shy about reserving.
-export function decideTeaReserve(gameState, reserverIndex) {
-  const player = gameState.players[reserverIndex];
+// (decideReserve / decideTeaReserve stood here. DELETED 11 AUGUST with the paid
+// reserve itself - see the engine. The scoring constants above it are left in
+// place as the record of what was measured; nothing calls them any more.)
 
-  // Roughly how many more claims this player gets before the card-count end
-  // condition fires. The same public estimate decideDestination uses.
-  const myRemainingClaims = turnsRemaining(gameState);
-  const maxMissing = myRemainingClaims <= RESERVE_LATE_CLAIMS
-    ? RESERVE_LATE_MAX_MISSING
-    : RESERVE_MAX_MISSING;
-
-  let bestId = null;
-  let bestValue = RESERVE_MIN_VALUE;
-  for (const card of gameState.cardMarket) {
-    const mm = minMissingForCard(player.board, card);
-    if (mm === Infinity || mm > maxMissing) continue; // no viable window, or hopeless
-    const odds = RESERVE_COMPLETION_ODDS[mm] ?? 0;
-    const value = ((card.vp || 0) + CLAIM_EXTRA) * odds;
-    if (value > bestValue) {
-      bestValue = value;
-      bestId = card.id;
-    }
-  }
-  return bestId;
-}
 
 // Market indices ranked best-first as bonus-tile picks. Exported so the MCTS
 // bot can prune its search to the most promising candidates.
@@ -718,7 +698,7 @@ export function decideMove(gameState) {
   // Claimable candidates are the market cards PLUS this player's reserved cards
   // (which complete as normal claims). A cupcake move that finishes any of them
   // is fair game.
-  const candidateCards = [...gameState.cardMarket, ...player.reservedCards];
+  const candidateCards = [...gameState.cardMarket];
 
   let bestNowVp = 0;
   const matchedNow = new Set();
@@ -824,7 +804,7 @@ export function decideClaim(gameState) {
 
   // Candidates are the market cards PLUS this player's reserved cards, which
   // complete as normal claims (claim() resolves a reserved id transparently).
-  const candidateCards = [...gameState.cardMarket, ...currentPlayer.reservedCards];
+  const candidateCards = [...gameState.cardMarket];
 
   // Find all claimable cards.
   const claimableCards = [];
@@ -839,7 +819,7 @@ export function decideClaim(gameState) {
     return null; // Skip claim
   }
 
-  const reservedIds = new Set(currentPlayer.reservedCards.map(c => c.id));
+  const reservedIds = new Set(); // the reserve is deleted (11 August) - always empty
   // Is the card row itself about to be flushed? Since 1 August this is a
   // CERTAINTY rather than a risk: if the threshold is met and the bag can still
   // refill, tea fires at the end of this very turn and the whole row goes to the
@@ -959,4 +939,4 @@ export function decideClaim(gameState) {
 // deleted, and goes back on it on 9 August with the restoration. decideDealCards
 // stays: it took the extra tile's slot on the menu for a day and now sits beside
 // it, and it was never a rename of it.
-export { decideReserve, decideDealCards, decideExtraTile } from './basicBot.js';
+export { decideDealCards, decideExtraTile } from './basicBot.js';

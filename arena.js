@@ -6,7 +6,7 @@
 //
 // Usage: node arena.js <games> <playerCount> <modA> <modB>
 //   where modA/modB are module names under src/bots/ (without .js).
-import { createGame, sweep, takeBonusTile, declineBonusTile, dealCards, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, refill, calculateFinalScores, getWinningPlayers } from './src/engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, dealCards, takeExtraTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, refill, calculateFinalScores, getWinningPlayers } from './src/engine/game.js';
 
 const games = parseInt(process.argv[2]) || 100;
 const playerCount = parseInt(process.argv[3]) || 2;
@@ -61,8 +61,7 @@ function runGame(strategies) {
         if (rp !== null && rp !== undefined) gameState = removePlate(gameState, rp);
         // 8 August: 1 cupcake, 2 new cards on the row, claimable this same turn.
         if (strategy.decideDealCards && strategy.decideDealCards(gameState)) gameState = dealCards(gameState);
-        const rc = strategy.decideReserve ? strategy.decideReserve(gameState) : null;
-        if (rc !== null && rc !== undefined) gameState = reserveCard(gameState, rc);
+        // (The paid reserve was driven here until 11 August, when it was deleted.)
         gameState = skipSpend(gameState);
         break;
       }

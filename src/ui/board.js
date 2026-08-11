@@ -5,7 +5,7 @@ import { BOARD_SIZE, REWARD_CARDS } from '../engine/tiles.js';
 // them is a hard error rather than a dead name. countBoardIngredient goes with
 // them: it survives in the engine for the bots, but the only thing that ever
 // asked it a question here was the objectives panel.
-import { getPatternMatches, getLegalDestinations, getMoveCost, canDealCards, canBuyExtraTile, canReserveCard, canRemovePlate, canClaimMore, getExtraClaimCupcakeCost, getMaxExtraTilesPerTurn, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, RESERVE_CUPCAKE_COST, RESERVE_LIMIT, getSweepPlacementCount, getVisibleTeapotSymbols, getStartingCupcakes, isTastingMenuInPlay, getAvailableMenus, getMenuDeficit, getMenuIngredients, satisfiesMenu, TASTING_MENU_VP, TASTING_MENUS, isFlavourInPlay, getFlavourCount, getFlavourLeaders, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
+import { getPatternMatches, getLegalDestinations, getMoveCost, canDealCards, canBuyExtraTile, canRemovePlate, canClaimMore, getExtraClaimCupcakeCost, getMaxExtraTilesPerTurn, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, getSweepPlacementCount, getVisibleTeapotSymbols, getStartingCupcakes, isTastingMenuInPlay, getAvailableMenus, getMenuDeficit, getMenuIngredients, satisfiesMenu, TASTING_MENU_VP, TASTING_MENUS, isFlavourInPlay, getFlavourCount, getFlavourLeaders, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
 
 // THE MOTION VOCABULARY AND THE SOUND WORLD (stage 8, plan sections 7 and 13).
 // board.js owns exactly two of the seven movement sites - the settle, which fires
@@ -351,7 +351,6 @@ export function showRulesModal() {
             <div class="ft-rules__text"><strong>${EXTRA_TILE_CUPCAKE_COST}:</strong> take 1 extra tile from anywhere on the market and place it on your board, ${extraTileRule}.</div>
             <div class="ft-rules__text"><strong>${MOVE_TILE_CUPCAKE_COST}:</strong> move one of your tiles to an empty cell.</div>
             <div class="ft-rules__text"><strong>${REMOVE_PLATE_CUPCAKE_COST}:</strong> return one empty plate from your board to the box, freeing that cell.</div>
-            <div class="ft-rules__text"><strong>${RESERVE_CUPCAKE_COST}:</strong> reserve a card from the market. You may hold ${RESERVE_LIMIT}, and you cannot claim it on the turn you reserve it. A reserved card is safe from the tea flush.</div>
             <div class="ft-rules__text"><strong>${DEAL_CARDS_CUPCAKE_COST}:</strong> deal ${CARDS_PER_DEAL} new cards onto the card row. <strong>You may claim one of them this turn.</strong> Not available if the row has no room for both.</div>
             <div class="ft-rules__text">All of these are once per turn except the extra tile, which is ${extraTileRule}. ${spendCount}</div>
           </div>
@@ -370,18 +369,17 @@ export function showRulesModal() {
                steps again, which is what the section heading always claimed. -->
           <div class="ft-rules__step">
             <div class="ft-rules__step-title">5. Deal a Card</div>
-            <div class="ft-rules__text">1 new card joins the card row, whether or not you claimed, up to ${MAX_MARKET_CARDS}. A claim does not refill the gap it leaves.</div>
+            <div class="ft-rules__text">1 new card joins the card row at the end of <strong>every</strong> turn, whether or not you claimed, and whether or not a pot of tea is brewed, up to ${MAX_MARKET_CARDS}. A claim does not refill the gap it leaves.</div>
             <div class="ft-rules__text">The tile market is never topped up. Swept tiles leave holes until a fresh pot of tea.</div>
           </div>
         </div>
 
         <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--tea">
           <div class="ft-rules__section-title">A Fresh Pot of Tea</div>
-          <div class="ft-rules__text">A teapot is showing when the space printed under it is empty. If ${REFRESH_THRESHOLD} are showing at the end of your turn, a pot is brewed automatically instead of dealing a card:</div>
-          <div class="ft-rules__text">1. Discard the whole card row and deal ${INITIAL_MARKET_CARDS} new cards. Reserved cards are safe.</div>
-          <div class="ft-rules__text">2. You gain ${TEA_POT_REWARD} cupcake${TEA_POT_REWARD === 1 ? '' : 's'}.</div>
-          <div class="ft-rules__text">3. Every tile left on the market returns to the bag. The bag is shuffled and all 25 spaces are dealt again.</div>
-          <div class="ft-rules__text">If the bag runs short, deal out what is left and carry on. Play then passes to the left as usual.</div>
+          <div class="ft-rules__text">A teapot is showing when the space printed under it is empty. If ${REFRESH_THRESHOLD} are showing at the end of your turn, a pot is brewed automatically, on top of your usual card:</div>
+          <div class="ft-rules__text">1. You gain ${TEA_POT_REWARD} cupcake${TEA_POT_REWARD === 1 ? '' : 's'}.</div>
+          <div class="ft-rules__text">2. Fill every empty space on the tile market from the bag. Tiles already on the market stay exactly where they are.</div>
+          <div class="ft-rules__text">The card row is not touched at all - no cards are discarded, and you still deal your end-of-turn card. If the bag runs short, deal out what is left and carry on. Play then passes to the left as usual.</div>
         </div>
 
         <!-- The PANTRY GOALS section stood here until the morning of 4 August:
@@ -443,7 +441,7 @@ export function showRulesModal() {
                with 3 - a drift the interpolation now makes impossible. -->
           <div class="ft-rules__text">Starting cupcakes, by seat: <strong>2 players</strong> ${getStartingCupcakes(2).join(' / ')}, <strong>3 players</strong> ${getStartingCupcakes(3).join(' / ')}, <strong>4 players</strong> ${getStartingCupcakes(4).join(' / ')}.</div>
           <div class="ft-rules__text">Gain ${TEA_POT_REWARD} when a pot of tea is brewed on your turn, and 1 for plating a tile onto a cupcake plate.</div>
-          <div class="ft-rules__text">Spend: <strong>${EXTRA_TILE_CUPCAKE_COST}</strong> extra tile · <strong>${DEAL_CARDS_CUPCAKE_COST}</strong> deal ${CARDS_PER_DEAL} new cards · <strong>${MOVE_TILE_CUPCAKE_COST}</strong> move a tile · <strong>${REMOVE_PLATE_CUPCAKE_COST}</strong> remove a plate · <strong>${RESERVE_CUPCAKE_COST}</strong> reserve a card.</div>
+          <div class="ft-rules__text">Spend: <strong>${EXTRA_TILE_CUPCAKE_COST}</strong> extra tile · <strong>${DEAL_CARDS_CUPCAKE_COST}</strong> deal ${CARDS_PER_DEAL} new cards · <strong>${MOVE_TILE_CUPCAKE_COST}</strong> move a tile · <strong>${REMOVE_PLATE_CUPCAKE_COST}</strong> remove a plate.</div>
           <div class="ft-rules__text">Cupcakes score no points. They break ties.</div>
         </div>
 
@@ -841,9 +839,10 @@ function seatHTML(playerIdx, gameState) {
       </div>`;
 }
 
-// `spendHandlers` bundles the paid options - the extra tile and the reserve, each
-// with a toggle, plus the one-click 2-card deal and the plate removal - rather
-// than growing this parameter list by six more positional callbacks.
+// `spendHandlers` bundles the paid options - the extra tile with its toggle,
+// plus the one-click 2-card deal and the plate removal - rather than growing
+// this parameter list by more positional callbacks. (The paid reserve was one of
+// them, with a toggle of its own, until it was deleted on 11 August.)
 export function renderGameScreen(container, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick, spendHandlers = {}) {
 
   container.innerHTML = `
@@ -1122,9 +1121,7 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
     onExtraTile: spendHandlers.onExtraTile,
     onExtraTilePlace: spendHandlers.onExtraTilePlace,
     onExtraTileToggle: spendHandlers.onExtraTileToggle,
-    onReserveCard: spendHandlers.onReserveCard,
     onRemovePlate: spendHandlers.onRemovePlate,
-    onReserveToggle: spendHandlers.onReserveToggle,
     gameState,
     selectedPlacements: [],
     placementMap: {},
@@ -1139,10 +1136,10 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
     selectedTileIndex: null,
     cupcakeSource: null,
     cupcakeMode: false,
-    // Sweep-step "buy an extra tile" mode: the next market click lifts a tile
-    // rather than declaring a sweep. Spend-step "reserve a card" mode: the next
-    // card click reserves rather than claims. (The paid 2-card deal has no mode
-    // of its own - its button deals the cards itself.)
+    // Spend-step "buy an extra tile" mode: the next market click lifts a tile
+    // rather than declaring a sweep. (The paid 2-card deal has no mode of its
+    // own - its button deals the cards itself. A "reserve a card" mode sat here
+    // too until 11 August.)
     extraTileMode: false,
     // THE BOUGHT-BUT-NOT-YET-PLACED TILE (10 August). The extra tile is a spend-
     // step action now, so there is no pending pile for it to join and no
@@ -1150,7 +1147,6 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
     // cell" and it is not committed until both are named. This holds the market
     // index between the two taps. Null means nothing is in hand.
     extraTilePending: null,
-    reserveMode: false,
     lastPlayerIndex: -1,
   };
 
@@ -1348,10 +1344,6 @@ export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup
                  (4 August). The stats collector no longer reports
                  objectivesClaimedCount, and gameState.objectivePairs no longer
                  exists - reading either was a hard error, not a zero. -->
-            <div class="ft-stat-box">
-              <div class="ft-stat-label">Cards Reserved</div>
-              <div class="ft-stat-value">${gameStats?.reservesTaken || 0}</div>
-            </div>
           </div>
         </div>
 
@@ -1446,7 +1438,6 @@ export function updateGameDisplay(gameState) {
     ui.cupcakeMode = false;
     ui.extraTileMode = false;
     ui.extraTilePending = null;
-    ui.reserveMode = false;
     ui.selectedTileIndex = null;
     ui.cupcakeSource = null;
     ui.lastPlayerIndex = gameState.currentPlayerIndex;
@@ -1459,7 +1450,6 @@ export function updateGameDisplay(gameState) {
     // engine would refuse it - so the hand is emptied with the mode.
     ui.extraTilePending = null;
   }
-  if (!canReserveCard(gameState)) ui.reserveMode = false;
   // The same rule for the tap path's selections. A tile index only means anything
   // during `place`, and an armed cupcake source only during cupcake mode.
   if (gameState.gamePhase !== 'place') ui.selectedTileIndex = null;
@@ -1706,7 +1696,11 @@ function updateTeaOption(gameState) {
     // 3 August: the pot is mechanical, so this is a WARNING as much as a readout.
     // It no longer restates the mechanic (the section note above it does that);
     // it says the one thing a player can still act on.
-    note = 'Brewing at the end of this turn - reserve a card now if you want to keep one.';
+    // 11 August: the pot no longer flushes the card row, so there is nothing
+    // to save from it and nothing for the player to act on. What is left is the
+    // fact - the market is about to be restocked, and the player on your left
+    // gets to sweep it.
+    note = 'Brewing at the end of this turn - the market fills up and the next player sweeps it.';
   } else if (refillDue) {
     // The trigger is armed and there is nothing left to pour. This is the END OF
     // THE GAME, so it takes the loud state rather than sitting greyed out: it is
@@ -2181,14 +2175,15 @@ function closeSheetNow() {
 // leaves above (see the scroll in openSheet). That is the whole reason the cap is
 // non-negotiable, and it is right for those two.
 //
-// The other two ARM SOMETHING THAT IS NOT YOUR BOARD. The extra tile arms the
-// tile market, which on a phone sits at the top of the canvas; the reserve arms
-// the card row, which sits below your board. Neither is in the space the cap
+// THE EXTRA TILE ARMS SOMETHING THAT IS NOT YOUR BOARD - the tile market, which
+// on a phone sits at the top of the canvas. That is not in the space the cap
 // leaves, so the sheet was left standing over the very thing it had just asked
-// the player to choose from - measured at 390: four of five probes down the
-// middle of the card row came back as sheet, so a player who tapped "Reserve a
-// card" was looking at a two-millimetre sliver of the first card and nothing
-// else.
+// the player to choose from. (The paid reserve armed the card row the same way
+// and was the one Dean hit: measured at 390, four of five probes down the middle
+// of the card row came back as sheet, so a player who tapped "Reserve a card"
+// was looking at a two-millimetre sliver of the first card and nothing else. The
+// reserve is deleted - 11 August - but the fix it forced is what the extra tile
+// still uses.)
 //
 // So: close the sheet, then bring the target into view IF IT IS NOT ALREADY
 // fully there. The test is deliberately "fully", not "at all" - a card row with
@@ -3113,8 +3108,9 @@ function showSweepOptions(gameState, index, isRow) {
 }
 
 // Why a further claim is refused, in the exact words the player needs. Shared by
-// the market cards, the "on order" reserve card and the tooltip so they cannot
-// drift apart.
+// the market cards and the tooltip so they cannot drift apart. (It was shared
+// with the "on order" reserve card too, until the reserve was deleted on
+// 11 August.)
 //
 // SINCE 9 AUGUST A FURTHER CLAIM IS FOR SALE, NOT FORBIDDEN (§6, 1 cupcake each,
 // uncapped), so the usual reason a human lands in 'refill' with a claim already
@@ -3297,11 +3293,10 @@ function updateCardMarket(gameState) {
   // live in, and a UI that stopped asking would be the thing to find and fix if
   // one ever arrived.
   if (gameState.gamePhase === 'claim' && canClaimMore(gameState)) {
+    // EVERY card on the row is claimable the moment it is there. The same-turn
+    // lock that used to be checked here belonged to the paid reserve, which was
+    // deleted on 11 August - there is no exception of any kind left.
     for (const card of gameState.cardMarket) {
-      // A card reserved THIS turn cannot be claimed this turn (3 August) - it is
-      // not in the market row any more either, but the guard is cheap and states
-      // the rule where a reader will look for it.
-      if (card.id === gameState.reservedCardIdThisTurn) continue;
       const matches = getPatternMatches(currentPlayer.board, card.pattern);
       if (matches.length > 0) {
         claimableCardIds.add(card.id);
@@ -3351,33 +3346,10 @@ function updateCardMarket(gameState) {
     });
   }
 
-  // PAID RESERVE (3 August). The player whose turn it is may click a market card
-  // to pay RESERVE_CUPCAKE_COST and take it into their reserve, once they have
-  // armed the option from the cupcake panel. Two rules the UI has to make plain,
-  // because the engine will otherwise refuse the click with a message:
-  //   - the reserve holds RESERVE_LIMIT card, and
-  //   - a card reserved this turn CANNOT be claimed this turn.
-  //
-  // This replaces the deleted tea-round reserve, in which a separately-tracked
-  // reserver (NOT necessarily the current player) picked a card for free after
-  // every pot. There is no round any more, so there is no banner and no
-  // reserver index - it is simply an option on your own turn.
-  const ui = window._gameUI || {};
-  if (ui.reserveMode && canReserveCard(gameState)) {
-    const actor = gameState.players[gameState.currentPlayerIndex];
-    if (actor.isHuman) {
-      // Scope to the card market only - the "On order" reserve slots in player
-      // panels also carry the .card-market-sprite class and must NOT be treated
-      // as reservable market cards.
-      cardMarket.querySelectorAll('.card-market-sprite').forEach(cardEl => {
-        cardEl.classList.add('ft-card--reservable');
-        cardEl.style.cursor = 'pointer';
-        cardEl.title = `Pay ${RESERVE_CUPCAKE_COST} cupcake to reserve this card. You may not claim it this turn.`;
-        const cardId = parseInt(cardEl.dataset.cardId);
-        cardEl.addEventListener('click', () => ui.onReserveCard?.(cardId));
-      });
-    }
-  }
+  // (THE PAID RESERVE armed the card row here: with the option armed from the
+  // cupcake panel, a click on a market card bought it into the player's reserve.
+  // DELETED 11 AUGUST with the action. The card row now has exactly two click
+  // meanings - claim it, or be told why you cannot.)
 
   // The row's length changes under the player - a card is added at the end of
   // every turn and taken by every claim - so the cue is re-measured after each
@@ -3597,102 +3569,15 @@ function updatePlayerBoards(gameState) {
       });
     }
 
-    renderOnOrderSlot(gameState, player, playerIdx, boardEl);
   });
 }
 
-// The "On order" slot shows a player's face-up reserved cards beside their
-// board. There is no cap on how many a player may hold (1 Aug rule change).
-// During the OWNER's claim phase, any reserved card whose pattern is on their
-// board becomes claimable exactly like a market card (click → showRemovalUI,
-// which claim() then resolves from the reserve). The container is created lazily
-// so it costs nothing until a card is actually reserved.
-//
-// DEFECT 5, DEAN'S DECISION 2. This used to render a row of full-size cards that
-// WRAPPED, which cost 171px of column height per reserve with no cap on
-// reserves: in the L band's 226px rail column exactly one card fits per row, so
-// an opponent with one reserve measured 546px against 363, and the only
-// unbounded term in the desktop layout sat in the one column that must never
-// grow taller than the centre.
-//
-// IT IS AN OVERLAPPED FAN NOW, CAPPED AT ONE CARD'S HEIGHT. The cards sit in a
-// single row at a 24px step, so the top card is fully visible, the ones behind
-// show a 24px strip apiece, and A FAN OF THREE IS EXACTLY AS TALL AS A FAN OF
-// ONE. Past three the remainder becomes a +N badge, which caps the width too.
-// The phone is not affected: it shows a count on the collapsed row already.
-const ON_ORDER_FANNED = 3;
-
-function renderOnOrderSlot(gameState, player, playerIdx, boardEl) {
-  let slotEl = document.getElementById(`onOrder${playerIdx + 1}`);
-
-  if (player.reservedCards.length === 0) {
-    if (slotEl) slotEl.innerHTML = '';
-    return;
-  }
-
-  if (!slotEl) {
-    slotEl = document.createElement('div');
-    slotEl.id = `onOrder${playerIdx + 1}`;
-    slotEl.className = 'ft-on-order';
-    boardEl.insertAdjacentElement('afterend', slotEl);
-  }
-
-  const isCurrentPlayer = playerIdx === gameState.currentPlayerIndex;
-  const count = player.reservedCards.length;
-
-  const claimableOf = card => isCurrentPlayer && player.isHuman
-    && gameState.gamePhase === 'claim'
-    && getPatternMatches(player.board, card.pattern).length > 0;
-
-  // A CARD PAST THE THIRD IS FOLDED AWAY - UNLESS IT CAN BE CLAIMED RIGHT NOW.
-  // The cap is a height and width budget, not a rule of the game: a reserved
-  // card is claimed by clicking it, so folding a claimable one away would put a
-  // legal move out of reach. The exemption fires only in the owner's claim step
-  // with four or more reserves, and each extra card it lets through costs 24px
-  // of width in a column with 70 to spare.
-  const folded = player.reservedCards.map((card, i) => i >= ON_ORDER_FANNED && !claimableOf(card));
-  const hidden = folded.filter(Boolean).length;
-
-  const cardsHTML = player.reservedCards.map((card, i) => {
-    const isClaimable = claimableOf(card);
-    return cardSpriteHTML(card, 'var(--fan-card-h)', {
-      extraClass: [
-        isClaimable ? 'ft-card--claimable' : '',
-        folded[i] ? 'ft-on-order__card--folded' : '',
-      ].filter(Boolean).join(' '),
-      clickable: isClaimable,
-    });
-  }).join('');
-
-  slotEl.innerHTML = `
-    <div class="ft-on-order__label">On order${count > 1 ? ` (${count})` : ''}</div>
-    <div class="ft-on-order__cards">${cardsHTML}${hidden > 0
-      ? `<span class="ft-on-order__more" aria-hidden="true">+${hidden}</span>` : ''}</div>
-  `;
-
-  // Wire each card by position - cardSpriteHTML emits them in reserve order.
-  const cardEls = slotEl.querySelectorAll('.card-market-sprite');
-  player.reservedCards.forEach((card, i) => {
-    const cardEl = cardEls[i];
-    if (!cardEl) return;
-    const isClaimable = isCurrentPlayer && player.isHuman && gameState.gamePhase === 'claim'
-      && getPatternMatches(player.board, card.pattern).length > 0;
-    if (isClaimable) {
-      cardEl.addEventListener('click', () => showRemovalUI(gameState, card.id));
-    } else if (isCurrentPlayer && isFurtherClaimBlocked(gameState)) {
-      // A reserved card is bought on the SAME terms as a market card - the first
-      // claim of the turn free, every further one priced - and it is the card a
-      // player is most likely to reach for second ("but it is mine, surely that
-      // one is free"). It must therefore say the same thing the market cards say
-      // rather than sit there inert.
-      cardEl.style.cursor = 'not-allowed';
-      cardEl.classList.add('ft-card--claim-used');
-      const msg = furtherClaimMessage();
-      cardEl.title = msg;
-      cardEl.addEventListener('click', () => showCardRowNotice(msg));
-    }
-  });
-}
+// (renderOnOrderSlot and the ON_ORDER_FANNED cap stood here: the "On order"
+// slot that showed a player's face-up reserved cards beside their board, as an
+// overlapped fan capped at one card's height. DELETED 11 AUGUST with the
+// reserve. A player's cards are claimed cards and nothing else, so no seat has
+// a card face outside the shared row any more - which also retires the one
+// unbounded height term the desktop rail column ever had.)
 
 // ---------------------------------------------------------------------------
 // PLACEMENT: hit-testing and the one commit
@@ -4368,24 +4253,20 @@ function updateStats(gameState) {
     // is the complementary half, and it is the only opponent fact that is a
     // clock on everybody rather than a fact about that player's score.
     //
-    // A RESERVED CARD BECOMES A COUNT, and only while it is non-zero. `.ft-on-order`
-    // renders a real 108 x 150 card face inside the seat's board column - 171px
-    // of a 44px row, and the only unbounded term in the whole layout budget. A
-    // count cannot grow with the number of reserves; the card faces are in the
-    // sheet.
+    // (A RESERVED-CARD COUNT sat in this row while a player held any. The
+    // reserve is deleted - 11 August - so the row is one stat shorter and the
+    // layout's one unbounded term is gone with it.)
     //
     // Every glyph is backed by a visually hidden word, because a `title` is not
     // reachable on a phone and no icon in this set is ever the accessible name of
     // anything.
     const seatRow = !isOpponentSeat ? '' : (() => {
       const filled = p.board.length - p.board.filter(c => c === null).length;
-      const onOrder = p.reservedCards.length;
       return `
       <div class="pm-seat-row">
         <span class="pm-seat-row__stat pm-seat-row__stat--score"><span class="ft-sr-only">Score </span>${bd.total}</span>
         <span class="pm-seat-row__stat">${cupcakeMark(12)}<span class="ft-sr-only">cupcakes </span>${bd.cupcakes}</span>
         <span class="pm-seat-row__stat">${icon('grid', 12)}<span class="ft-sr-only">board filled </span>${filled}/${p.board.length}</span>
-        ${onOrder ? `<span class="pm-seat-row__stat">${icon('card', 12)}<span class="ft-sr-only">cards on order </span>${onOrder}</span>` : ''}
         <span class="pm-seat-row__more" aria-hidden="true">${icon('arrow-right', 12)}</span>
       </div>`;
     })();
@@ -4422,7 +4303,6 @@ function updateStats(gameState) {
     // place rather than discovering them phase by phase.
     const canDeal = isCurrentPlayer && canDealCards(gameState);
     const canBuyTile = isCurrentPlayer && canBuyExtraTile(gameState);
-    const canReserve = isCurrentPlayer && canReserveCard(gameState);
 
     // -----------------------------------------------------------------------
     // THE SPEND MENU AS A GRID OF CHIPS - Dean's decision 1 of 10/08/2026, and
@@ -4489,7 +4369,6 @@ function updateStats(gameState) {
       extraTilesBought > 0
         ? `<span class="ft-cupcake-note">${extraTilesBought} extra tile${extraTilesBought === 1 ? '' : 's'} bought this turn</span>` : '',
       gameState.cardsDealtThisTurn ? `<span class="ft-cupcake-note">Cards dealt this turn</span>` : '',
-      p.reservedCards.length >= RESERVE_LIMIT ? `<span class="ft-cupcake-note">Your reserve is full (${RESERVE_LIMIT} card)</span>` : '',
     ].filter(Boolean);
     // One wrapper rather than three siblings, so three simultaneous statements
     // cost one gap instead of three inside a sheet with 76px of slack.
@@ -4520,9 +4399,6 @@ function updateStats(gameState) {
             ${spendChip({ id: 'dealCardsBtn', name: `Deal ${CARDS_PER_DEAL} new cards`, price: DEAL_CARDS_CUPCAKE_COST,
                           live: canDeal, armed: false,
                           title: `At the spend step, once per turn: deal ${CARDS_PER_DEAL} new cards onto the card row. You may claim one of them this turn.` })}
-            ${spendChip({ id: 'reserveCardBtn', name: 'Reserve a card', price: RESERVE_CUPCAKE_COST,
-                          live: canReserve, armed: ui.reserveMode,
-                          title: `Take one card from the market into your reserve. You may not claim it this turn, and your reserve holds ${RESERVE_LIMIT} card.` })}
             ${extraClaimCost === null ? '' : `
             <span class="ft-cupcake-spend-btn ft-spend-chip ft-spend-chip--note${extraClaimLive ? ' is-live' : ''}"
                   aria-label="Complete another card - ${cupcakePrice(extraClaimCost)}"
@@ -4592,16 +4468,6 @@ function updateStats(gameState) {
     if (canDeal && ui.onDealCards) {
       const btn = statsEl.querySelector('#dealCardsBtn');
       if (btn) btn.addEventListener('click', () => ui.onDealCards());
-    }
-    // THE RESERVE ARMS THE CARD ROW, which is the other spend that reaches
-    // outside the sheet - and it was the one Dean hit. Same treatment as the
-    // extra tile above, for the same reason and through the same helper.
-    if (canReserve && ui.onReserveToggle) {
-      const btn = statsEl.querySelector('#reserveCardBtn');
-      if (btn) btn.addEventListener('click', () => {
-        revealSpendTarget('.ft-section--cards');
-        ui.onReserveToggle();
-      });
     }
   });
 }
@@ -4797,8 +4663,9 @@ function updatePhaseControls(gameState) {
       </div>
     `;
   } else if (gameState.gamePhase === 'spend') {
-    // The 'move' phase became 'spend' on 3 August: it hosts three paid options
-    // now (move a tile, move an empty plate, reserve a card), not just the move.
+    // The 'move' phase became 'spend' on 3 August: it hosts four paid options
+    // now (extra tile, deal 2 cards, move a tile, remove an empty plate), not
+    // just the move. The paid reserve was a fifth until 11 August.
     // THREE lines used to stand here - the priced menu of options, the reserve
     // note, and a cupcake-count hint - and all three described controls that are
     // in the cupcake panel. They moved there on 4 August (plan section 5.4).
@@ -4819,24 +4686,12 @@ function updatePhaseControls(gameState) {
     // Cancel is offered because a market tile lifted by mistake must be
     // droppable - nothing has been paid for until the cell is named.
     const holdingExtraTile = ui.extraTilePending !== null && ui.extraTilePending !== undefined;
-    // The reserve is armed and the sheet that armed it has closed itself, so the
-    // bar is the only thing left that can say what happens next. Cancel is not
-    // optional here for the same reason: the toggle that would disarm it is
-    // inside a sheet the player would have to reopen to reach.
-    const armedReserve = ui.reserveMode && canReserveCard(gameState);
 
     html = holdingExtraTile ? `
       <div class="ft-phase-bar">
         ${barText('Choose where this tile goes', `<div class="ft-phase-bar__status success">${clickVerb()} a lit cell on your board</div>`)}
         <div class="ft-phase-bar__controls">
           <button id="cancelExtraTile" class="ft-btn ft-btn--secondary ft-btn--small">Cancel</button>
-        </div>
-      </div>
-    ` : armedReserve ? `
-      <div class="ft-phase-bar">
-        ${barText('Reserve a card', `<div class="ft-phase-bar__status success">${clickVerb()} a ringed card on the row</div>`)}
-        <div class="ft-phase-bar__controls">
-          <button id="cancelReserve" class="ft-btn ft-btn--secondary ft-btn--small">Cancel</button>
         </div>
       </div>
     ` : `
@@ -4876,13 +4731,6 @@ function updatePhaseControls(gameState) {
         const matches = getPatternMatches(currentPlayer.board, card.pattern);
         if (matches.length > 0) {
           claimableCards.push({ card, matches });
-        }
-      }
-      // The player's own reserved "on order" cards are claimable the same way.
-      for (const card of currentPlayer.reservedCards) {
-        const rMatches = getPatternMatches(currentPlayer.board, card.pattern);
-        if (rMatches.length > 0) {
-          claimableCards.push({ card, matches: rMatches });
         }
       }
 
@@ -5010,15 +4858,6 @@ function updatePhaseControls(gameState) {
     });
   }
 
-  // Disarming the reserve. Nothing has been spent - reserveCard charges on the
-  // card tap - so this is a state reset like the extra tile's.
-  const cancelReserveBtn = controls.querySelector('#cancelReserve');
-  if (cancelReserveBtn && gameState.gamePhase === 'spend') {
-    cancelReserveBtn.addEventListener('click', () => {
-      window._gameUI.reserveMode = false;
-      updateGameDisplay(gameState);
-    });
-  }
 }
 
 // THE TRIM RULE (6 August) changes the shape of this array. place() pairs
@@ -5052,11 +4891,9 @@ function handlePlacementDone(e) {
 
 function showRemovalUI(gameState, cardId) {
   const player = gameState.players[gameState.currentPlayerIndex];
-  // Card lookup mirrors claim(): market first, then this player's reserve. A
-  // reserved "on order" card is claimed through exactly this path.
-  const card = gameState.cardMarket.find(c => c.id === cardId)
-    || player.reservedCards.find(c => c.id === cardId)
-    || null;
+  // Card lookup mirrors claim(): the shared row and nothing else, since the
+  // personal reserve was deleted on 11 August.
+  const card = gameState.cardMarket.find(c => c.id === cardId) || null;
   if (!card) {
     showToast('Card not found');
     return;
@@ -5111,8 +4948,8 @@ function rotatePattern(pattern, turns) {
   return p;
 }
 
-// THE ONE renderer for a reward card, wherever it appears - the card row, the
-// "on order" reserve slot, anywhere later.
+// THE ONE renderer for a reward card, wherever it appears - the card row today,
+// anywhere later. (It also drew the "on order" reserve slot until 11 August.)
 //
 // It used to compute background-position and background-size in pixels from a
 // display height, and updateCardMarket carried a second copy of the same maths
@@ -5124,7 +4961,8 @@ function rotatePattern(pattern, turns) {
 //
 // `height` is normally left alone, so the card takes --card-height and follows
 // the responsive bands. Pass a value only where a card is deliberately a fixed
-// size regardless of band, as the reserve slot is.
+// size regardless of band. (The reserve slot was the only such caller and it is
+// deleted, so nothing passes one today - the parameter is kept for the next.)
 // `badge` is gone with the teapot glyph it drew - see the note where the badge
 // used to be emitted.
 function cardSpriteHTML(card, height = null, { extraClass = '', clickable = false } = {}) {

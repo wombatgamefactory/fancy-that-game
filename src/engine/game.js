@@ -509,9 +509,16 @@ function isCupcakePlate(rowIndex, plateIndex) {
 //        It is the only spend on this menu with no per-turn allowance, which is
 //        the whole of the change - the other four are still once-per-turn.
 //   1  move a tile               MOVE_TILE_CUPCAKE_COST
-//   1  reserve a card            RESERVE_CUPCAKE_COST
 //   1  deal 2 new cards          DEAL_CARDS_CUPCAKE_COST      (added 8 Aug)
 //   2  remove an empty plate     REMOVE_PLATE_CUPCAKE_COST    (was 3)
+//
+// 11 AUGUST: THE RESERVE IS DELETED, so the menu is FOUR spends at the spend step
+// (plus the paid further claim at step 4). "1 reserve a card" stood in the list
+// above from 3 August. Dean's call: the reserve was bought largely to carry a
+// card past the tea flush, and the tea flush is deleted on the same day (see
+// brewFreshPot), so the spend lost most of its job on its own. Nothing replaces
+// it - the card row is now stable enough between turns that booking a card in
+// advance is not a thing a player needs to buy.
 //
 // WHY BOTH, WHICH THE 8 AUGUST NOTE HERE EXPLICITLY WARNED AGAINST. That warning
 // stands as written - "do not reinstate the extra tile as a second door to the
@@ -618,8 +625,10 @@ export const DEAL_CARDS_CUPCAKE_COST = 1;
 // end-of-turn deal, which already puts one card on the row every turn - paying a
 // cupcake to bring next turn's single card forward would be no decision at all.
 export const CARDS_PER_DEAL = 2;
-// Take 1 card from the card market into your personal reserve, on your own turn.
-export const RESERVE_CUPCAKE_COST = 1;
+// (RESERVE_CUPCAKE_COST stood here - 1 cupcake to take a card from the row into
+// your personal reserve, on your own turn. DELETED 11 AUGUST with the action; see
+// the menu note above. Nothing in the engine, the bots or the UI holds a card
+// outside the row any more.)
 // Remove one EMPTY PLATE token from your own board and RETURN IT TO THE BOX.
 //
 // The plate is gone from the game, and since 6 August there is no supply for it
@@ -649,10 +658,10 @@ export const RESERVE_CUPCAKE_COST = 1;
 // predates the clock change and undervalues a reclaimed cell.
 export const REMOVE_PLATE_CUPCAKE_COST = 2;
 
-// Cards a player may hold in their personal reserve at once. The free tea-round
-// reserve (deleted 3 August) briefly ran uncapped; a PAID reserve is capped at 1
-// again, so a reserve is a forward commitment rather than a hand.
-export const RESERVE_LIMIT = 1;
+// (RESERVE_LIMIT stood here: 1 card held in a personal reserve. DELETED
+// 11 AUGUST with the reserve itself. A card is either on the shared row or
+// claimed - there is no third place for one to be, and no code should invent
+// one.)
 
 // ---------------------------------------------------------------------------
 // STARTING CUPCAKES BY SEAT, KEYED BY PLAYER COUNT (7 August).
@@ -886,8 +895,10 @@ function metrics(gameState) {
 // visible teapot symbols, and whether tea is still due. Called from exactly two
 // places, createGame for the opening turn and advanceToNextTurn for every
 // rotation that actually hands somebody a turn, so there is precisely one sample
-// per turn played. Sampling at the START matters: a refresh cuts the row back to
-// INITIAL_MARKET_CARDS, and metric 3 is about the row the player was faced with.
+// per turn played. Sampling at the START matters: metric 3 is about the row the
+// player was faced with. (Until 11 August a refresh cut the row back to
+// INITIAL_MARKET_CARDS, which was the sharpest reason for it; the pot leaves the
+// row alone now, so the row only ever grows and shrinks by one at a time.)
 //
 // THE INVARIANT. Under the end-of-turn trigger, isTeaDue must be FALSE at the
 // start of every turn: the previous turn either flushed the board or never
@@ -915,8 +926,10 @@ function sampleTurnStart(gameState) {
 // A completed pattern is the whole test: the crumb tray is always a legal
 // destination for the removed tile (see getLegalDestinations), and the first
 // claim of a turn is always free (§6), so nothing else can refuse a claim the
-// pattern allows. The reserve is counted separately from the row because the
-// 27 July lock the design doc asks us to verify was a property of the ROW.
+// pattern allows. (A second count, of claimable RESERVED cards, was reported
+// beside this one until 11 August. The reserve is deleted, so the row is now the
+// whole of the measurement - which is what the 27 July lock the design doc asks
+// us to verify was always about.)
 //
 // This is the one genuinely expensive hook (a pattern scan per card in the row),
 // which is exactly why it sits behind the collector check.
@@ -928,11 +941,10 @@ function sampleClaimOpportunity(gameState) {
   for (const card of gameState.cardMarket) {
     if (getPatternMatches(player.board, card.pattern).length > 0) rowClaimable++;
   }
-  let reserveClaimable = 0;
-  for (const reserved of player.reservedCards) {
-    if (getPatternMatches(player.board, reserved.pattern).length > 0) reserveClaimable++;
-  }
-  collector.recordClaimOpportunity(gameState.stats.turnsPlayed, player.id, rowClaimable, reserveClaimable);
+  // The reserve is deleted (11 August), so `reserveClaimable` is structurally 0.
+  // The argument is kept rather than dropped so the report shape - and every
+  // saved simulation .txt written against it - still lines up.
+  collector.recordClaimOpportunity(gameState.stats.turnsPlayed, player.id, rowClaimable, 0);
 }
 
 // METRIC 8, the physical-supply half. Total cupcakes held simultaneously across
@@ -1028,11 +1040,10 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     // Tea CARD is deleted, and with it the once-per-game "tea spent" flag — the
     // refresh is a standing board option with no per-game or per-player limit,
     // gated purely on visible teapot symbols (see isTeaDue).
-    // Personal reserve: face-up card objects. Since 3 August it is filled ONLY by
-    // the PAID reserve (reserveCard, RESERVE_CUPCAKE_COST) — the free tea-round
-    // reserve is deleted — and is capped at RESERVE_LIMIT (1). Emptied by claim
-    // (completing one), or left to score 0.
-    reservedCards: [],
+    // (reservedCards stood here: the personal reserve, filled by the paid
+    // reserveCard action. DELETED 11 AUGUST with the action. A player's cards are
+    // claimedCards and nothing else, and no consumer may reintroduce a per-player
+    // holding area - a card is on the shared row or it is claimed.)
     // TASTING MENUS taken, as card ids in the order they were taken. A menu can
     // only ever be taken once by one player, so this is short - 0 or 1 entries in
     // most games - and every id in it appears on exactly one player's list.
@@ -1065,12 +1076,15 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     bag,
     gameDeck,
     cardMarket,
-    // Flushed cards accumulate here and are reshuffled back into an empty
-    // gameDeck by drawCard. Its ONLY source is the tea round's card flush
-    // (finishTeaRound step b) - claimed cards go to the claiming player, and
-    // since the 28 July rework a claim draws no replacement, so nothing else
-    // discards. The discard therefore sits empty until the first refresh and
-    // then fills a whole row at a time.
+    // Cards that have LEFT the game without being claimed, reshuffled back into
+    // an empty gameDeck by drawCard.
+    //
+    // AS OF 11 AUGUST IT HAS NO SOURCE AT ALL and stays empty for a whole game.
+    // Its only filler was the tea round's card flush, which is deleted (see
+    // brewFreshPot), and claimed cards go to the claiming player. The field and
+    // drawCard's reshuffle are kept as defence: the deck holds 50 and a long game
+    // deals about 30, so running it dry is not a live risk, but a future spend
+    // that discards must have somewhere to discard TO.
     cardDiscard: [],
     currentPlayerIndex: 0,
     // THE START PLAYER, and the seat the equal-turns rule closes the game on.
@@ -1087,7 +1101,8 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     // reserves were completed only 47.7 / 46.2 / 35.8% of the time at 2/3/4
     // players (nobody declines something free), and at 4 players the round cost
     // roughly 20 table-wide decisions per game to produce about 4.6 completed
-    // reserves. Reserving is a PAID, own-turn action now (reserveCard).
+    // reserves. It became a PAID, own-turn action on 3 August, and on 11 August
+    // that was deleted too - there is no reserve of any kind in the game now.
     gameOver: false,
     // THE END IS A TRIGGER, NOT A STOP (4 August rule change). Every condition
     // below sets endTriggered and names itself in endGameReason; NONE of them
@@ -1179,10 +1194,11 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     // If anything ever assigns to this field, that reasoning breaks.
     flavourOfTheDay,
     // --- PER-TURN CUPCAKE ALLOWANCES (3 August) -----------------------------
-    // Five outlets, five allowances. They are INDEPENDENT: paying to deal two
-    // cards does not stop you buying an extra tile, moving a tile, removing a
-    // plate, or paying to reserve. What each one forbids is doing that SAME
-    // thing twice. All five reset in advanceToNextTurn alongside claimsThisTurn.
+    // FOUR outlets since 11 August, when the reserve was deleted. They are
+    // INDEPENDENT: paying to deal two cards does not stop you buying an extra
+    // tile, moving a tile or removing a plate. What each one forbids is doing
+    // that SAME thing twice - except the extra tile, which is uncapped. All of
+    // them reset in advanceToNextTurn alongside claimsThisTurn.
     //
     // THEY ALL SIT AT THE SAME STEP AGAIN (10 August). The extra tile was the
     // exception: it was bought at the SWEEP step, because it changes what you
@@ -1212,16 +1228,17 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     cardsDealtThisTurn: false,
     // One empty plate removed to the box per turn - see removePlate.
     plateRemovedThisTurn: false,
-    // The card id reserved on THIS turn, or null. A reserve is a forward
-    // commitment: you may not claim a card in the same turn you reserved it (see
-    // claim). Reset with the other allowances.
-    reservedCardIdThisTurn: null,
+    // (reservedCardIdThisTurn stood here - the card you paid to reserve this
+    // turn and therefore could not claim this turn. DELETED 11 AUGUST with the
+    // reserve. Every card on the row is claimable the moment it is on the row,
+    // with no same-turn exception of any kind, which is the same simplification
+    // the paid 2-card deal already made.)
     // Claims made by the current player during THIS turn. The one-claim-per-turn
     // rule (§6) is expressed in terms of this counter rather than being left as a
     // side effect of the phase transition, so the engine can say WHY a second
     // claim was refused instead of muttering "not in claim phase". Counts every
-    // kind of claim - market or reserve - because the rule is about claims, and a
-    // reserved card is claimed. Reset in advanceToNextTurn.
+    // claim - there is only one kind since the reserve was deleted on 11 August.
+    // Reset in advanceToNextTurn.
     claimsThisTurn: 0,
     // Empty plates bought off the board and returned to the BOX over the whole
     // game (see removePlate). Physical-component context, not a rule, and it
@@ -1289,8 +1306,9 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
 // the draw deck. The whole deck stays reachable. (The reason used to be the
 // card-count end condition, which needed up to 32 claims to be possible at 4p;
 // that ending is deleted, but an earlier version capped the deck at 16 and the
-// cap is still wrong - the row is refilled every turn and flushed at every pot,
-// so a short deck simply starves the card market.)
+// cap is still wrong - the row is dealt into every turn, so a short deck simply
+// starves the card market. Truer since 11 August, not less: the pot no longer
+// flushes the row back to the discard, so the deck is now a one-way supply.)
 //
 // INITIAL_MARKET_CARDS is the row's STARTING length only, not its size. From the
 // 28 July rework the row is variable-length: it grows by one at the end of every
@@ -1317,9 +1335,13 @@ export function initGameDeck() {
 // the drawn card, or null when both deck and discard are exhausted so callers
 // can simply skip whatever they were dealing (the row then stands still for a
 // turn). Its two callers are the end-of-turn deal (dealEndOfTurnCard) and the
-// tea round's redeal (finishTeaRound step b) - a claim no longer draws anything.
-// Tea flushes feed the discard, and each one burns a whole row, so reshuffles are
-// expected rather than a corner case.
+// paid 2-card deal (dealCards) - a claim draws nothing, and since 11 August
+// neither does a pot of tea.
+//
+// THE RESHUFFLE IS NOW DEAD CODE, and deliberately kept. The discard's only
+// filler was the tea flush, which is deleted, so nothing reaches this branch in
+// a normal game: 50 cards against a row that grows one a turn cannot run dry.
+// It stays as defence for any future spend that discards.
 export function drawCard(gameState) {
   if (gameState.gameDeck.length === 0 && gameState.cardDiscard.length > 0) {
     const reshuffled = gameState.cardDiscard;
@@ -1493,8 +1515,8 @@ export function declineBonusTile(gameState) {
 // lock, and the cupcake spend menu block for why it sits alongside dealCards
 // rather than instead of it.
 //
-// WHEN: at the SPEND STEP, alongside the tile move, the plate removal, the
-// reserve and the 2-card deal - and before the claim step, like all of them.
+// WHEN: at the SPEND STEP, alongside the tile move, the plate removal and the
+// 2-card deal - and before the claim step, like all of them.
 //
 // IT USED TO LIVE AT THE SWEEP STEP, in the 'place' phase with pendingSweepTiles
 // still in hand, on the reasoning that it changes WHAT YOU PLACE. That reasoning
@@ -1591,13 +1613,13 @@ export function canBuyExtraTile(gameState) {
 // release valve. It replaced the extra tile for one day; since 9 August it sits
 // beside it, at the same price, for the other cause of a locked claim step.
 //
-// WHEN: at the SPEND STEP, alongside the tile move, the plate removal and the
-// reserve - and BEFORE the claim step, deliberately. THE CARDS IT DEALS ARE
-// CLAIMABLE THIS TURN. That is the whole point: a player who cannot claim buys
-// two more chances at claiming now, not next turn. (Contrast the reserve, which
-// is explicitly forbidden from being claimed on the turn it was taken - a
-// reserve reaches past the row for a card you can already see, this one pays for
-// a card nobody has seen yet.)
+// WHEN: at the SPEND STEP, alongside the tile move and the plate removal - and
+// BEFORE the claim step, deliberately. THE CARDS IT DEALS ARE CLAIMABLE THIS
+// TURN. That is the whole point: a player who cannot claim buys two more chances
+// at claiming now, not next turn. (The reserve used to be the contrast here - it
+// was forbidden from being claimed on the turn it was taken. It is deleted
+// (11 August) and this is now the only card-side spend, with no same-turn
+// exception anywhere in the game.)
 //
 // WHAT: CARDS_PER_DEAL cards off the top of the deck onto the end of the row,
 // face up, exactly as the free end-of-turn deal puts one there. Nothing is
@@ -1613,11 +1635,14 @@ export function canBuyExtraTile(gameState) {
 //     reshuffles the discard when the deck runs dry, so this only bites at the
 //     very end of a long game.
 //
-// WHY IT IS NOT REDUNDANT WITH THE RESERVE, which is also 1 cupcake and also
-// card-side. The reserve is a commitment to a card you can see and cannot claim
-// yet; this is a draw when nothing on the row is worth committing to. They fail
-// in opposite directions - a reserve is wasted when the row is full of cards you
-// nearly match, this is wasted when it is not.
+// IT IS NOW THE ONLY CARD-SIDE SPEND (11 August). It used to justify itself
+// against the reserve, which was also 1 cupcake and also card-side: the reserve
+// committed to a card you could see and could not claim yet, this is a draw when
+// nothing on the row is worth committing to. The reserve is deleted and this
+// survived, so the argument is settled rather than ongoing - and this is now the
+// only lever a player has over the card row at all, which raises what it is
+// worth. WATCH ITS PURCHASE RATE: it was bought about once per twelve extra
+// tiles under the old menu, and it has just inherited the reserve's job.
 //
 // THE CLOCK IS UNAFFECTED, which is worth saying because every other spend on
 // the menu now touches it in some way. Dealing cards puts no tile on anybody's
@@ -1693,7 +1718,7 @@ export function canDealCards(gameState) {
 //
 // There is deliberately NO per-game or per-player limit: tea fires every time the
 // board reaches the threshold, and the trigger resets itself because the tile
-// flush (brewFreshPot step c) covers every symbol again.
+// top-up (brewFreshPot step b) covers every symbol again.
 //
 // THE EMPTY-BAG CLAUSE MOVED OUT, 4 AUGUST. This used to open with
 // `if (bag.length === 0) return false`, because under the 28 July ruling an empty
@@ -1850,54 +1875,67 @@ export function getAvailableMenus(gameState) {
   return gameState.tastingMenus.filter(menu => menu.takenBy === null);
 }
 
-// THE FRESH POT OF TEA, in full. It happens INSTEAD OF the end-of-turn card deal
-// (see refill), not in addition to it. Since 3 August it is MECHANICAL and
+// THE FRESH POT OF TEA, in full. Since 3 August it is MECHANICAL and
 // SINGLE-PLAYER - it takes no decision from anybody, so it runs start to finish
-// inside this one synchronous call:
-//   (a) card flush - the ENTIRE card row goes to the discard and exactly
-//       INITIAL_MARKET_CARDS fresh cards are dealt.
-//   (b) cupcake pot - the TEA PLAYER gains a flat TEA_POT_REWARD cupcakes.
-//   (c) FULL tile flush - every tile still on the market returns to the bag, the
-//       bag is shuffled, and all cells are dealt afresh. Destructive, not
-//       additive: the survivors do not survive.
+// inside this one synchronous call. Since 11 August it does TWO things only:
+//   (a) cupcake pot - the TEA PLAYER gains a flat TEA_POT_REWARD cupcakes.
+//   (b) tile TOP-UP - every EMPTY market cell is filled from the bag. Tiles
+//       already on the market stay exactly where they are.
 //
-// THE RESERVE ROUND IS DELETED (3 August). Step (a) used to be preceded by a
-// clockwise round in which every player could reserve one card from the row for
-// free. Free reserves were COMPLETED only 47.7 / 46.2 / 35.8% of the time at
-// 2/3/4 players - nobody declines something free, so it was not a decision, it
-// was a tax on the clock: roughly 20 table-wide decisions per 4-player game to
-// produce about 4.6 completed reserves. Reserving is now a PAID action a player
-// takes on their OWN turn (reserveCard, RESERVE_CUPCAKE_COST).
+// 11 AUGUST, AND IT IS TWO DELETIONS RATHER THAN A REWRITE. Dean's call.
 //
-// THE CARD FLUSH IS RETAINED DELIBERATELY. It is still the only thing that
-// shrinks the card row against MAX_MARKET_CARDS, and now that reserving costs a
-// cupcake, a looming flush becomes a real decision: tea is predictable, so a
-// player can see the fourth teapot coming and choose whether a card is worth
-// paying to protect.
+//   1. THE CARD FLUSH IS GONE. The pot no longer touches the card row at all -
+//      nothing is discarded, nothing is redealt. The row is now governed by ONE
+//      rule with no exceptions: a card is dealt onto it at the end of every turn
+//      (see refill). Tea used to be an exception to that, and consistency is the
+//      whole of the argument - a player who has learnt "one new card a turn"
+//      should never have to learn when it does not apply.
+//
+//      WHAT THAT COSTS, written down because it was the flush's actual job: the
+//      flush was the only thing that ever SHRANK the row against
+//      MAX_MARKET_CARDS, so it was the staleness valve for a row nobody could
+//      claim from. The valve is now the paid 2-card deal (dealCards) and claims
+//      themselves. A row sitting at the cap simply stops growing.
+//
+//   2. THE TILE FLUSH IS NOW A TOP-UP. Tiles still on the market no longer go
+//      back into the bag to be reshuffled and redealt; the gaps are filled and
+//      the survivors survive. This reverses the 28 July "destructive, not
+//      additive" ruling deliberately: a player who has been building toward a
+//      line keeps it, and the pot reads as the board being restocked rather than
+//      wiped. The net drain on the bag is IDENTICAL either way (it was always
+//      25 minus the survivors), so nothing about supply or game length moves;
+//      what moves is that the market now has memory.
+//
+// THE RESERVE ROUND IS DELETED (3 August), and so, since 11 August, is the paid
+// reserve that replaced it - there is no reserve in the game at all now. The
+// free tea-round version was COMPLETED only 47.7 / 46.2 / 35.8% of the time at
+// 2/3/4 players; the paid one went with the card flush it was largely bought to
+// dodge. Nothing here has an equivalent any more.
 //
 // WHAT THE TEA PLAYER GIVES UP (1 August). Because tea fires at the END of a
-// turn, the tea player has ALREADY swept - so the freshly dealt 25-tile market
-// goes to the player on their left, not to them. That is the deliberate
-// counterweight to their pot: ordering tea is a trade, not a pure gain, which is
-// what stops the trigger from being something players either farm or dodge.
+// turn, the tea player has ALREADY swept - so the freshly restocked market goes
+// to the player on their left, not to them. That is the deliberate counterweight
+// to their pot: ordering tea is a trade, not a pure gain, which is what stops the
+// trigger from being something players either farm or dodge. The 11 August
+// top-up makes this counterweight SMALLER, not larger - the restock is now a
+// smaller change to the board than a full redeal was, so the neighbour inherits
+// less of a new board. Watch it, but the pot is still not a pure gain.
 //
 // Step by step:
-//   (a) Card flush + redeal: every market card goes to the discard and a fresh
-//       INITIAL_MARKET_CARDS cards are dealt (fewer only when deck + discard are
-//       exhausted). The row is flushed BY LENGTH, not by assuming a size: it
-//       grows a card a turn up to MAX_MARKET_CARDS, and this flush is the ONLY
-//       thing that ever cuts it back. A card in a player's personal RESERVE is
-//       not in this row and so survives - that is what the reserve buys.
-//   (b) Cupcake pot: the TEA player - currentPlayerIndex - gains a flat
+//   (a) Cupcake pot: the TEA player - currentPlayerIndex - gains a flat
 //       TEA_POT_REWARD cupcakes. The visible-symbol count is still read BEFORE
-//       the tile flush, since (c) covers the symbols again, but it now only feeds
+//       the top-up, since (b) covers the symbols again, but it now only feeds
 //       the metrics.
-//   (c) FULL tile flush: every tile still on the market goes BACK INTO THE BAG,
-//       the bag is Fisher-Yates shuffled, and all cells are dealt afresh (a
-//       partial fill only if the bag cannot cover the board). This is
-//       destructive, not additive — a tile market a player has been building
-//       toward does not survive someone else's refresh, which is the whole
-//       point of the 28 July change.
+//   (b) Tile top-up: every empty cell is filled from the front of the bag, in
+//       cell order, until the board is full or the bag is dry. A partial fill is
+//       legal and is played on - see isTeaDue for why a market that cannot be
+//       filled is not an ending in itself.
+//
+// THE TRIGGER STILL RESETS ITSELF. Filling every gap covers every teapot symbol,
+// exactly as the old full redeal did, so isTeaDue goes false again. It is the
+// FILL that resets the trigger, not the flush - that was true before and it is
+// the reason this change is safe. (With a bag too short to cover the board, some
+// symbols stay bare and the pot stays armed; endTurn handles that - see there.)
 //
 // `isBackstop` marks the empty-market route (applyEmptyMarketRule) rather than
 // the normal end-of-turn teapot trigger. It is what metric 2 counts, and it
@@ -1912,29 +1950,16 @@ export function getAvailableMenus(gameState) {
 // The caller owns what happens NEXT: endTurn rotates the turn on, the backstop
 // hands the incoming player their sweep. This function never touches gamePhase.
 function brewFreshPot(gameState, { isBackstop, turn }) {
-  // (a) Flush the card row, then redeal a fresh market.
-  while (gameState.cardMarket.length > 0) {
-    const discarded = gameState.cardMarket.shift();
-    gameState.cardDiscard.push(discarded);
-    metrics(gameState)?.recordCardMarketExit(discarded.id, gameState.stats.turnsPlayed);
-  }
-
-  // The row is EMPTY at this point (the loop above emptied it whatever its
-  // length), so this deals exactly INITIAL_MARKET_CARDS (3). It is a redeal, NOT
-  // a "top the row back up" invariant — nothing anywhere else may assume a
-  // fixed row length.
-  while (gameState.cardMarket.length < INITIAL_MARKET_CARDS) {
-    const newCard = drawCard(gameState);
-    if (!newCard) break; // deck + discard exhausted — market simply stays short
-    gameState.cardMarket.push(newCard);
-    metrics(gameState)?.recordCardMarketEntry(newCard.id, gameState.stats.turnsPlayed);
-  }
+  // (THE CARD FLUSH STOOD HERE. Deleted 11 August - the pot does not touch the
+  // card row. Do not reinstate it as "the obvious way to unstick a stale row":
+  // the row's one rule is now one card at the end of every turn, and the paid
+  // 2-card deal is the valve. See the head of this function.)
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
 
-  // (b) Cupcake pot — a FLAT TEA_POT_REWARD, not 1 per symbol (30 July rule).
+  // (a) Cupcake pot — a FLAT TEA_POT_REWARD, not 1 per symbol (30 July rule).
   // Visible symbols still gate the pot and are still counted here (BEFORE the
-  // tile flush covers them again) because the metrics log symbols and reward as
+  // top-up covers them again) because the metrics log symbols and reward as
   // separate fields precisely so a payout change like this one cannot rewrite
   // the cadence history.
   const potSize = getVisibleTeapotSymbols(gameState);
@@ -1942,48 +1967,43 @@ function brewFreshPot(gameState, { isBackstop, turn }) {
   metrics(gameState)?.recordCupcakeGain(activePlayer.id, 'pot', TEA_POT_REWARD);
   noteCupcakeSupply(gameState);
 
-  // METRIC 9 (bag skew) is measured across step (c) below: which colours go back
-  // into the bag, which colours come out again, and how many of the returned
-  // tiles reappear immediately. `returned` exists only when a collector does, so
-  // an unmetered game allocates nothing extra.
   const collector = metrics(gameState);
-  const returned = collector ? [] : null;
 
-  // (c) FULL tile flush: market -> bag, shuffle, then deal every cell afresh.
-  // Return the survivors first so they are genuinely mixed back in and can come
-  // straight back out (colour recirculation is a logged metric, not a bug).
-  for (let i = 0; i < gameState.market.length; i++) {
-    if (gameState.market[i] !== null && gameState.market[i] !== undefined) {
-      if (returned) returned.push(gameState.market[i]);
-      gameState.bag.push(gameState.market[i]);
-      gameState.market[i] = null;
-    }
+  // (b) TILE TOP-UP: fill the gaps, leave the survivors alone (11 August).
+  //
+  // Counted BEFORE the fill, because the metric means "how many tiles were on
+  // the board when the pot was called" and that is what the old flush's
+  // `returned` array happened to measure. Keeping the same meaning is what lets
+  // the refresh histogram be compared across the change.
+  let tilesOnBoard = 0;
+  for (const cell of gameState.market) {
+    if (cell !== null && cell !== undefined) tilesOnBoard++;
   }
-  // Fisher-Yates (matches createTileBag in tiles.js and the deck reshuffle in
-  // drawCard) — without it the returned tiles would sit in a predictable block
-  // at the end of the bag.
+
+  // NO SHUFFLE. The old code Fisher-Yates'd the bag here because it had just
+  // pushed the survivors onto the end of it and they would otherwise have sat in
+  // a predictable block. Nothing enters the bag any more, so there is nothing to
+  // mix in - the bag is shuffled once at setup (createTileBag) and drawn from
+  // the front, which is all this ever needed.
   const bag = gameState.bag;
-  for (let i = bag.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [bag[i], bag[j]] = [bag[j], bag[i]];
-  }
+  const dealtColours = collector ? [] : null;
   let filledAny = false;
   for (let i = 0; i < gameState.market.length; i++) {
     if (bag.length === 0) break; // bag ran dry — fill what we can, as the rules say
+    if (gameState.market[i] !== null && gameState.market[i] !== undefined) continue; // occupied
     gameState.market[i] = bag.shift();
+    if (dealtColours) dealtColours.push(gameState.market[i].colour);
     filledAny = true;
   }
   if (filledAny) {
     metrics(gameState)?.recordMarketFill();
   }
 
-  // METRICS 1, 2 and 9, all of which need the flush to be over before they can be
+  // METRICS 1, 2 and 9, all of which need the top-up to be over before they can be
   // written. The refresh row carries everything the design doc asks for about this
   // firing: when, who, how many symbols were showing, what it paid, and whether it
   // was the normal end-of-turn trigger or the empty-board backstop.
   if (collector) {
-    // `returned` holds every tile the flush swept off the market, so its length
-    // IS the tile count on the board when the pot was called.
     collector.recordRefresh(
       // The turn the pot was TRIGGERED on, passed in by the caller - not
       // stats.turnsPlayed, which the end-of-turn route has already advanced past.
@@ -1992,22 +2012,16 @@ function brewFreshPot(gameState, { isBackstop, turn }) {
       potSize,
       TEA_POT_REWARD,
       isBackstop,
-      returned.length,
+      tilesOnBoard,
     );
-    // Bag skew: the colours that went back in, the colours dealt out, and how many
-    // of the tiles just returned came straight back onto the board.
-    const returnedSet = new Set(returned);
-    const dealtColours = [];
-    let immediateReturns = 0;
-    for (const tile of gameState.market) {
-      if (!tile) continue;
-      dealtColours.push(tile.colour);
-      if (returnedSet.has(tile)) immediateReturns++;
-    }
-    collector.recordBagFlush(returned.map(t => t.colour), dealtColours, immediateReturns);
+    // Bag skew, and since 11 August it only has one half left: NOTHING is
+    // returned to the bag, so "tiles returned" and "came straight back" are
+    // structurally zero and the metric reduces to the colours the top-up dealt.
+    // The empty first argument is the rule, not a dropped variable.
+    collector.recordBagFlush([], dealtColours, 0);
   }
 
-  // (d) THE POT TOUCHES THE TASTING MENUS NOT AT ALL, and that absence is the
+  // (c) THE POT TOUCHES THE TASTING MENUS NOT AT ALL, and that absence is the
   // rule rather than an omission. The Freshness Bonus put every token back here;
   // the Tasting Menu has no reset of any kind, because a reward on a reset cycle
   // is by construction never your last chance at it. If a line reappears below
@@ -2085,8 +2099,9 @@ export function place(gameState, placements) {
   }
 
   gameState.pendingSweepTiles = [];
-  // The 'move' phase was renamed 'spend' on 3 August: it now hosts three paid
-  // options (move a tile, move an empty plate, reserve a card), not just the one.
+  // The 'move' phase was renamed 'spend' on 3 August: it hosts four paid options
+  // (extra tile, deal 2 cards, move a tile, remove an empty plate), not just the
+  // one it was named for.
   gameState.gamePhase = 'spend';
 
   return gameState;
@@ -2127,9 +2142,9 @@ export function getLegalDestinations(player, tile) {
 // old "draw the top card of the deck to return the market to 4" rule is DELETED,
 // so the row is one card shorter for the rest of the turn. The single
 // replenishment point is the end-of-turn deal in refill(), which runs on every
-// turn whether or not anything was claimed. A claim from the RESERVE touches the
-// row not at all (the card left it when it was reserved) but still gets that
-// end-of-turn deal, so a reserve claim actually GROWS the row by one.
+// turn whether or not anything was claimed - and since 11 August, tea turn or
+// not. So the row's whole arithmetic is: minus one per claim, plus one per turn,
+// capped at MAX_MARKET_CARDS.
 export function claim(gameState, cardId, removedBoardIndex, destination) {
   const player = gameState.players[gameState.currentPlayerIndex];
   const extraClaimCost = getExtraClaimCupcakeCost();
@@ -2159,25 +2174,15 @@ export function claim(gameState, cardId, removedBoardIndex, destination) {
   // supply is exhausted". Empty plates are unlimited now, so a claim is never
   // refused for want of one. See canClaimMore, which is unconditionally true.)
 
-  // Card lookup order: the shared market first, then this player's personal
-  // reserve. A reserved card completes exactly like a market card except the row
-  // is not spliced (see the fromReserve branches below), since the card left the
-  // row when it was reserved.
+  // ONE PLACE A CARD CAN BE: the shared row. Until 11 August this also searched
+  // the player's personal reserve, and a reserved card completed without the row
+  // being spliced. The reserve is deleted, and with it the same-turn lock that
+  // stopped you claiming a card you had just reserved - every card on the row is
+  // claimable the moment it is there.
   const cardIndex = gameState.cardMarket.findIndex(c => c.id === cardId);
-  const reserveIndex = cardIndex === -1
-    ? player.reservedCards.findIndex(c => c.id === cardId)
-    : -1;
-  const fromReserve = reserveIndex !== -1;
-  if (cardIndex === -1 && !fromReserve) throw new Error('Card not in market');
+  if (cardIndex === -1) throw new Error('Card not in market');
 
-  // A RESERVE IS A FORWARD COMMITMENT (3 August): you may not claim a card in the
-  // same turn you paid to reserve it. Without this, the paid reserve would just be
-  // a 1-cupcake way to reach past the row on the turn you needed it.
-  if (gameState.reservedCardIdThisTurn === cardId) {
-    throw new Error('You cannot claim a card on the same turn you reserved it');
-  }
-
-  const card = fromReserve ? player.reservedCards[reserveIndex] : gameState.cardMarket[cardIndex];
+  const card = gameState.cardMarket[cardIndex];
   const matches = getPatternMatches(player.board, card.pattern);
 
   if (matches.length === 0) throw new Error('Pattern not found on board');
@@ -2270,33 +2275,25 @@ export function claim(gameState, cardId, removedBoardIndex, destination) {
   // A claim breaks the empty-market deadlock watch (see the backstop).
   gameState.turnsSinceLastClaim = 0;
 
-  // fromReserve feeds the claims-from-reserve fraction metric (6). The row length
-  // is passed for metric 3's "row size when the FIRST claim occurs" - read here,
-  // before the splice below, so a market claim counts the card it is taking.
+  // The third argument is the claims-from-reserve flag for metric 6, now always
+  // false - the reserve is deleted (11 August) and the argument is kept only so
+  // the report shape matches the saved simulation runs. The row length is passed
+  // for metric 3's "row size when the FIRST claim occurs" - read here, before the
+  // splice below, so a claim counts the card it is taking.
   //
   // The fifth argument was the TEA PERIOD, added for the Freshness Bonus so its
   // per-period race had a denominator. The Tasting Menu has no periods - it has no
   // reset at all - so the argument is gone with the module that wanted it. Claims
   // are still counted; they are simply not bucketed by anything.
   metrics(gameState)?.recordCardClaimed(
-    cardId, gameState.stats.turnsPlayed, fromReserve, gameState.cardMarket.length,
+    cardId, gameState.stats.turnsPlayed, false, gameState.cardMarket.length,
   );
-  // A reserved card already recorded its market exit when it was reserved.
-  if (!fromReserve) {
-    metrics(gameState)?.recordCardMarketExit(cardId, gameState.stats.turnsPlayed);
-  }
+  metrics(gameState)?.recordCardMarketExit(cardId, gameState.stats.turnsPlayed);
 
-  if (fromReserve) {
-    // Completing a reserved card: remove just that card from the reserve (the
-    // rest stay on order). The market is untouched — the card left it when it
-    // was reserved.
-    player.reservedCards.splice(reserveIndex, 1);
-  } else {
-    // The card simply LEAVES the row. No replacement is drawn here (28 July: the
-    // claim-refill rule is deleted). The row is replenished once per turn, at the
-    // end of the turn, by refill() — see the end-of-turn deal there.
-    gameState.cardMarket.splice(cardIndex, 1);
-  }
+  // The card simply LEAVES the row. No replacement is drawn here (28 July: the
+  // claim-refill rule is deleted). The row is replenished once per turn, at the
+  // end of the turn, by refill() — see the end-of-turn deal there.
+  gameState.cardMarket.splice(cardIndex, 1);
 
   // Pay for the claim if it was an EXTRA one under the variant (the first claim
   // of a turn is always free). Charged here, after every validation has passed,
@@ -2423,70 +2420,21 @@ export function canRemovePlate(gameState) {
   return player.board.some(cell => isBlockedSpace(cell));
 }
 
-// SPEND 1 CUPCAKE: RESERVE A CARD FROM THE MARKET (3 August). The card-side
-// outlet, replacing the free tea-round reserve (see brewFreshPot).
+// (SPEND 1 CUPCAKE: RESERVE A CARD FROM THE MARKET. Introduced 3 August as the
+// card-side outlet that replaced the free tea-round reserve; DELETED 11 AUGUST
+// along with reserveCard, canReserveCard, RESERVE_CUPCAKE_COST, RESERVE_LIMIT,
+// player.reservedCards and gameState.reservedCardIdThisTurn.
 //
-//   - available on your OWN turn, at the spend step;
-//   - takes 1 card from the card market into your personal reserve;
-//   - RESERVE LIMIT IS 1 - illegal if your reserve is already occupied;
-//   - you may NOT claim a card in the same turn you reserved it. A reserve is a
-//     forward commitment, not a way to reach past the row for this turn's claim.
-// Reserved cards are face-up, as before, and an uncompleted reserve still scores
-// 0. Claiming from reserve is unchanged in every other respect.
+// WHY, so it is not reinvented as the obvious missing card-side spend. It was
+// bought in large part to carry a card past the tea flush - a player could see
+// the fourth teapot coming and pay to protect a card from it - and the tea flush
+// is deleted on the same day (see brewFreshPot). What was left was a 1-cupcake
+// way to book a card one turn early against a row that now only ever grows, next
+// door to dealCards at the same price doing the more interesting half of the job.
+// Dean called it: the menu is shorter and the card row has exactly one rule.
 //
-// WHY IT IS NOT REDUNDANT WITH THE EXTRA TILE. 60% of card-locked turns cannot be
-// cured by an extra tile at all, so a card-side outlet is complementary rather
-// than a second door to the same room. And paying for a reserve means you only
-// take cards you intend to finish - the free version was completed barely a third
-// of the time at 4 players.
-//
-// 8 AUGUST: A SECOND NEIGHBOUR ARRIVED. dealCards sits beside this at the same
-// step, at the same price, on the same side of the game. The distinction that
-// keeps both is in the note on dealCards: a reserve commits to a card you can
-// see, a deal pays for cards nobody has seen. If one of the two turns out never
-// to be bought, it is this pair that collapsed, not the price.
-//
-// 9 AUGUST: the extra tile is back, so this now justifies itself against TWO
-// neighbours. Against the extra tile the paragraph above still holds unchanged;
-// against dealCards it is the seen/unseen split.
-export function reserveCard(gameState, cardId) {
-  if (gameState.gamePhase !== 'spend') {
-    throw new Error('Can only reserve a card in the spend phase');
-  }
-  const player = gameState.players[gameState.currentPlayerIndex];
-  if (player.reservedCards.length >= RESERVE_LIMIT) {
-    throw new Error('Your reserve is already occupied');
-  }
-  if (player.cupcakes < RESERVE_CUPCAKE_COST) {
-    throw new Error(`Not enough cupcakes to reserve a card (costs ${RESERVE_CUPCAKE_COST}, you have ${player.cupcakes})`);
-  }
-  const marketIndex = gameState.cardMarket.findIndex(c => c.id === cardId);
-  if (marketIndex === -1) throw new Error('Card not in market');
-
-  const [card] = gameState.cardMarket.splice(marketIndex, 1);
-  player.reservedCards.push(card);
-  player.cupcakes -= RESERVE_CUPCAKE_COST;
-  // The card is off-limits for THIS turn's claim - see the rule note above.
-  gameState.reservedCardIdThisTurn = card.id;
-
-  // The card leaves the market here (when reserved), so a later claim from the
-  // reserve must NOT record another market exit for it.
-  metrics(gameState)?.recordCardMarketExit(card.id, gameState.stats.turnsPlayed);
-  metrics(gameState)?.recordReserve(player.id, card.id, gameState.stats.turnsPlayed);
-  metrics(gameState)?.recordCupcakeSpend(player.id, 'reserve', RESERVE_CUPCAKE_COST);
-
-  return gameState;
-}
-
-// True when the active player could legally pay to reserve a card right now.
-// Shared by drivers, bots and UI so none of them re-derives reserveCard's gate.
-export function canReserveCard(gameState) {
-  if (gameState.gamePhase !== 'spend') return false;
-  const player = gameState.players[gameState.currentPlayerIndex];
-  if (player.reservedCards.length >= RESERVE_LIMIT) return false;
-  if (player.cupcakes < RESERVE_CUPCAKE_COST) return false;
-  return gameState.cardMarket.length > 0;
-}
+// If a card-side outlet is ever wanted again, dealCards is the one that survived
+// and the place to spend the design budget - not this.)
 
 // The single entry into the claim phase, which is why the card-lock and
 // multi-match sample is taken here: it runs once per turn, on every turn that
@@ -2512,23 +2460,33 @@ export function skipClaim(gameState) {
 }
 
 // THE END-OF-TURN DEAL (28 July rework, §5; capped 30 July). ONE card goes from
-// the deck onto the card row at the end of EVERY turn - claim or no claim, market
-// claim or reserve claim - with TWO exceptions: the row already holds
-// MAX_MARKET_CARDS, or a fresh pot of tea is due. Either way the deal is skipped
-// and the row stands still. It is not a decision any player or bot makes.
+// the deck onto the card row at the end of EVERY turn - claim or no claim - with
+// ONE exception: the row already holds MAX_MARKET_CARDS. It is not a decision any
+// player or bot makes.
 //
-// THE TEA EXCEPTION (1 August clarification). A FRESH POT REPLACES THE DEAL: it
-// does not happen on top of it. See refill() for why.
+// THE TEA EXCEPTION IS DELETED (11 August). A fresh pot used to REPLACE this
+// deal, because the pot flushed the row and a card dealt seconds before the
+// flush would have been binned unseen. The pot does not touch the card row any
+// more (see brewFreshPot), so there is nothing for the deal to collide with and
+// the exception has no argument left. THE POINT OF THE CHANGE IS THE SENTENCE IT
+// LEAVES: a card is dealt at the end of every turn, full stop, with no case
+// analysis for a player to remember.
 //
 // THE CAP (30 July rule change). The 28 July design deliberately had no cap,
 // arguing an uncapped row was the staleness valve: a row nobody can claim from
 // grows until somebody can, whereas a full capped row stops changing and can
 // freeze. The designer overrode that on 30 July: the row starts at
-// INITIAL_MARKET_CARDS (now 3) and never exceeds MAX_MARKET_CARDS (8). The
-// tea-flush escape hatch is what makes the cap safe where the old frozen-market
-// failure wasn't: a stale row at the cap can always be flushed and redealt by
-// ordering a fresh pot of tea (finishTeaRound step b cuts it back to
-// INITIAL_MARKET_CARDS), so a deadlock now has a player-driven exit.
+// INITIAL_MARKET_CARDS (now 3) and never exceeds MAX_MARKET_CARDS (8).
+//
+// THE CAP IS NOW LOAD-BEARING IN A WAY IT WAS NOT (11 August). The tea flush was
+// what made it safe - a stale row at the cap could always be cut back to
+// INITIAL_MARKET_CARDS by ordering a pot - and that escape hatch is gone. What is
+// left is the paid 2-card deal (which needs room under the cap, so it cannot help
+// a FULL row) and claiming. A row sitting at 8 that nobody can claim from now
+// genuinely stands still until somebody's board grows into it. That is the 30
+// July frozen-market failure mode returning, at the cap rather than at length 3,
+// and it is THE thing to watch in the measurement: see the "row at the cap" share
+// in the simulation report.
 //
 // WHY EVERY TURN, RATHER THAN ONLY WHEN THE PLAYER DID NOT CLAIM. Dealing only
 // on claimless turns would let a table of claiming opponents starve a player who
@@ -2562,33 +2520,26 @@ export function refill(gameState) {
   // (The end-of-turn ingredient-objective check used to run here, first. The
   // pantry goals are deleted - see the note at the top of this file.)
 
-  // The TILE market never refills a cell at a time. It is refreshed ONLY by a
-  // fresh pot of tea (finishTeaRound step d) - normally by the end-of-turn
-  // teapot trigger, or by the empty-market backstop. The CARD row is the
-  // opposite: it is topped up here and nowhere else.
+  // The TILE market never refills a cell at a time. It is topped up ONLY by a
+  // fresh pot of tea (brewFreshPot step b) - normally by the end-of-turn teapot
+  // trigger, or by the empty-market backstop. The CARD row is the opposite: it
+  // grows here and nowhere else.
   //
-  // A FRESH POT REPLACES THE END-OF-TURN DEAL (1 August clarification). The two
-  // are alternatives, not a sequence: a turn either adds one card to the row, or
-  // brews a pot, never both.
+  // THE DEAL IS UNCONDITIONAL (11 August). It used to be skipped on a tea turn,
+  // because the pot flushed the row and a card dealt at the very end of that turn
+  // would have gone to the discard without anybody having had a turn in which to
+  // want it. There is no flush now, so the deal and the pot are no longer
+  // alternatives - a tea turn does both, exactly like every other turn.
   //
-  // WHY. A card dealt at the very end of the turn would be flushed to the discard
-  // moments later without anybody having had a turn in which to want it - it
-  // would burn a card off the deck to no effect. Skipping the deal costs the deck
-  // one card less per refresh. (Under the deleted reserve round this also kept
-  // fresh information out of the draft; that reason is gone, the deck one is not.)
+  // teaDue is still evaluated here and handed to endTurn, and still ONCE, because
+  // endTurn's empty-bag branch reads the same answer. It no longer gates anything
+  // on this side of the call.
   //
-  // The trigger is evaluated ONCE, here, and handed to endTurn. Nothing between
-  // the two touches the market or the bag so a second isTeaDue call would agree,
-  // but one evaluation means the deal and the pot can never disagree about
-  // whether this is a tea turn.
-  //
-  // 4 AUGUST: `teaDue` now means "the market needs refilling", which is not the
-  // same as "a pot gets brewed" - with an empty bag it ends the game instead (see
-  // endTurn). The card deal is skipped either way. A game whose last act is to
-  // trigger the end has no use for one more card in a row nobody will claim from,
-  // and skipping it keeps this a single flag rather than two.
+  // 4 AUGUST: `teaDue` means "the market needs refilling", which is not the same
+  // as "a pot gets brewed" - with an empty bag it ends the game instead (see
+  // endTurn).
   const teaDue = isTeaDue(gameState);
-  if (!teaDue) dealEndOfTurnCard(gameState);
+  dealEndOfTurnCard(gameState);
 
   // The turn just PLAYED is counted here, at the one point every turn passes
   // through, rather than in advanceToNextTurn. Two of endTurn's branches end
@@ -2687,17 +2638,17 @@ function advanceToNextTurn(gameState) {
   gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
   // EVERY per-turn allowance resets here, in one place, so they cannot drift
   // apart: the one-claim-per-turn allowance, the extra-tile count, the one tile
-  // move, the one paid 2-card deal, the one plate removal, and the same-turn
-  // reserve lock. (The extra tile is uncapped since 9 August, so its counter is
-  // a measurement rather than an allowance - it still has to be zeroed here or
-  // a variant that caps it would carry last turn's spend forward.)
+  // move, the one paid 2-card deal and the one plate removal. (The extra tile is
+  // uncapped since 9 August, so its counter is a measurement rather than an
+  // allowance - it still has to be zeroed here or a variant that caps it would
+  // carry last turn's spend forward. The same-turn reserve lock was reset here
+  // too until 11 August; the reserve is deleted.)
   gameState.claimsThisTurn = 0;
   gameState.moveUsedThisTurn = false;
   gameState.extraTilesBoughtThisTurn = 0;
   gameState.extraTileUsedThisTurn = false;
   gameState.cardsDealtThisTurn = false;
   gameState.plateRemovedThisTurn = false;
-  gameState.reservedCardIdThisTurn = null;
   gameState.gamePhase = 'sweep';
   // Count this turn toward the empty-market deadlock watch (reset by any claim).
   gameState.turnsSinceLastClaim++;
@@ -2753,9 +2704,10 @@ function advanceToNextTurn(gameState) {
 // the market, so the only unplayable sweep is a COMPLETELY EMPTY tile market.
 // Checked at the start of every new turn's sweep phase:
 //   - Market empty, bag has tiles: a fresh pot of tea is forced. It is a normal
-//     one in every way — reserve round, card flush, and the same flat
-//     TEA_POT_REWARD — except that it fires at the START of a turn, so the
-//     incoming player collects the pot AND sweeps the board they just refilled.
+//     one in every way — the same flat TEA_POT_REWARD and the same tile top-up
+//     (which on an empty market fills all 25 cells) — except that it fires at the
+//     START of a turn, so the incoming player collects the pot AND sweeps the
+//     board they just refilled.
 //
 //     UNREACHABLE SINCE 1 AUGUST, and kept only as defence in depth. An empty
 //     market shows all five teapot symbols, which is above REFRESH_THRESHOLD, so

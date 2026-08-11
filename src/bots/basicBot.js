@@ -1,4 +1,4 @@
-import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getVisibleTeapotSymbols, getMenuIngredients, getAvailableMenus, isTastingMenuInPlay, isFlavourInPlay, getFlavourCount, getMoveCost, canReserveCard, canDealCards, canBuyExtraTile, getMaxExtraTilesPerTurn, canRemovePlate, canClaimMore, countBoardIngredient, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, TASTING_MENU_VP, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
+import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getVisibleTeapotSymbols, getMenuIngredients, getAvailableMenus, isTastingMenuInPlay, isFlavourInPlay, getFlavourCount, getMoveCost, canDealCards, canBuyExtraTile, getMaxExtraTilesPerTurn, canRemovePlate, canClaimMore, countBoardIngredient, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, TASTING_MENU_VP, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
 
 // Approximate value of a completed claim beyond the card's printed VP: the
 // sacrificed tile is banked on the stand or crumb tray. A conservative floor —
@@ -12,8 +12,9 @@ const CLAIM_EXTRA = 2;
 // ── THE CLAIMS-REMAINING HORIZON (rewritten 6 August) ──────────────────────
 // Two decisions need to know roughly how much game is left: decideDestination,
 // which will not open a deep cake-stand row it cannot realistically fill (the
-// 26-point bottom row needs four claims), and decideReserve, which loosens its
-// standards once there is little time to complete anything.
+// 26-point bottom row needs four claims), and decideRemovePlate, which prices a
+// revived cell on how much game is left to fill it in. (decideReserve was the
+// third reader until 11 August.)
 //
 // BOTH USED TO READ gameState.cardsNeededToEnd - the shared empty-plate pool -
 // as `ceil((pool - claimed) / playerCount)`. The pool is deleted, so the estimate
@@ -148,44 +149,39 @@ const TEA_TRIGGER_PRIORITY_VALUE = 0;
 //   If it should be neutral, the pot is the knob - see TEA_POT_REWARD.
 const TEA_TRIGGER_HANDOVER_COST = 0;
 
-// ── Reserve-selection constants ────────────────────────────────────────────
-// RESERVE_COMPLETION_ODDS[m]: measured probability that a card reserved while m
-//   tiles short of its best window on that player's board is ever claimed.
-//   From 120 probe games (2p and 4p pooled): m=0 55%, m=1 55%, m=2 33%, m=3 20%,
-//   m=4 4%. The step-5 finding that only 29-36% of reserves ever score is almost
-//   entirely the m>=2 tail, which was 63-78% of all reserves under the old
-//   vp/(1+missing) ranking. Scoring by (vp + CLAIM_EXTRA) x these odds prices a
-//   reserve by what it is actually expected to pay.
-const RESERVE_COMPLETION_ODDS = [0.55, 0.55, 0.33, 0.20, 0.04, 0.0];
-// RESERVE_MAX_MISSING: hard cut. Was 4, which is most of a six-cell pattern and
-//   completed 4% of the time.
-const RESERVE_MAX_MISSING = 2;
-// RESERVE_LATE_MAX_MISSING / RESERVE_LATE_CLAIMS: near the end there is no time
-//   to build a window, and the probe measured last-quarter reserves completing
-//   6% (4p). With this few claims left in the game the bot only reserves what is
-//   already all but finished.
-const RESERVE_LATE_MAX_MISSING = 1;
-const RESERVE_LATE_CLAIMS = 2;
-// RESERVE_MIN_VALUE: expected payout (in VP) below which the slot is better left
-//   empty - a reserve is limited to one card and a dud blocks the slot for the
-//   rest of the game.
-const RESERVE_MIN_VALUE = 1.5;
+// ── Reserve-selection constants: DELETED 11 AUGUST ─────────────────────────
+// RESERVE_MAX_MISSING, RESERVE_LATE_MAX_MISSING, RESERVE_LATE_CLAIMS,
+// RESERVE_MIN_VALUE and RESERVE_FLUSH_RESCUE_VALUE are gone with the reserve
+// itself (see the engine).
+//
+// THE MEASURED COMPLETION CURVE SURVIVED THEM and is the best-founded thing in
+// this file: 120 probe games showed that whether a card is ever finished tracks
+// the number of tiles it was short of when you committed to it almost perfectly
+// (55% at 0-1 missing, 33% at 2, 20% at 3, 4% at 4). It is now called
+// WINDOW_COMPLETION_ODDS and lives beside its only remaining reader,
+// windowCompletionOdds. Any future "commit to a card now, finish it later"
+// mechanism should be priced off that curve rather than off vp / (1 + missing),
+// which is the ranking it replaced.
 
 // ── Cupcake budgeting constants (3 August) ─────────────────────────────────
 // With four outlets, no VP and a finite supply, "how much to spend and on what"
 // is the first genuine budgeting decision in the game. These are the prices the
 // bot puts on the alternatives.
 //
-// RESERVE_CUPCAKE_VALUE: what one cupcake is worth in VP terms - the OPPORTUNITY
-//   COST any spend has to clear. A cupcake's best alternative use is the extra
-//   tile, which unlocks a claim on about 39% of card-locked turns; a claim is
-//   worth roughly a 3 VP card plus a ~2 VP banked tile, so ~0.39 x 5 ~= 2.
+// CUPCAKE_VALUE: what one cupcake is worth in VP terms - the OPPORTUNITY COST any
+//   spend has to clear. A cupcake's best alternative use is the extra tile, which
+//   unlocks a claim on about 39% of card-locked turns; a claim is worth roughly a
+//   3 VP card plus a ~2 VP banked tile, so ~0.39 x 5 ~= 2.
 //   This is a first estimate standing in for a measurement that has not been
 //   taken yet - the handoff's "what is a cupcake worth" metric is what settles
 //   it, and three live design decisions rest on the same unknown.
-const RESERVE_CUPCAKE_VALUE = 2;
+//
+//   (It was called RESERVE_CUPCAKE_VALUE until 11 August, from the decision it was
+//   first written for. That decision is deleted; the number never had anything to
+//   do with the reserve and is used by the extra-tile branches.)
+const CUPCAKE_VALUE = 2;
 // DEAL_CARDS_MIN_VALUE: the expected-VP bar the paid 2-card deal has to clear,
-//   and the one spend in this file NOT priced at RESERVE_CUPCAKE_VALUE. Why it
+//   and the one spend in this file NOT priced at CUPCAKE_VALUE. Why it
 //   has its own number is on decideDealCards; what the number is came out of a
 //   measurement rather than an estimate, which makes it the best-founded constant
 //   in this block.
@@ -205,11 +201,13 @@ const RESERVE_CUPCAKE_VALUE = 2;
 //   correct occasionally, never decisive. If the action is meant to be a release
 //   valve, it is the rule that needs changing, not this number.
 const DEAL_CARDS_MIN_VALUE = 1.0;
-// RESERVE_FLUSH_RESCUE_VALUE: extra credit for reserving when a pot of tea will
-//   flush the whole card row at the end of this turn. This is the decision the
-//   retained card flush exists to create - the card is gone otherwise, so the
-//   reserve is buying the card rather than merely booking it early.
-const RESERVE_FLUSH_RESCUE_VALUE = 3;
+//
+//   RE-MEASURE IT (11 August). The bar was set when this was one of two card-side
+//   spends and the card row was flushed by every pot of tea. Both facts are gone:
+//   the reserve is deleted and the row now only grows, so a card nobody claims
+//   stays on the row for the rest of the game and a paid deal buys against a row
+//   that will never be cleared out from under it. 1.0 is a stale number until
+//   somebody re-runs the arena sweep above.
 
 // ── Ingredient-objective constants: DELETED 4 AUGUST ───────────────────────
 // OBJECTIVE_STEP_VALUE, OBJECTIVE_CLOSE_BONUS and OBJECTIVE_BREAK_COST are gone
@@ -428,15 +426,12 @@ const CLAIM_DEST_WEIGHT = 0.6;
 //   ALSO claim needs. Under the old refill-on-claim rule that card was about to
 //   be replaced anyway; now it sits in the row waiting for us.
 const CLAIM_PROTECT_OTHER = 4;
-// CLAIM_RESERVE_BONUS: prefer finishing a reserved card when values are close.
-//   An unclaimed reserve scores 0 at the end AND blocks the one reserve slot,
-//   and it is the one card a refresh flush cannot take away.
-const CLAIM_RESERVE_BONUS = 1.5;
-// CLAIM_FLUSH_RISK_BONUS: ...unless a refresh is armed right now, in which case
-//   the ROW is the perishable place to be claiming from - the next player can
-//   flush the whole row to the discard before our next turn, and cannot touch
-//   our reserve.
-const CLAIM_FLUSH_RISK_BONUS = 2;
+// (CLAIM_RESERVE_BONUS and CLAIM_FLUSH_RISK_BONUS stood here: prefer finishing a
+//   reserved card, unless a pot of tea was about to flush the row, in which case
+//   the ROW was the perishable place to claim from. DELETED 11 AUGUST - there is
+//   no reserve, and no pot ever flushes the row, so NOTHING on the card row is
+//   perishable any more. A card we can see is a card we can still see next turn
+//   unless an opponent takes it, and that is the only urgency left.)
 // ───────────────────────────────────────────────────────────────────────────
 
 // Per-colour demand derived from viable pattern windows on this player's
@@ -942,99 +937,16 @@ export function refreshWouldRestockBoard(gameState) {
 // Drivers no longer call decideOrderTea. It is gone rather than stubbed so that
 // a driver still calling it fails loudly instead of silently never firing.
 
-// Which market card to PAY to reserve on our own turn (returns a cardId), or
-// null to pass. Called at the spend step; reserveCard charges
-// RESERVE_CUPCAKE_COST and the reserve holds RESERVE_LIMIT (1) card.
+// (decideReserve and decideTeaReserve stood here - which market card to pay to
+// reserve on our own turn. DELETED 11 AUGUST with the action.
 //
-// WHAT THE 3 AUGUST RULE CHANGE DID TO THIS. It used to be a FREE decision in a
-// clockwise round after every pot of tea, which is why the floor below was set
-// where it was: a dud cost nothing but a slot. Now the take costs a cupcake, and
-// a cupcake buys an extra tile that unlocks a claim about 39% of the time - so
-// the bar a reserve must clear is that alternative use, not zero. Hence
-// RESERVE_CUPCAKE_VALUE below the floor, and hence a bot that reserves only what
-// it means to finish, which is exactly the behaviour the paid rule is for.
-//
-// It is also a DIFFERENT KIND OF DECISION now: on our own turn, against a row we
-// can see the tea trigger coming for. A card worth protecting from an imminent
-// flush is worth more than the same card on a quiet turn - see FLUSH_IMMINENT
-// below.
-//
-// WHY THIS IS NOT vp / (1 + missing) ANY MORE. Step 5 measured that only 29-36%
-// of reserved cards were ever claimed - two thirds of every reserve round scored
-// nothing. Probing where those reserves went (120 games) showed it is a real bot
-// weakness rather than a rule problem: completion tracks the number of tiles the
-// card was short of at the moment of reserving almost perfectly (55% at 0-1
-// missing, 33% at 2, 20% at 3, 4% at 4), and the old ranking put 63-78% of
-// reserves in the 2+ band because dividing by (1 + missing) never fell fast
-// enough to stop a 5-VP card three tiles short outbidding a 2-VP card that was
-// nearly done.
-//
-// So the score is now an EXPECTED PAYOUT: (card VP + the banked sacrifice tile)
-// times the measured odds of ever completing it. The RESERVE_MIN_VALUE floor
-// below which passing is correct dates from the one-card slot (a dud blocked
-// every future refresh's reserve too). Since 1 Aug the reserve is UNCAPPED, so a
-// dud costs nothing but the take - the floor is kept as a "not worth it" bar and
-// still rises once the game is nearly over, but it is now the obvious knob to
-// re-tune if bots look too shy about reserving.
-export function decideReserve(gameState) {
-  if (!canReserveCard(gameState)) return null;
-  const player = gameState.players[gameState.currentPlayerIndex];
-
-  // Roughly how many more claims this player gets before a board fills and ends
-  // the game. The same public estimate decideDestination uses - see turnsRemaining.
-  const myRemainingClaims = turnsRemaining(gameState);
-  const maxMissing = myRemainingClaims <= RESERVE_LATE_CLAIMS
-    ? RESERVE_LATE_MAX_MISSING
-    : RESERVE_MAX_MISSING;
-
-  // A card we could simply CLAIM this turn is never worth reserving - the rule
-  // forbids claiming it on the turn it was reserved, so paying to reserve it
-  // would cost a cupcake to delay a claim we already had.
-  const claimableNow = new Set();
-  for (const card of gameState.cardMarket) {
-    if (getPatternMatches(player.board, card.pattern).length > 0) claimableNow.add(card.id);
-  }
-
-  // Is the row about to be flushed? The symbol half is the engine's isTeaDue,
-  // deliberately; the bag half is what turns "the market needs refilling" into "a
-  // pot is actually poured". Since 4 August isTeaDue no longer looks at the bag,
-  // and a due pot with an EMPTY bag brews nothing at all - it triggers the end of
-  // the game instead, with no card flush - so a reserve bought to rescue a card
-  // from that firing would be a wasted cupcake. If a pot does brew, everything in
-  // the row is gone before our next turn and the reserve is the only thing that
-  // can save one, which is the whole reason the card flush was kept when the
-  // reserve round was deleted.
-  const flushImminent = gameState.bag.length > 0
-    && getVisibleTeapotSymbols(gameState) >= REFRESH_THRESHOLD;
-
-  let bestId = null;
-  // The bar is the HIGHER of the two floors, not their sum. RESERVE_MIN_VALUE is
-  // the old "not worth the slot" bar from the free era and RESERVE_CUPCAKE_VALUE
-  // is what the cupcake buys elsewhere; adding them charged the reserve twice and
-  // left the bot reserving almost nothing.
-  let bestValue = Math.max(RESERVE_MIN_VALUE, RESERVE_CUPCAKE_VALUE);
-  for (const card of gameState.cardMarket) {
-    if (claimableNow.has(card.id)) continue;
-    const mm = minMissingForCard(player.board, card);
-    if (mm === Infinity || mm > maxMissing) continue; // no viable window, or hopeless
-    const odds = RESERVE_COMPLETION_ODDS[mm] ?? 0;
-    let value = ((card.vp || 0) + CLAIM_EXTRA) * odds;
-    if (flushImminent) value += RESERVE_FLUSH_RESCUE_VALUE * odds;
-    if (value > bestValue) {
-      bestValue = value;
-      bestId = card.id;
-    }
-  }
-  return bestId;
-}
-
-// Pre-3-August name, when reserving was a free step of the tea round driven by a
-// separate reserverIndex. Kept so an old driver fails soft rather than silently
-// never reserving; it ignores the index because there is only one reserver now -
-// the player whose turn it is.
-export function decideTeaReserve(gameState) {
-  return decideReserve(gameState);
-}
+// THE ONE THING WORTH CARRYING FORWARD: the last version of it scored a card as
+// an EXPECTED PAYOUT - (card VP + the banked sacrifice tile) x the measured odds
+// of ever completing a card that many tiles short - rather than as
+// vp / (1 + missing). The old form let a 5 VP card three tiles short outbid a
+// 2 VP card that was nearly done, and put 63-78% of all reserves in a band that
+// completed under a third of the time. Any future forward-commitment decision in
+// this file should be shaped the same way.)
 
 // SPEND 1 CUPCAKE: BUY 1 EXTRA TILE AT THE SWEEP STEP (restored 9 August,
 // unchanged from the 3-8 August version).
@@ -1098,7 +1010,7 @@ function colourTowardMultiTileUnlock(player, board, spots, candidateCards, marke
     // ever about the boards that branch is structurally blind to.
     if (missing < 2 || missing === Infinity) continue;
     if (missing > budget || missing > spots.length) continue;
-    const net = ((card.vp || 0) + CLAIM_EXTRA) - missing * EXTRA_TILE_CUPCAKE_COST * RESERVE_CUPCAKE_VALUE;
+    const net = ((card.vp || 0) + CLAIM_EXTRA) - missing * EXTRA_TILE_CUPCAKE_COST * CUPCAKE_VALUE;
     if (net > targetNet) {
       targetNet = net;
       target = card;
@@ -1137,8 +1049,7 @@ export function decideExtraTile(gameState) {
   // trimmed tile silently wrote to projected['null'] and stopped the projection
   // dead). The spend step is after placement, so the board is simply the board.
   const board = player.board;
-  const candidateCards = [...gameState.cardMarket, ...player.reservedCards]
-    .filter(c => c.id !== gameState.reservedCardIdThisTurn);
+  const candidateCards = gameState.cardMarket;
 
   // Already claimable? Then we are not locked and there is nothing here to buy.
   for (const card of candidateCards) {
@@ -1187,13 +1098,13 @@ export function decideExtraTile(gameState) {
   // priced the same way the reserve decision prices them.
   //
   // MULTIPLIED BY THE PRICE, which it was not before: this read
-  // `bestVp < RESERVE_CUPCAKE_VALUE` back when an extra tile cost exactly 1
+  // `bestVp < CUPCAKE_VALUE` back when an extra tile cost exactly 1
   // cupcake, so the two happened to coincide. At a price of 2 that form would let
   // the bot pay two cupcakes for a one-cupcake payoff and the price rise would
   // show up in the report as no behaviour change at all. The price is 1 again, so
   // the two coincide again - KEEP THE MULTIPLICATION ANYWAY, since that
   // coincidence is exactly what hid the bug the first time.
-  if (bestVp < EXTRA_TILE_CUPCAKE_COST * RESERVE_CUPCAKE_VALUE) return null;
+  if (bestVp < EXTRA_TILE_CUPCAKE_COST * CUPCAKE_VALUE) return null;
 
   // A PAIR SINCE 10 AUGUST: which market tile to lift, and which cell it goes in.
   // The cell is the one the scan above proved unlocks the card - the tile is
@@ -1271,8 +1182,7 @@ export function decideDealCards(gameState) {
   // The spend step runs AFTER placement, so the board is the real one - no
   // projection is needed here (the extra tile needed one because it was bought
   // before the swept tiles landed).
-  const candidateCards = [...gameState.cardMarket, ...player.reservedCards]
-    .filter(c => c.id !== gameState.reservedCardIdThisTurn);
+  const candidateCards = gameState.cardMarket;
   for (const card of candidateCards) {
     if (getPatternMatches(player.board, card.pattern).length > 0) return false; // not locked
   }
@@ -1303,7 +1213,7 @@ export function decideDealCards(gameState) {
   // sit on the extra tile: writing this as a bare comparison worked only because
   // the price happened to be 1, and hid a real bug for four days.
   //
-  // THE BAR IS NOT RESERVE_CUPCAKE_VALUE, and that is the one deliberate
+  // THE BAR IS NOT CUPCAKE_VALUE, and that is the one deliberate
   // exception in this file. Every other spend clears 2 VP, the opportunity cost
   // of a cupcake - but that figure was DERIVED FROM THE EXTRA TILE ("a cupcake
   // unlocks a claim 39% of the time, a claim is worth ~5, so ~2"), and the extra
@@ -1488,7 +1398,7 @@ export function decidePlacements(gameState) {
 // PLATE_REMOVE_MAX_GAP: how many cells a window may still need AFTER the plate is
 //   cleared before the bot stops caring. The freed cell always counts as one of
 //   them, so 2 means "the plate, plus at most one more tile". Beyond that the
-//   measured completion odds collapse (see RESERVE_COMPLETION_ODDS) and the
+//   measured completion odds collapse (see WINDOW_COMPLETION_ODDS) and the
 //   spend is a lottery ticket.
 const PLATE_REMOVE_MAX_GAP = 3;
 // PLATE_REMOVE_SECONDARY_SHARE: a plate sits in the middle of the board and
@@ -1511,17 +1421,25 @@ const PLATE_REMOVE_SECONDARY_SHARE = 0.5;
 // more than the move it replaces even at a higher price: the old option always
 // had to spend a good cell somewhere to free a good cell here.
 
-// Probability a window `missing` tiles short is ever completed. Reuses the
-// measured RESERVE_COMPLETION_ODDS table - it answers exactly this question for
-// reserved cards, and a market card's board-side arithmetic is the same. A
-// window already complete is claimable now, so it is certainty rather than the
-// table's 0.55 (which is measured on cards that cannot be claimed the turn they
-// are taken). An unreachable window is 0.
+// WINDOW_COMPLETION_ODDS[m]: measured probability that a card m tiles short of
+// its best window on that player's board is ever claimed. From 120 probe games
+// (2p and 4p pooled): m=0 55%, m=1 55%, m=2 33%, m=3 20%, m=4 4%.
+//
+// MEASURED ON RESERVED CARDS, which is where the table was first used and where
+// its name came from until 11 August. It transfers to any card on the row: the
+// question is a board-side one - will these cells ever be filled with these
+// colours - and the reserve never entered into it.
+const WINDOW_COMPLETION_ODDS = [0.55, 0.55, 0.33, 0.20, 0.04, 0.0];
+
+// Probability a window `missing` tiles short is ever completed. A window already
+// complete is claimable now, so it is certainty rather than the table's 0.55
+// (which is measured on cards that could not be claimed the turn they were
+// taken). An unreachable window is 0.
 function windowCompletionOdds(missing) {
   if (missing === 0) return 1;
   if (!Number.isFinite(missing) || missing < 0) return 0;
-  const i = Math.min(missing, RESERVE_COMPLETION_ODDS.length - 1);
-  return RESERVE_COMPLETION_ODDS[i];
+  const i = Math.min(missing, WINDOW_COMPLETION_ODDS.length - 1);
+  return WINDOW_COMPLETION_ODDS[i];
 }
 
 // How close this card is to done on `board`, counting only windows a tile can
@@ -1554,7 +1472,7 @@ export function decideMove(gameState) {
   // Claimable candidates are the market cards PLUS this player's reserved cards
   // (which complete as normal claims). A cupcake move that helps any of them is
   // fair game.
-  const candidateCards = [...gameState.cardMarket, ...player.reservedCards];
+  const candidateCards = gameState.cardMarket;
 
   let bestNowVp = 0;
   const matchedNow = new Set();
@@ -1610,7 +1528,7 @@ export function decideMove(gameState) {
       // Card vp + banked sacrifice tile (~CLAIM_EXTRA) must beat what the
       // cupcakes are worth spent elsewhere AND the best claim already available
       // without moving.
-      const net = vp + CLAIM_EXTRA - moveCost * RESERVE_CUPCAKE_VALUE - bestNowVp;
+      const net = vp + CLAIM_EXTRA - moveCost * CUPCAKE_VALUE - bestNowVp;
       if (net <= 0) continue;
 
       // Safety: verify the move really completes the card.
@@ -1643,8 +1561,8 @@ export function decideMove(gameState) {
 // zero by construction, at every price - which is why it never once fired in a
 // full simulation run. The value is instead each revived card's worth times the
 // measured odds of ever filling the cells it still needs
-// (windowCompletionOdds / RESERVE_COMPLETION_ODDS), net of the cupcakes spent at
-// RESERVE_CUPCAKE_VALUE each.
+// (windowCompletionOdds), net of the cupcakes spent at
+// CUPCAKE_VALUE each.
 //
 // IT DOES NOT COMPETE WITH THE TILE MOVE. Removing a plate does not touch the
 // claim step, so a turn can buy this AND a tile move AND still claim whatever was
@@ -1653,7 +1571,7 @@ export function decideRemovePlate(gameState) {
   if (!canRemovePlate(gameState)) return null;
   const player = gameState.players[gameState.currentPlayerIndex];
 
-  const candidateCards = [...gameState.cardMarket, ...player.reservedCards];
+  const candidateCards = gameState.cardMarket;
   const matchedNow = new Set();
   for (const card of candidateCards) {
     if (getPatternMatches(player.board, card.pattern).length > 0) matchedNow.add(card.id);
@@ -1697,7 +1615,7 @@ export function decideRemovePlate(gameState) {
     let value = gains[0];
     for (let i = 1; i < gains.length; i++) value += gains[i] * PLATE_REMOVE_SECONDARY_SHARE;
 
-    const net = value - REMOVE_PLATE_CUPCAKE_COST * RESERVE_CUPCAKE_VALUE;
+    const net = value - REMOVE_PLATE_CUPCAKE_COST * CUPCAKE_VALUE;
     if (net <= 0) continue;
     if (!best || net > best.net) best = { index: plateIndex, net };
   }
@@ -1729,11 +1647,10 @@ function destinationValue(player, tile, gameState) {
 //     card costs one board tile, that tile banks VP on the stand or crumb tray,
 //     and the freed cell is space we need. So the bot still claims whenever it
 //     can; what changed is WHICH card, not WHETHER.
-//   - the perishable card is now the one somebody else can take or flush. A
-//     reserved card is safe from the flush and scores 0 if never claimed, so it
-//     is normally the one to finish (CLAIM_RESERVE_BONUS) - unless a refresh is
-//     armed right now, in which case the whole row can be discarded before our
-//     next turn and the row card is the one to bank (CLAIM_FLUSH_RISK_BONUS).
+//   - NOTHING ON THE ROW IS PERISHABLE ANY MORE (11 August). A card is lost only
+//     to an opponent claiming it first, never to a flush - the pot of tea stopped
+//     touching the card row - and there is no reserve to weigh a row card
+//     against. Both urgency terms that lived here are deleted.
 // THIS BOT IS DELIBERATELY BLIND TO THE PRICE OF AN EXTRA CLAIM (9 August). It
 // claims whenever it legally can, and the engine closes the claim step the moment
 // it cannot pay, so it buys every further card it can afford and never declines
@@ -1761,9 +1678,9 @@ export function decideClaim(gameState) {
   if (!canClaimMore(gameState)) return null;
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
-  // Candidates are the market cards PLUS this player's reserved cards, which
-  // complete as normal claims (claim() resolves a reserved id transparently).
-  const candidateCards = [...gameState.cardMarket, ...currentPlayer.reservedCards];
+  // The shared card row, and since 11 August that is the whole list - a player's
+  // reserved cards used to be candidates here too.
+  const candidateCards = gameState.cardMarket;
 
   // Find all claimable cards.
   const claimableCards = [];
@@ -1778,17 +1695,12 @@ export function decideClaim(gameState) {
     return null; // Skip claim
   }
 
-  const reservedIds = new Set(currentPlayer.reservedCards.map(c => c.id));
-  // Is the card row itself about to be flushed? Since 1 August this is a
-  // CERTAINTY rather than a risk: if the threshold is met and the bag can still
-  // refill, tea fires at the end of this very turn and the whole row goes to the
-  // discard. Anything we do not claim (or reserve) now is gone. The symbol half
-  // is the engine's isTeaDue, deliberately - claim scoring must not disagree with
-  // the trigger - and the bag half is the 4 August rule that isTeaDue no longer
-  // carries: a needed refill against an empty bag ends the game rather than
-  // brewing, so no flush happens and the row is not perishable after all.
-  const rowAtRisk = gameState.bag.length > 0
-    && getVisibleTeapotSymbols(gameState) >= REFRESH_THRESHOLD;
+  // (A `rowAtRisk` read stood here: is a pot of tea about to flush the whole card
+  // row at the end of this turn, making everything on it perishable? DELETED
+  // 11 AUGUST - the pot does not touch the card row any more, so nothing on the
+  // row expires and there is no urgency term left to compute. The one pressure
+  // that remains on the row is an opponent claiming first, which this function
+  // has never modelled.)
 
   // Colours still wanted by any market card.
   const coloursNeeded = new Set();
@@ -1929,9 +1841,8 @@ export function decideClaim(gameState) {
     // standing on. A card whose only sacrifice is a Flavour tile is worth strictly
     // less than an identical one that leaves the Flavour alone.
     let cardScore = (candidate.card.vp || 0) + bestRemoveValue * CLAIM_DEST_WEIGHT + bestRemoveMenu - bestRemoveFlavour;
-    const fromReserve = reservedIds.has(candidate.card.id);
-    if (fromReserve) cardScore += CLAIM_RESERVE_BONUS;
-    else if (rowAtRisk) cardScore += CLAIM_FLUSH_RISK_BONUS;
+    // (A reserve bonus and a flush-risk bonus were added here until 11 August.
+    // Both are deleted with the rules that motivated them - see the constants.)
     // Tie-break toward the smaller pattern (fewer tiles committed to one shape).
     cardScore -= candidate.card.pattern.filter(c => c).length * 0.01;
 

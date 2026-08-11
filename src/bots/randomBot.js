@@ -6,7 +6,8 @@
 import { getValidPlacements } from '../engine/game.js';
 
 // Reuse the fast bot's random legal-move policy for the ordinary phases (its
-// decideClaim already treats a reserved card as a claim candidate).
+// decideClaim reads the shared card row, which since 11 August is the only place
+// an unclaimed card can be).
 export { decideSweep, decideBonusTile, decidePlacements, decideClaim } from './fastBot.js';
 
 // NO decideOrderTea SINCE 1 AUGUST. This bot used to flush on a 10% coin-flip
@@ -17,13 +18,8 @@ export { decideSweep, decideBonusTile, decidePlacements, decideClaim } from './f
 // is a better noise test anyway: the randomness is applied to the thing that
 // actually pulls the trigger.
 
-// Reserve a random market card (the reserve is uncapped, so the only pass is an
-// empty market).
-export function decideTeaReserve(gameState, reserverIndex) {
-  if (gameState.cardMarket.length === 0) return null;
-  const card = gameState.cardMarket[Math.floor(Math.random() * gameState.cardMarket.length)];
-  return card.id;
-}
+// (decideTeaReserve - a random market card - stood here. Deleted 11 August with
+// the reserve.)
 
 export function makeRandomMove(board, tileCount) {
   const validPositions = getValidPlacements(board, tileCount);

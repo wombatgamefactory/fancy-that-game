@@ -12,7 +12,7 @@
 // spread here is positional, not skill. Run enough games that the noise band
 // printed under each table is comfortably under 2 points (the original finding
 // used 3,000 per configuration).
-import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, reserveCard, takeExtraTile, refill, calculateFinalScores, getWinningPlayers } from './src/engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, place, claim, skipClaim, skipSpend, moveTile, removePlate, takeExtraTile, refill, calculateFinalScores, getWinningPlayers } from './src/engine/game.js';
 import { createStatsCollector } from './src/engine/statsCollector.js';
 import * as bot from './src/bots/basicBot.js';
 
@@ -40,8 +40,7 @@ function runGame(pc) {
         if (m) s = moveTile(s, m.fromIndex, m.toIndex);
         const rp = bot.decideRemovePlate ? bot.decideRemovePlate(s) : null;
         if (rp !== null && rp !== undefined) s = removePlate(s, rp);
-        const rc = bot.decideReserve ? bot.decideReserve(s) : null;
-        if (rc !== null && rc !== undefined) s = reserveCard(s, rc);
+        // (the paid reserve was driven here until 11 August, when it was deleted)
         s = skipSpend(s); break; }
       case 'claim': { const d = bot.decideClaim(s);
         s = (d && d.cardId) ? claim(s, d.cardId, d.removedBoardIndex, d.destination) : skipClaim(s); break; }
