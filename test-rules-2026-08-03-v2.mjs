@@ -223,13 +223,20 @@ check('moving an empty plate is refused, and says to remove it instead', () => {
   eq(s.moveUsedThisTurn, false, 'the refused move did not burn the allowance');
 });
 
-check('one tile move per turn', () => {
+// THIS CHECK IS THE REVERSE OF THE ONE IT REPLACES (11 August, second revision).
+// It pinned "one tile move per turn"; the allowance is deleted, so what has to be
+// pinned now is that a second cupcake really does buy a second move. The full
+// uncapping - all four spends, the caps' A/B seam, the counters - is covered by
+// test-rules-2026-08-11-uncapped-spends.mjs.
+check('a second cupcake buys a second tile move', () => {
   const { s, p } = spendState();
   p.board[0] = { colour: 'pink', ingredient: 'lemon' };
   p.board[1] = { colour: 'blue', ingredient: 'lemon' };
   moveTile(s, 0, 24);
   eq(p.cupcakes, 9 - MOVE_TILE_CUPCAKE_COST, 'charged the tile price');
-  threw(() => moveTile(s, 1, 23), 'one tile per turn');
+  moveTile(s, 1, 23);
+  eq(p.cupcakes, 9 - 2 * MOVE_TILE_CUPCAKE_COST, 'charged the second move too');
+  eq(s.tilesMovedThisTurn, 2, 'both moves counted');
 });
 
 // --- 4. REMOVING A PLATE ---------------------------------------------------
@@ -269,13 +276,17 @@ check('removing a plate buys a cell back, and so pushes the ending AWAY', () => 
   assert(!('cardsNeededToEnd' in s), 'the deleted plate pool must not be back on the state');
 });
 
-check('one plate removal per turn', () => {
+// Also reversed on 11 August (second revision) - see the tile-move check above.
+check('a full purse clears two plates in one turn', () => {
   const { s, p } = spendState();
   p.board[3] = { type: 'blocked' };
   p.board[4] = { type: 'blocked' };
   removePlate(s, 3);
-  threw(() => removePlate(s, 4), 'one empty plate per turn');
-  assert(!canRemovePlate(s), 'canRemovePlate agrees the allowance is spent');
+  assert(canRemovePlate(s), 'canRemovePlate agrees a second removal is on');
+  removePlate(s, 4);
+  eq(p.cupcakes, 9 - 2 * REMOVE_PLATE_CUPCAKE_COST, 'charged for both');
+  eq(s.platesRemovedThisTurn, 2, 'both removals counted');
+  eq(s.platesReturnedToBox, 2, 'and both plates left the game');
 });
 
 // The cupcake figure here tracks REMOVE_PLATE_CUPCAKE_COST and must stay one
@@ -305,11 +316,13 @@ check('a removal is refused outside the spend phase', () => {
   threw(() => removePlate(s, 3), 'Can only remove a plate in the spend phase');
 });
 
-// --- 5. THE ALLOWANCES ARE INDEPENDENT -------------------------------------
+// --- 5. THE SPENDS ARE INDEPENDENT -----------------------------------------
 
 // (This used to be "a move, a removal AND A RESERVE can all happen on the same
 // turn". The reserve is deleted - 11 August - so the independence claim is over
-// the two allowances that are left.)
+// the two board spends that are left. The allowances they used to hold are
+// deleted too, on the same day; what the section still pins is that paying for
+// one does not close the other.)
 check('a move and a removal can both happen on the same turn', () => {
   const { s, p } = spendState(2, 9);
   p.board[0] = { colour: 'pink', ingredient: 'lemon' };
@@ -320,11 +333,11 @@ check('a move and a removal can both happen on the same turn', () => {
 
   eq(p.cupcakes, 9 - MOVE_TILE_CUPCAKE_COST - REMOVE_PLATE_CUPCAKE_COST,
     'both were charged');
-  assert(s.moveUsedThisTurn, 'move allowance spent');
-  assert(s.plateRemovedThisTurn, 'removal allowance spent');
+  eq(s.tilesMovedThisTurn, 1, 'the move was counted');
+  eq(s.platesRemovedThisTurn, 1, 'the removal was counted');
 });
 
-check('both allowances reset on the next turn', () => {
+check('both counters reset on the next turn', () => {
   const { s, p } = spendState(2, 9);
   p.board[0] = { colour: 'pink', ingredient: 'lemon' };
   p.board[7] = { type: 'blocked' };
@@ -333,8 +346,12 @@ check('both allowances reset on the next turn', () => {
   skipSpend(s);
   skipClaim(s);
   refill(s);
-  eq(s.moveUsedThisTurn, false, 'the move allowance reset');
-  eq(s.plateRemovedThisTurn, false, 'the removal allowance reset');
+  eq(s.tilesMovedThisTurn, 0, 'the move count reset');
+  eq(s.platesRemovedThisTurn, 0, 'the removal count reset');
+  // The legacy mirrors have to reset with them, or the older bots that still
+  // read them would sit out every turn after their first move of the game.
+  eq(s.moveUsedThisTurn, false, 'the move mirror reset');
+  eq(s.plateRemovedThisTurn, false, 'the removal mirror reset');
 });
 
 // --- 6. NOTHING BROKE IN A REAL GAME ---------------------------------------

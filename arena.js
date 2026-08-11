@@ -55,12 +55,25 @@ function runGame(strategies) {
           if (ex === null || ex === undefined) break;
           gameState = takeExtraTile(gameState, ex.marketIndex, ex.boardIndex);
         }
-        const mv = strategy.decideMove ? strategy.decideMove(gameState) : null;
-        if (mv) gameState = moveTile(gameState, mv.fromIndex, mv.toIndex);
-        const rp = strategy.decideRemovePlate ? strategy.decideRemovePlate(gameState) : null;
-        if (rp !== null && rp !== undefined) gameState = removePlate(gameState, rp);
+        // AND SO ARE THE OTHER THREE SINCE 11 AUGUST (second revision): no spend
+        // on the menu has a per-turn allowance, so every one of them is a loop
+        // that ends when the bot declines or the engine's own gate closes. The
+        // iteration counts are runaway stops, not rules.
+        for (let n = 0; n < 25; n++) {
+          const mv = strategy.decideMove ? strategy.decideMove(gameState) : null;
+          if (!mv) break;
+          gameState = moveTile(gameState, mv.fromIndex, mv.toIndex);
+        }
+        for (let n = 0; n < 25; n++) {
+          const rp = strategy.decideRemovePlate ? strategy.decideRemovePlate(gameState) : null;
+          if (rp === null || rp === undefined) break;
+          gameState = removePlate(gameState, rp);
+        }
         // 8 August: 1 cupcake, 2 new cards on the row, claimable this same turn.
-        if (strategy.decideDealCards && strategy.decideDealCards(gameState)) gameState = dealCards(gameState);
+        for (let n = 0; n < 10; n++) {
+          if (!(strategy.decideDealCards && strategy.decideDealCards(gameState))) break;
+          gameState = dealCards(gameState);
+        }
         // (The paid reserve was driven here until 11 August, when it was deleted.)
         gameState = skipSpend(gameState);
         break;

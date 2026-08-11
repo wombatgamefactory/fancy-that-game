@@ -520,6 +520,44 @@ function isCupcakePlate(rowIndex, plateIndex) {
 // it - the card row is now stable enough between turns that booking a card in
 // advance is not a thing a player needs to buy.
 //
+// 11 AUGUST (SECOND REVISION): EVERY PER-TURN ALLOWANCE IS DELETED. Dean's rule:
+// "you can spend unlimited cupcakes in a turn - there is no limit", so two
+// cupcakes move two tiles. The list above still gives the four prices; what it no
+// longer carries is a per-turn allowance beside any of them. A turn buys as many
+// tile moves, plate removals, extra tiles and 2-card deals as the purse and the
+// board's own gates allow, each at its flat price.
+//
+// WHAT THIS FINISHES rather than starts: the extra tile went uncapped on 9 August
+// and every note written since has had to say "except the extra tile". The menu
+// now has ONE rule instead of two, and it is the rule a table can hold - a
+// cupcake is a price, not a ration.
+//
+// WHAT STILL BOUNDS A TURN, because "no limit" is not "no gate":
+//   - THE PURSE. Income is about 5 cupcakes per player per game, so the ceiling
+//     on a big turn is a hoard the player chose not to spend earlier.
+//   - THE BOARD. A move needs a tile and an empty cell; a removal needs a plate;
+//     an extra tile needs a free cell. Each purchase consumes its own precondition,
+//     so repeats run out of board before they run out of menu.
+//   - THE ROW. A paid deal needs room for BOTH cards under MAX_MARKET_CARDS, which
+//     is what stops a purse being poured into the card row.
+//   - THE CLAIM LADDER, untouched: the first claim of a turn is free and each
+//     further one costs getExtraClaimCupcakeCost(). That was already repeatable
+//     and already priced, and it is the reason a second tile move can pay for
+//     itself at all - without a second claim to spend it on, moving twice only
+//     ever swaps which single card you take.
+//
+// WHAT TO WATCH, since no simulation has ever run this rule: total cupcake outflow
+// per game, the share of turns spending 2+, whether the plate removal (the one
+// spend that pushes the ending away) now stacks into a longer game, and the seat
+// ladder. The A/B is one number per action - see setPerTurnSpendCap.
+//
+// A NOTE FOR ANYONE MEASURING IT: the bots were written under the allowances and
+// mostly still behave as though they held. basicBot.decideMove values a move
+// against the best card already claimable, so its second move of a turn only
+// fires as a SUBSTITUTION unless it has also bought a further claim. An unchanged
+// simulation number is bot vision before it is evidence about the rule - the same
+// caveat the uncapped extra tile carries.
+//
 // WHY BOTH, WHICH THE 8 AUGUST NOTE HERE EXPLICITLY WARNED AGAINST. That warning
 // stands as written - "do not reinstate the extra tile as a second door to the
 // same room without re-measuring both" - and the reinstatement is being made
@@ -611,6 +649,55 @@ export function setMaxExtraTilesPerTurn(n) {
     throw new Error('maxExtraTilesPerTurn must be null or a non-negative integer');
   }
   maxExtraTilesPerTurn = n;
+}
+
+// HOW MANY TIMES ONE TURN MAY BUY THE OTHER THREE SPENDS (11 August, second
+// revision). null = UNLIMITED for all three, which is the adopted rule.
+//
+// The extra tile keeps its own constant above rather than being folded in here:
+// it went uncapped two days earlier, its seam is already wired into
+// basicBot.decideExtraTile and three A/B scripts, and rewiring it would break
+// every one of those for no gain.
+//
+// WHY THESE EXIST AT ALL, same reason as MAX_EXTRA_TILES_PER_TURN: the
+// interesting comparison is always "against the previous rule, same seeds".
+// Setting all three to 1 restores the allowances exactly, so the A/B against
+// every run before today is three numbers rather than a revert.
+export const MAX_TILE_MOVES_PER_TURN = null;
+export const MAX_PLATE_REMOVALS_PER_TURN = null;
+export const MAX_CARD_DEALS_PER_TURN = null;
+
+// The LIVE values. Keyed by the engine function that charges for the action, so a
+// probe reads like the rule it is swinging: setPerTurnSpendCap('moveTile', 1).
+const perTurnSpendCaps = {
+  moveTile: MAX_TILE_MOVES_PER_TURN,
+  removePlate: MAX_PLATE_REMOVALS_PER_TURN,
+  dealCards: MAX_CARD_DEALS_PER_TURN,
+};
+
+export function getPerTurnSpendCap(action) {
+  if (!(action in perTurnSpendCaps)) {
+    throw new Error(`Unknown per-turn spend cap: ${action}`);
+  }
+  return perTurnSpendCaps[action];
+}
+
+// Accepts null (unlimited, the adopted rule) or a non-negative integer allowance.
+export function setPerTurnSpendCap(action, n) {
+  if (!(action in perTurnSpendCaps)) {
+    throw new Error(`Unknown per-turn spend cap: ${action}`);
+  }
+  if (n !== null && (!Number.isInteger(n) || n < 0)) {
+    throw new Error('a per-turn spend cap must be null or a non-negative integer');
+  }
+  perTurnSpendCaps[action] = n;
+}
+
+// True when `count` purchases have already exhausted this action's allowance.
+// One place, so the three gates and their three predicates cannot drift apart.
+function spendCapReached(action, count) {
+  const cap = getPerTurnSpendCap(action);
+  return cap !== null && count >= cap;
 }
 
 // Deal CARDS_PER_DEAL new Patisserie Goals onto the card row, at the spend step.
@@ -1193,12 +1280,14 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     // cloneState (a primitive copies by value, and boards are already deep-copied).
     // If anything ever assigns to this field, that reasoning breaks.
     flavourOfTheDay,
-    // --- PER-TURN CUPCAKE ALLOWANCES (3 August) -----------------------------
-    // FOUR outlets since 11 August, when the reserve was deleted. They are
-    // INDEPENDENT: paying to deal two cards does not stop you buying an extra
-    // tile, moving a tile or removing a plate. What each one forbids is doing
-    // that SAME thing twice - except the extra tile, which is uncapped. All of
-    // them reset in advanceToNextTurn alongside claimsThisTurn.
+    // --- PER-TURN CUPCAKE COUNTERS (3 August; allowances deleted 11 August) --
+    // FOUR outlets since 11 August, when the reserve was deleted, and since the
+    // same day's second revision NONE of the four has a per-turn allowance: a
+    // turn may buy any of them as often as it can pay. These are therefore
+    // MEASUREMENTS, not rations - what they feed is the metrics and the UI's
+    // "bought this turn" lines. They still have to be zeroed in
+    // advanceToNextTurn, alongside claimsThisTurn, or a variant that caps one of
+    // them (setPerTurnSpendCap) would carry last turn's spend forward.
     //
     // THEY ALL SIT AT THE SAME STEP AGAIN (10 August). The extra tile was the
     // exception: it was bought at the SWEEP step, because it changes what you
@@ -1209,10 +1298,19 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     // balance; the summary is that a cupcake buys more than it used to, because
     // it is now spent with the board finished rather than projected.
     //
-    // moveUsedThisTurn covers the TILE move only. It used to cover the
-    // empty-plate move too - one allowance at two prices - but plates are no
-    // longer movable at all (see moveTile / removePlate), so the two allowances
-    // are now genuinely separate things rather than a shared budget.
+    // Tile moves bought this turn - see moveTile. A COUNTER since 11 August
+    // (second revision), for the same reason the extra tile became one: the
+    // allowance it used to guard is gone.
+    //
+    // It counts the TILE move only. It used to count the empty-plate move too -
+    // one allowance at two prices - but plates are no longer movable at all (see
+    // moveTile / removePlate).
+    tilesMovedThisTurn: 0,
+    // LEGACY MIRROR of the counter above, kept true whenever any tile has been
+    // moved this turn. Nothing in the engine gates on it; it exists because the
+    // older bots (oldBasicBot, tuneBot, tuneBot2, noPlateMoveBot) and the dated
+    // probes read it, and a bot that keeps the old one-move habit is a valid
+    // A/B opponent rather than a broken one. Read the counter in new code.
     moveUsedThisTurn: false,
     // Extra tiles bought this turn, at the sweep step - see takeExtraTile. A
     // COUNTER since 9 August (second revision), because the allowance it used to
@@ -1224,9 +1322,16 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     // test both read it; nothing in the engine gates on it any more. Read the
     // counter in new code.
     extraTileUsedThisTurn: false,
-    // One paid 2-card deal per turn - see dealCards.
+    // Paid 2-card deals bought this turn - see dealCards. A counter since
+    // 11 August (second revision); cardsDealtThisTurn is its legacy mirror, read
+    // by the UI's "bought this turn" line and by the 8 August rule test.
+    cardDealsThisTurn: 0,
     cardsDealtThisTurn: false,
-    // One empty plate removed to the box per turn - see removePlate.
+    // Empty plates returned to the box THIS TURN - see removePlate. A counter
+    // since 11 August (second revision); plateRemovedThisTurn is its legacy
+    // mirror. (platesReturnedToBox below is the whole-game total, and is a
+    // different number.)
+    platesRemovedThisTurn: 0,
     plateRemovedThisTurn: false,
     // (reservedCardIdThisTurn stood here - the card you paid to reserve this
     // turn and therefore could not claim this turn. DELETED 11 AUGUST with the
@@ -1625,7 +1730,13 @@ export function canBuyExtraTile(gameState) {
 // face up, exactly as the free end-of-turn deal puts one there. Nothing is
 // discarded and nothing is replaced - the row simply gets longer.
 //
-// ONCE PER TURN, mirroring every other allowance, and gated on:
+// AS OFTEN AS YOU CAN PAY (11 August, second revision - see the spend menu
+// block). The row's own gate is what bounds this one in practice, and it bites
+// hard: a purse poured into fresh cards runs into MAX_MARKET_CARDS within two or
+// three deals, which is why this was the least interesting of the four
+// allowances to delete and is deleted anyway - one rule for the whole menu.
+//
+// Gated on:
 //   - the row having room for BOTH cards under MAX_MARKET_CARDS. Not "deal what
 //     fits": a spend that silently pays out one card instead of two is a rule a
 //     table has to remember the edge of, and at 1 cupcake it would be a bad buy
@@ -1651,8 +1762,8 @@ export function dealCards(gameState) {
   if (gameState.gamePhase !== 'spend') {
     throw new Error('Can only deal cards in the spend phase');
   }
-  if (gameState.cardsDealtThisTurn) {
-    throw new Error('Can only pay to deal cards once per turn');
+  if (spendCapReached('dealCards', gameState.cardDealsThisTurn)) {
+    throw new Error(`Can only pay to deal cards ${getPerTurnSpendCap('dealCards')} time(s) per turn`);
   }
   const player = gameState.players[gameState.currentPlayerIndex];
   if (player.cupcakes < DEAL_CARDS_CUPCAKE_COST) {
@@ -1675,7 +1786,8 @@ export function dealCards(gameState) {
   }
 
   player.cupcakes -= DEAL_CARDS_CUPCAKE_COST;
-  gameState.cardsDealtThisTurn = true;
+  gameState.cardDealsThisTurn++;
+  gameState.cardsDealtThisTurn = true; // legacy mirror - see createGame
   metrics(gameState)?.recordCupcakeSpend(player.id, 'dealCards', DEAL_CARDS_CUPCAKE_COST);
 
   return gameState;
@@ -1686,7 +1798,7 @@ export function dealCards(gameState) {
 // re-implements dealCards's gate and then disagrees with it.
 export function canDealCards(gameState) {
   if (gameState.gamePhase !== 'spend') return false;
-  if (gameState.cardsDealtThisTurn) return false;
+  if (spendCapReached('dealCards', gameState.cardDealsThisTurn)) return false;
   const player = gameState.players[gameState.currentPlayerIndex];
   if (player.cupcakes < DEAL_CARDS_CUPCAKE_COST) return false;
   if (gameState.cardMarket.length + CARDS_PER_DEAL > MAX_MARKET_CARDS) return false;
@@ -2334,7 +2446,14 @@ export function getMoveCost(player, index) {
   return MOVE_TILE_CUPCAKE_COST;
 }
 
-// Relocate one tile on your own board, at the spend step. ONE MOVE PER TURN.
+// Relocate one tile on your own board, at the spend step. AS OFTEN AS YOU CAN
+// PAY: the one-move-per-turn allowance was deleted on 11 August (second
+// revision) - two cupcakes move two tiles. See the spend menu block.
+//
+// EACH MOVE IS A SEPARATE CALL at a flat MOVE_TILE_CUPCAKE_COST. There is no
+// ladder and no bundle: a caller that wants to move three tiles calls this three
+// times, and every call re-reads the board, so the second move can use the cell
+// the first one emptied.
 //
 // PLATES ARE NO LONGER MOVABLE (3 August, second revision). This used to accept
 // either a tile or an empty plate at two different prices; the plate half is now
@@ -2344,8 +2463,8 @@ export function moveTile(gameState, fromIndex, toIndex) {
   if (gameState.gamePhase !== 'spend') {
     throw new Error('Can only move tiles in the spend phase');
   }
-  if (gameState.moveUsedThisTurn) {
-    throw new Error('Can only move one tile per turn');
+  if (spendCapReached('moveTile', gameState.tilesMovedThisTurn)) {
+    throw new Error(`Can only move ${getPerTurnSpendCap('moveTile')} tile(s) per turn`);
   }
   const player = gameState.players[gameState.currentPlayerIndex];
   // Reject the plate case with its own message: "no tile at source cell" would
@@ -2363,9 +2482,29 @@ export function moveTile(gameState, fromIndex, toIndex) {
   player.board[toIndex] = player.board[fromIndex];
   player.board[fromIndex] = null;
   player.cupcakes -= cost;
-  gameState.moveUsedThisTurn = true;
+  gameState.tilesMovedThisTurn++;
+  gameState.moveUsedThisTurn = true; // legacy mirror - see createGame
   metrics(gameState)?.recordCupcakeSpend(player.id, 'moveTile', cost);
   return gameState;
+}
+
+// True when the active player could legally pay to move a tile right now. Added
+// 11 August with the uncapping: the UI used to derive this inline as "has a
+// cupcake and has not moved yet", which is exactly the kind of second copy of a
+// rule that goes stale when the rule moves. Bots and drivers share it too.
+//
+// It asks the three questions the UI's chip needs and no more - phase, allowance,
+// price - PLUS the two board conditions, because a live chip that opens a mode
+// with nothing to tap in it is worse than a dead one: there must be a tile to
+// pick up and an empty cell to put it in.
+export function canMoveTile(gameState) {
+  if (gameState.gamePhase !== 'spend') return false;
+  if (spendCapReached('moveTile', gameState.tilesMovedThisTurn)) return false;
+  const player = gameState.players[gameState.currentPlayerIndex];
+  if (player.cupcakes < MOVE_TILE_CUPCAKE_COST) return false;
+  // A movable tile is one getMoveCost prices - which excludes empty plates.
+  if (!player.board.some((_, i) => getMoveCost(player, i) !== null)) return false;
+  return player.board.some(cell => cell === null);
 }
 
 // SPEND CUPCAKES: REMOVE AN EMPTY PLATE FROM YOUR BOARD, TO THE BOX.
@@ -2384,15 +2523,23 @@ export function moveTile(gameState, fromIndex, toIndex) {
 // the ending away. See REMOVE_PLATE_CUPCAKE_COST for what that is worth, and for
 // why the price came down to 2 on 7 August once this became the clock control.
 //
-// ONE PER TURN, mirroring the move allowance. Against a measured income of about
-// 5 cupcakes per player per GAME even the reduced price makes a second one
-// expensive, so this bounds a degenerate state rather than shaping normal play.
+// AS OFTEN AS YOU CAN PAY (11 August, second revision - the one-per-turn
+// allowance is deleted along with every other). The old note here argued the
+// allowance "bounds a degenerate state rather than shaping normal play", against
+// a measured income of about 5 cupcakes per player per GAME: at 2 apiece, a
+// second removal in one turn costs most of a game's income, so the purse was
+// always the real bound and the allowance was doing nothing.
+//
+// WATCH THIS ONE ABOVE THE OTHER THREE, though, because it is the only spend
+// that pushes the ENDING away: a hoarder clearing three plates in a turn buys the
+// table three cells of extra clock. That is 6 cupcakes for the privilege, which
+// is why it is a thing to measure rather than a thing to pre-empt.
 export function removePlate(gameState, index) {
   if (gameState.gamePhase !== 'spend') {
     throw new Error('Can only remove a plate in the spend phase');
   }
-  if (gameState.plateRemovedThisTurn) {
-    throw new Error('Can only remove one empty plate per turn');
+  if (spendCapReached('removePlate', gameState.platesRemovedThisTurn)) {
+    throw new Error(`Can only remove ${getPerTurnSpendCap('removePlate')} empty plate(s) per turn`);
   }
   const player = gameState.players[gameState.currentPlayerIndex];
   if (!isBlockedSpace(player.board[index])) {
@@ -2404,7 +2551,8 @@ export function removePlate(gameState, index) {
 
   player.board[index] = null;
   player.cupcakes -= REMOVE_PLATE_CUPCAKE_COST;
-  gameState.plateRemovedThisTurn = true;
+  gameState.platesRemovedThisTurn++;
+  gameState.plateRemovedThisTurn = true; // legacy mirror - see createGame
   gameState.platesReturnedToBox++;
   metrics(gameState)?.recordCupcakeSpend(player.id, 'removePlate', REMOVE_PLATE_CUPCAKE_COST);
   return gameState;
@@ -2414,7 +2562,7 @@ export function removePlate(gameState, index) {
 // Shared by drivers, bots and UI so none of them re-derives removePlate's gate.
 export function canRemovePlate(gameState) {
   if (gameState.gamePhase !== 'spend') return false;
-  if (gameState.plateRemovedThisTurn) return false;
+  if (spendCapReached('removePlate', gameState.platesRemovedThisTurn)) return false;
   const player = gameState.players[gameState.currentPlayerIndex];
   if (player.cupcakes < REMOVE_PLATE_CUPCAKE_COST) return false;
   return player.board.some(cell => isBlockedSpace(cell));
@@ -2636,18 +2784,22 @@ function advanceToNextTurn(gameState) {
   // stats.turnsPlayed is NOT incremented here — refill() counts the turn that
   // just played, so turns that end the game without rotating still count.
   gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
-  // EVERY per-turn allowance resets here, in one place, so they cannot drift
-  // apart: the one-claim-per-turn allowance, the extra-tile count, the one tile
-  // move, the one paid 2-card deal and the one plate removal. (The extra tile is
-  // uncapped since 9 August, so its counter is a measurement rather than an
-  // allowance - it still has to be zeroed here or a variant that caps it would
-  // carry last turn's spend forward. The same-turn reserve lock was reset here
-  // too until 11 August; the reserve is deleted.)
+  // EVERY per-turn counter resets here, in one place, so they cannot drift
+  // apart: claims made, extra tiles, tile moves, paid 2-card deals and plate
+  // removals. Since 11 August (second revision) NONE of the four spends is
+  // capped, so these are measurements rather than allowances - they still have
+  // to be zeroed here, or a variant that caps one of them (setPerTurnSpendCap)
+  // would carry last turn's spend forward. Each boolean is the legacy mirror of
+  // the counter above it. (The same-turn reserve lock was reset here too until
+  // 11 August; the reserve is deleted.)
   gameState.claimsThisTurn = 0;
+  gameState.tilesMovedThisTurn = 0;
   gameState.moveUsedThisTurn = false;
   gameState.extraTilesBoughtThisTurn = 0;
   gameState.extraTileUsedThisTurn = false;
+  gameState.cardDealsThisTurn = 0;
   gameState.cardsDealtThisTurn = false;
+  gameState.platesRemovedThisTurn = 0;
   gameState.plateRemovedThisTurn = false;
   gameState.gamePhase = 'sweep';
   // Count this turn toward the empty-market deadlock watch (reset by any claim).

@@ -493,7 +493,16 @@ function applyAction(state, action) {
     } else if (phase === 'spend') {
       // A spend action is tagged {kind}: 'move' carries {fromIndex, toIndex},
       // 'removePlate' carries {index}, null spends nothing. Either way the phase
-      // then advances - each allowance is once per turn.
+      // then advances - AT MOST ONE SPEND PER ROLLOUT TURN.
+      //
+      // THAT IS NOW A SEARCH LIMIT, NOT THE RULE. The per-turn allowances were
+      // deleted on 11 August (second revision), so a real turn may move two tiles
+      // or clear two plates; this tree still models one spend and then advances.
+      // Widening it means the spend layer branches on every (kind, cell) pair
+      // AGAIN per extra purchase, which multiplies the branching factor of the
+      // one phase that already has the widest legal set. Left as is deliberately:
+      // the bot plays a legal, conservative turn, and MCTS results are a floor on
+      // the uncapped rule rather than a measurement of it.
       if (action && action.kind === 'move') {
         moveTile(cloned, action.fromIndex, action.toIndex);
       } else if (action && action.kind === 'removePlate') {

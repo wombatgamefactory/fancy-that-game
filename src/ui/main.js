@@ -1,4 +1,4 @@
-import { createGame, sweep, takeBonusTile, declineBonusTile, dealCards, canDealCards, takeExtraTile, canBuyExtraTile, place, claim, skipClaim, skipSpend, refill, moveTile, removePlate, canRemovePlate, getMoveCost, canClaimMore, getValidSweeps, getValidPlacements, getPatternMatches, getWinningPlayers, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
+import { createGame, sweep, takeBonusTile, declineBonusTile, dealCards, canDealCards, takeExtraTile, canBuyExtraTile, place, claim, skipClaim, skipSpend, refill, moveTile, canMoveTile, removePlate, canRemovePlate, getMoveCost, canClaimMore, getValidSweeps, getValidPlacements, getPatternMatches, getWinningPlayers, REWARD_CARDS, BOARD_SIZE } from '../engine/game.js';
 import { renderSetupScreen, renderGameScreen, updateGameDisplay, setThinkingState, setThinkingProgress, renderEndScreen, showToast, getRailSaveState, restoreRailSaveState, resetRailState } from './board.js';
 import {
   runTransition, predictSweep, tileName, marketCell, trayTileFor, boardCell,
@@ -514,11 +514,22 @@ function onSkipMove() {
   }
 }
 
+// THE MODE STAYS ARMED IF ANOTHER BOARD SPEND IS STILL AFFORDABLE (11 August,
+// second revision). Both of these used to close board-spend mode unconditionally,
+// which was right when each action was once per turn - there was nothing left to
+// tap. A second move now costs a second cupcake and nothing else, so closing the
+// mode would charge the player two extra taps to re-open it and read as though
+// the game had refused them. It closes the moment neither spend can be paid for,
+// which is the old behaviour in the common case of a player with one cupcake.
+function keepCupcakeModeIfMoreToBuy() {
+  window._gameUI.cupcakeMode = canMoveTile(gameState) || canRemovePlate(gameState);
+}
+
 function onMoveTile(fromIndex, toIndex) {
   try {
     pushUndoSnapshot();
     moveTile(gameState, fromIndex, toIndex);
-    window._gameUI.cupcakeMode = false;
+    keepCupcakeModeIfMoreToBuy();
     updateDisplay();
   } catch (e) {
     console.warn('Move tile failed:', e.message);
@@ -532,7 +543,7 @@ function onRemovePlate(index) {
   try {
     pushUndoSnapshot();
     removePlate(gameState, index);
-    window._gameUI.cupcakeMode = false;
+    keepCupcakeModeIfMoreToBuy();
     updateDisplay();
   } catch (e) {
     showToast(e.message);
@@ -540,12 +551,15 @@ function onRemovePlate(index) {
 }
 
 function onCupcakeClick() {
-  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-  // Board-spend mode covers TWO actions with separate prices and separate
-  // per-turn allowances: move a tile (1) and remove an empty plate (3). Open the
-  // mode if either is still available - the engine gates the specific cell.
-  const canMoveTile = currentPlayer.cupcakes >= 1 && !gameState.moveUsedThisTurn;
-  if (gameState.gamePhase === 'spend' && (canMoveTile || canRemovePlate(gameState))) {
+  // Board-spend mode covers TWO actions at two prices: move a tile
+  // (MOVE_TILE_CUPCAKE_COST) and remove an empty plate (REMOVE_PLATE_CUPCAKE_COST).
+  // Open the mode if either is still available - the engine gates the cell.
+  //
+  // BOTH GATES COME FROM THE ENGINE (11 August, second revision). The move half
+  // used to be derived here as "has a cupcake and has not moved yet", and the
+  // second clause of that is a rule that has since been deleted. canMoveTile is
+  // the engine's own answer and cannot go stale the next time this moves.
+  if (gameState.gamePhase === 'spend' && (canMoveTile(gameState) || canRemovePlate(gameState))) {
     window._gameUI.cupcakeMode = !window._gameUI.cupcakeMode;
     updateDisplay();
   }
@@ -774,22 +788,31 @@ async function autoPlayGame() {
             botExtraTiles++;
           }
           if (botExtraTiles > 0) updateDisplay();
+          // EVERY SPEND IS A LOOP SINCE 11 AUGUST (second revision), not just the
+          // extra tile: the per-turn allowances are deleted, so a bot with the
+          // purse for it may move two tiles or clear two plates. Each hook is
+          // asked again after it fires and stops when it declines; the counters
+          // are runaway stops only.
+          //
           // Cupcake move: relocate one tile (1) if it completes a card we could
           // not otherwise claim this turn.
-          const moveDecision = bot.decideMove ? await bot.decideMove(gameState, currentPlayer.aiDifficulty) : null;
-          if (moveDecision) {
+          for (let n = 0; n < 25; n++) {
+            const moveDecision = bot.decideMove ? await bot.decideMove(gameState, currentPlayer.aiDifficulty) : null;
+            if (!moveDecision) break;
             moveTile(gameState, moveDecision.fromIndex, moveDecision.toIndex);
           }
-          // Remove an empty plate to the box (3) - a separate allowance from the
-          // move, so both can happen on the same turn.
-          const plateIndex = bot.decideRemovePlate ? await bot.decideRemovePlate(gameState, currentPlayer.aiDifficulty) : null;
-          if (plateIndex !== null && plateIndex !== undefined) {
+          // Remove an empty plate to the box (2) - independent of the move, so
+          // both can happen on the same turn.
+          for (let n = 0; n < 25; n++) {
+            const plateIndex = bot.decideRemovePlate ? await bot.decideRemovePlate(gameState, currentPlayer.aiDifficulty) : null;
+            if (plateIndex === null || plateIndex === undefined) break;
             removePlate(gameState, plateIndex);
           }
           // Paid 2-card deal (8 August): 1 cupcake for 2 new cards on the row,
           // resolved before the claim step so the claim can act on what it turns
           // up. (The paid reserve was driven here too until 11 August.)
-          if (bot.decideDealCards && bot.decideDealCards(gameState)) {
+          for (let n = 0; n < 10; n++) {
+            if (!(bot.decideDealCards && bot.decideDealCards(gameState))) break;
             dealCards(gameState);
           }
           skipSpend(gameState);

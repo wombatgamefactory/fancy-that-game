@@ -5,7 +5,7 @@ import { BOARD_SIZE, REWARD_CARDS } from '../engine/tiles.js';
 // them is a hard error rather than a dead name. countBoardIngredient goes with
 // them: it survives in the engine for the bots, but the only thing that ever
 // asked it a question here was the objectives panel.
-import { getPatternMatches, getLegalDestinations, getMoveCost, canDealCards, canBuyExtraTile, canRemovePlate, canClaimMore, getExtraClaimCupcakeCost, getMaxExtraTilesPerTurn, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, getSweepPlacementCount, getVisibleTeapotSymbols, getStartingCupcakes, isTastingMenuInPlay, getAvailableMenus, getMenuDeficit, getMenuIngredients, satisfiesMenu, TASTING_MENU_VP, TASTING_MENUS, isFlavourInPlay, getFlavourCount, getFlavourLeaders, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
+import { getPatternMatches, getLegalDestinations, getMoveCost, canDealCards, canBuyExtraTile, canMoveTile, canRemovePlate, canClaimMore, getExtraClaimCupcakeCost, getMaxExtraTilesPerTurn, getPerTurnSpendCap, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, getSweepPlacementCount, getVisibleTeapotSymbols, getStartingCupcakes, isTastingMenuInPlay, getAvailableMenus, getMenuDeficit, getMenuIngredients, satisfiesMenu, TASTING_MENU_VP, TASTING_MENUS, isFlavourInPlay, getFlavourCount, getFlavourLeaders, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
 
 // THE MOTION VOCABULARY AND THE SOUND WORLD (stage 8, plan sections 7 and 13).
 // board.js owns exactly two of the seven movement sites - the settle, which fires
@@ -289,6 +289,25 @@ export function showRulesModal() {
     ? 'as often as you can pay'
     : `up to ${extraTileCap} time${extraTileCap === 1 ? '' : 's'} per turn`;
 
+  // THE ALLOWANCE LINE (11 August, second revision). This paragraph read "all of
+  // these are once per turn except the extra tile" and every word of the
+  // exception is now the rule: no spend on the menu has a per-turn allowance.
+  //
+  // DERIVED FROM ALL FOUR LIVE CAPS for the reason in the note above - the caps
+  // have A/B seams (setPerTurnSpendCap, setMaxExtraTilesPerTurn), and a rules
+  // screen stating yesterday's rule is precisely the defect this block exists to
+  // stop. A capped run names the capped spends and leaves the rest alone.
+  const cappedSpends = [
+    ['the extra tile', extraTileCap],
+    ['moving a tile', getPerTurnSpendCap('moveTile')],
+    ['clearing a plate', getPerTurnSpendCap('removePlate')],
+    [`dealing ${CARDS_PER_DEAL} cards`, getPerTurnSpendCap('dealCards')],
+  ].filter(([, cap]) => cap !== null);
+
+  const allowanceRule = cappedSpends.length === 0
+    ? 'Take any of these as often as you can pay. There is no limit on how many cupcakes you spend in a turn.'
+    : `Limited per turn: ${cappedSpends.map(([name, cap]) => `${name} (${cap}x)`).join(', ')}. Take the rest as often as you can pay.`;
+
   const claimRule = extraClaimCost === null
     ? '<strong>One card per turn.</strong>'
     : `<strong>Your first claim is free. Each further one costs ${extraClaimCost} cupcake${extraClaimCost === 1 ? '' : 's'}.</strong>`;
@@ -352,7 +371,7 @@ export function showRulesModal() {
             <div class="ft-rules__text"><strong>${MOVE_TILE_CUPCAKE_COST}:</strong> move one of your tiles to an empty cell.</div>
             <div class="ft-rules__text"><strong>${REMOVE_PLATE_CUPCAKE_COST}:</strong> return one empty plate from your board to the box, freeing that cell.</div>
             <div class="ft-rules__text"><strong>${DEAL_CARDS_CUPCAKE_COST}:</strong> deal ${CARDS_PER_DEAL} new cards onto the card row. <strong>You may claim one of them this turn.</strong> Not available if the row has no room for both.</div>
-            <div class="ft-rules__text">All of these are once per turn except the extra tile, which is ${extraTileRule}. ${spendCount}</div>
+            <div class="ft-rules__text">${allowanceRule} ${spendCount}</div>
           </div>
 
           <div class="ft-rules__step">
@@ -4292,10 +4311,15 @@ function updateStats(gameState) {
     // empty plate to the box (REMOVE_PLATE_CUPCAKE_COST). Both open the same
     // board-spend mode and the engine prices and gates the actual cell on the
     // tap, which is why they share ui.cupcakeMode; they are two chips because
-    // they are two prices and two allowances.
-    const canMoveTile = p.cupcakes >= MOVE_TILE_CUPCAKE_COST && !gameState.moveUsedThisTurn;
+    // they are two prices.
+    //
+    // BOTH ASK THE ENGINE (11 August, second revision). The move used to be
+    // derived here - cupcakes in hand and the move not yet used - and the second
+    // half of that is a rule that no longer exists. canMoveTile also checks
+    // there is a tile to lift and a cell to drop it in, so the chip no longer
+    // lights on a board where the mode would have nothing to offer.
+    const canMoveTileNow = isCurrentPlayer && canMoveTile(gameState);
     const canClearPlate = canRemovePlate(gameState);
-    const canMoveTileNow = isCurrentPlayer && gameState.gamePhase === 'spend' && canMoveTile;
     const canClearPlateNow = isCurrentPlayer && canClearPlate;
     const canUseCupcakes = canMoveTileNow || canClearPlateNow;
     const cupcakeClass = ui.cupcakeMode ? 'ft-cupcake-supply--active' : '';
@@ -4362,16 +4386,26 @@ function updateStats(gameState) {
               <span class="ft-spend-chip__price">${cupcakeMark(SPEND_CUPCAKE_ICON)}<span class="ft-spend-chip__n">${price}</span></span>
             </button>`;
 
-    const extraTilesBought = gameState.extraTilesBoughtThisTurn || 0;
-    // What is left of the notes: two statements of fact, each one line, each
-    // present only while it is true. Neither explains a control.
+    // What is left of the notes: statements of fact, each one line, each present
+    // only while it is true. None of them explains a control.
+    //
+    // FOUR COUNTS SINCE 11 AUGUST (second revision), where there were two. With
+    // no per-turn allowance anywhere on the menu, "what have I already bought
+    // this turn" stops being a yes/no about two of the spends and becomes the
+    // only record of a turn that spent four cupcakes in four taps. They are
+    // written as counts rather than as ticks for the same reason.
     const spendStateLines = [
-      extraTilesBought > 0
-        ? `<span class="ft-cupcake-note">${extraTilesBought} extra tile${extraTilesBought === 1 ? '' : 's'} bought this turn</span>` : '',
-      gameState.cardsDealtThisTurn ? `<span class="ft-cupcake-note">Cards dealt this turn</span>` : '',
-    ].filter(Boolean);
-    // One wrapper rather than three siblings, so three simultaneous statements
-    // cost one gap instead of three inside a sheet with 76px of slack.
+      ['extra tile', gameState.extraTilesBoughtThisTurn || 0],
+      ['tile move', gameState.tilesMovedThisTurn || 0],
+      ['cleared plate', gameState.platesRemovedThisTurn || 0],
+      ['card deal', gameState.cardDealsThisTurn || 0],
+    ].map(([name, n]) => (n > 0
+      ? `<span class="ft-cupcake-note">${n} ${name}${n === 1 ? '' : 's'} this turn</span>` : ''),
+    ).filter(Boolean);
+    // One wrapper rather than a run of siblings, so simultaneous statements cost
+    // one gap between them instead of one each inside a sheet with 76px of
+    // slack. FOUR can now be true at once, which is the worst case to lay out
+    // and is also a turn nobody will play twice a game.
     const spendState = spendStateLines.length
       ? `<div class="ft-cupcake-state">${spendStateLines.join('')}</div>` : '';
 
@@ -4389,16 +4423,16 @@ function updateStats(gameState) {
           <div class="ft-cupcake-spends">
             ${spendChip({ id: 'moveTileBtn', name: 'Move a tile', price: MOVE_TILE_CUPCAKE_COST,
                           live: canMoveTileNow, armed: ui.cupcakeMode,
-                          title: 'At the spend step, once per turn: move one of your tiles to an empty cell on your board.' })}
+                          title: 'At the spend step, as often as you can pay: move one of your tiles to an empty cell on your board.' })}
             ${spendChip({ id: 'clearPlateBtn', name: 'Clear an empty plate', price: REMOVE_PLATE_CUPCAKE_COST,
                           live: canClearPlateNow, armed: ui.cupcakeMode,
-                          title: 'At the spend step, once per turn: return one empty plate from your board to the box, freeing that cell.' })}
+                          title: 'At the spend step, as often as you can pay: return one empty plate from your board to the box, freeing that cell.' })}
             ${spendChip({ id: 'buyExtraTileBtn', name: 'Extra market tile', price: EXTRA_TILE_CUPCAKE_COST,
                           live: canBuyTile, armed: ui.extraTileMode,
                           title: 'At the spend step, as often as you can pay: take any one tile from the market and place it on your board.' })}
             ${spendChip({ id: 'dealCardsBtn', name: `Deal ${CARDS_PER_DEAL} new cards`, price: DEAL_CARDS_CUPCAKE_COST,
                           live: canDeal, armed: false,
-                          title: `At the spend step, once per turn: deal ${CARDS_PER_DEAL} new cards onto the card row. You may claim one of them this turn.` })}
+                          title: `At the spend step, as often as you can pay: deal ${CARDS_PER_DEAL} new cards onto the card row. You may claim one of them this turn.` })}
             ${extraClaimCost === null ? '' : `
             <span class="ft-cupcake-spend-btn ft-spend-chip ft-spend-chip--note${extraClaimLive ? ' is-live' : ''}"
                   aria-label="Complete another card - ${cupcakePrice(extraClaimCost)}"
@@ -4675,9 +4709,13 @@ function updatePhaseControls(gameState) {
     // prices is already printed on the button that charges it. It was a third
     // copy of the same text, after the phase bar's own cupcake hint and the
     // panel's help line.
-    const moveOptions = gameState.moveUsedThisTurn
-      ? `You've used your move for this turn`
-      : `Spend cupcakes (optional)`;
+    // 11 AUGUST (second revision): "You've used your move for this turn" is
+    // deleted, because there is no longer such a thing as YOUR MOVE - a turn buys
+    // as many as it can pay for. The bar states the step and the chips state what
+    // is still affordable, which is the division of labour everywhere else in
+    // this UI. A player who has spent their last cupcake reads that off a chip
+    // that has gone dark, not off a sentence that says the game has stopped them.
+    const moveOptions = `Spend cupcakes (optional)`;
 
     // A TILE IN HAND TAKES OVER THE BAR (10 August). The extra tile is bought and
     // placed in one action at this step, so between the two taps the player is

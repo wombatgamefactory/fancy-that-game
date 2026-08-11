@@ -54,12 +54,14 @@ check(`row grew by ${CARDS_PER_DEAL}`, gs.cardMarket.length === rowBefore + CARD
 check('deck shrank by the same', gs.gameDeck.length === deckBefore - CARDS_PER_DEAL);
 check('cost 1 cupcake', gs.players[0].cupcakes === cupcakesBefore - DEAL_CARDS_CUPCAKE_COST);
 check('nothing was discarded', gs.cardDiscard.length === 0);
-check('the allowance is spent', gs.cardsDealtThisTurn === true);
-check('no longer dealable this turn', !canDealCards(gs));
-try {
-  dealCards(gs);
-  check('a second deal throws', false);
-} catch (e) { check('a second deal throws', true); }
+check('the deal was counted', gs.cardDealsThisTurn === 1);
+check('the legacy mirror is set', gs.cardsDealtThisTurn === true);
+// 11 AUGUST (second revision): THE ONCE-PER-TURN ALLOWANCE IS DELETED, here as
+// on every other spend. These two checks pinned "no longer dealable this turn"
+// and "a second deal throws"; what has to be pinned instead is that a second
+// cupcake buys a second deal, and that MAX_MARKET_CARDS - not an allowance - is
+// what eventually says no.
+check('still dealable with a cupcake in hand', canDealCards(gs));
 
 // THE POINT OF THE RULE: the dealt cards are live for this turn's claim. There
 // is no same-turn lock of any kind left in the game - the reserve carried the

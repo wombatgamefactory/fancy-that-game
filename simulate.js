@@ -4,6 +4,9 @@ import { createGame, sweep, takeBonusTile, declineBonusTile, dealCards, takeExtr
   MOVE_TILE_CUPCAKE_COST, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, MAX_MARKET_CARDS,
   // The extra-tile cap and its A/B seam (9 August, second revision).
   getMaxExtraTilesPerTurn, setMaxExtraTilesPerTurn,
+  // The other three spends' caps - all null since 11 August (second revision),
+  // and read rather than assumed so a capped A/B run labels its own report.
+  getPerTurnSpendCap, setPerTurnSpendCap,
   // The starting-cupcake table and its seam (9 August, second revision).
   STARTING_CUPCAKES_BY_SEAT, setStartingCupcakesTable } from './src/engine/game.js';
 // COLOURS is imported for the bag-skew baseline arithmetic, not for colour logic:
@@ -24,6 +27,35 @@ const CUPCAKE_TOKENS_IN_BOX = 30;
 // every game of the run, in the driver, because the engine has no per-turn hook
 // to hang it on.
 const extraTileTurns = { turns: 0, buys: 0, most: 0, dist: {} };
+
+// THE SAME MEASUREMENT FOR THE OTHER THREE SPENDS (11 August, second revision),
+// now that none of them is capped either. Same shape, same reason: the question
+// the uncapped rule asks is whether a turn CLUMPS its spending, and a cupcake
+// total cannot answer it.
+//
+// READ THESE WITH THE BOT CAVEAT IN MIND. basicBot prices a second tile move
+// against the card it can already claim and mostly refuses it, so a distribution
+// of all 1s here is the expected FIRST result and is not evidence the rule is
+// inert - see decideMove in basicBot.js.
+const spendClumps = {
+  move: { turns: 0, buys: 0, most: 0, dist: {} },
+  plate: { turns: 0, buys: 0, most: 0, dist: {} },
+  deal: { turns: 0, buys: 0, most: 0, dist: {} },
+};
+function recordClump(acc, n) {
+  if (n <= 0) return;
+  acc.turns++;
+  acc.buys += n;
+  acc.dist[n] = (acc.dist[n] || 0) + 1;
+  if (n > acc.most) acc.most = n;
+}
+function clumpLine(label, acc, cap) {
+  const multi = acc.turns - (acc.dist[1] || 0);
+  const dist = Object.keys(acc.dist).sort((a, b) => a - b).map(k => `${k}x${acc.dist[k]}`).join(' ') || '(none)';
+  return `  ${label} (cap = ${cap === null ? 'UNLIMITED' : cap}): turns=${acc.turns} bought=${acc.buys} `
+    + `per buying turn=${acc.turns ? (acc.buys / acc.turns).toFixed(2) : '0.00'} most=${acc.most} `
+    + `multi=${multi} | ${dist}`;
+}
 import * as fastBot from './src/bots/fastBot.js';
 import * as basicBot from './src/bots/basicBot.js';
 import * as randomBot from './src/bots/randomBot.js';
@@ -142,24 +174,47 @@ function runGame(playerConfigs, botStrategy) {
           extraTileTurns.dist[boughtThisTurn] = (extraTileTurns.dist[boughtThisTurn] || 0) + 1;
           if (boughtThisTurn > extraTileTurns.most) extraTileTurns.most = boughtThisTurn;
         }
+        // THE OTHER THREE SPENDS ARE LOOPS TOO SINCE 11 AUGUST (second revision),
+        // for the same reason the extra tile became one on the 9th: no spend on
+        // the menu has a per-turn allowance any more. Each bot hook is asked
+        // again after every purchase and stops when it answers null, which it
+        // does as soon as the purse empties or its own gate closes. Every
+        // MAX_* below is a runaway stop rather than a rule.
+        //
         // Cupcake move: relocate one tile (1) when it completes an otherwise
         // unclaimable card this turn.
-        const moveDecision = strategy.decideMove ? strategy.decideMove(gameState) : null;
-        if (moveDecision) {
+        let movesThisTurn = 0;
+        const MAX_MOVES = 25;
+        while (movesThisTurn < MAX_MOVES) {
+          const moveDecision = strategy.decideMove ? strategy.decideMove(gameState) : null;
+          if (!moveDecision) break;
           gameState = moveTile(gameState, moveDecision.fromIndex, moveDecision.toIndex);
+          movesThisTurn++;
         }
-        // Remove an empty plate to the box (3). A separate allowance from the
-        // move, so both can happen on the same turn - see removePlate.
-        const plateIndex = strategy.decideRemovePlate ? strategy.decideRemovePlate(gameState) : null;
-        if (plateIndex !== null && plateIndex !== undefined) {
+        recordClump(spendClumps.move, movesThisTurn);
+        // Remove an empty plate to the box (2). Independent of the move, so both
+        // can happen on the same turn - see removePlate.
+        let platesThisTurn = 0;
+        const MAX_PLATES = 25;
+        while (platesThisTurn < MAX_PLATES) {
+          const plateIndex = strategy.decideRemovePlate ? strategy.decideRemovePlate(gameState) : null;
+          if (plateIndex === null || plateIndex === undefined) break;
           gameState = removePlate(gameState, plateIndex);
+          platesThisTurn++;
         }
+        recordClump(spendClumps.plate, platesThisTurn);
         // Paid 2-card deal (8 August): 1 cupcake to put CARDS_PER_DEAL new cards
         // on the row. Resolved before the claim step, which may want to act on
-        // what it turns up.
-        if (strategy.decideDealCards && strategy.decideDealCards(gameState)) {
+        // what it turns up. MAX_DEALS is low because MAX_MARKET_CARDS closes this
+        // one long before a purse does.
+        let dealsThisTurn = 0;
+        const MAX_DEALS = 10;
+        while (dealsThisTurn < MAX_DEALS) {
+          if (!(strategy.decideDealCards && strategy.decideDealCards(gameState))) break;
           gameState = dealCards(gameState);
+          dealsThisTurn++;
         }
+        recordClump(spendClumps.deal, dealsThisTurn);
         // (The paid reserve was driven here from 3 August. Deleted 11 August.)
         gameState = skipSpend(gameState);
         break;
@@ -463,6 +518,23 @@ if (capValue !== null) {
 }
 const liveCap = getMaxExtraTilesPerTurn();
 
+// THE ALLOWANCE ARM (11 August, second revision), the same idea one step wider.
+// `allowances=1` restores the per-turn allowance on the other three spends - the
+// move, the plate removal and the paid deal - which is the BASELINE half of any
+// comparison against every run recorded before today. `allowances=unlimited`
+// states the live rule explicitly.
+//
+// PAIR IT WITH maxtiles=1 FOR THE FULL OLD MENU. This arm deliberately leaves
+// the extra tile alone: it went uncapped two days earlier and has been measured
+// under that rule since, so the two caps are separate experiments and folding
+// them into one flag would make the interesting run impossible to isolate.
+const allowanceArg = process.argv.slice(2).find(a => /^allowances=/.test(a));
+if (allowanceArg) {
+  const v = allowanceArg.split('=')[1];
+  const n = v === 'unlimited' ? null : parseInt(v, 10);
+  for (const action of ['moveTile', 'removePlate', 'dealCards']) setPerTurnSpendCap(action, n);
+}
+
 // THE OPENING-PURSE ARM (9 August, second revision). `startminus=1` shifts EVERY
 // seat down by one cupcake, keeping the stagger's differences intact - which is
 // the point, because the differences are what compensate seat 1 for sweeping a
@@ -759,6 +831,13 @@ console.log(`  turns that bought any: ${extraTileTurns.turns} over ${nGames} gam
 console.log(`  tiles bought/buying turn: ${extraTileTurns.turns ? (extraTileTurns.buys / extraTileTurns.turns).toFixed(2) : '0.00'}, most in one turn=${extraTileTurns.most}`);
 console.log(`  distribution: ${Object.keys(extraTileTurns.dist).sort((a, b) => a - b).map(k => `${k}x${extraTileTurns.dist[k]}`).join(' ') || '(none)'}`);
 console.log(`  multi-buy turns: ${extraTileTurns.turns - (extraTileTurns.dist[1] || 0)} (${pct(extraTileTurns.turns - (extraTileTurns.dist[1] || 0), extraTileTurns.turns || 1)} of buying turns)`);
+// THE OTHER THREE SPENDS, CLUMPED (11 August, second revision). Every allowance
+// on the menu is deleted, so each of these can now show a number above 1 - and
+// under the old rule every one of them was a tautology at 1.
+console.log(`OTHER SPENDS PER TURN:`);
+console.log(clumpLine('move a tile      ', spendClumps.move, getPerTurnSpendCap('moveTile')));
+console.log(clumpLine('clear a plate    ', spendClumps.plate, getPerTurnSpendCap('removePlate')));
+console.log(clumpLine(`deal ${CARDS_PER_DEAL} cards     `, spendClumps.deal, getPerTurnSpendCap('dealCards')));
 console.log(`Kept at game end:  ${keptCupcakes} = ${(keptCupcakes / nPlayers).toFixed(2)}/player - SCORES NOTHING since 3 August, tiebreaker only`);
 console.log(`  games where a player finished BROKE (0 held):   ${brokeGames}/${nGames} (${pct(brokeGames, nGames)})`);
 console.log(`  games where a player finished with 4+ unspent:  ${surplusGames}/${nGames} (${pct(surplusGames, nGames)})`);

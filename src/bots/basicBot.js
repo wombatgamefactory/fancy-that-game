@@ -1,4 +1,4 @@
-import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getVisibleTeapotSymbols, getMenuIngredients, getAvailableMenus, isTastingMenuInPlay, isFlavourInPlay, getFlavourCount, getMoveCost, canDealCards, canBuyExtraTile, getMaxExtraTilesPerTurn, canRemovePlate, canClaimMore, countBoardIngredient, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, TASTING_MENU_VP, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
+import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getVisibleTeapotSymbols, getMenuIngredients, getAvailableMenus, isTastingMenuInPlay, isFlavourInPlay, getFlavourCount, getMoveCost, canMoveTile, canDealCards, canBuyExtraTile, getMaxExtraTilesPerTurn, canRemovePlate, canClaimMore, countBoardIngredient, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, TASTING_MENU_VP, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
 
 // Approximate value of a completed claim beyond the card's printed VP: the
 // sacrificed tile is banked on the stand or crumb tray. A conservative floor —
@@ -1453,12 +1453,26 @@ function bestOpenGap(board, pattern) {
   return best;
 }
 
-// Cupcake TILE move at the spend step. ONE move per turn: relocate a tile
-// (MOVE_TILE_CUPCAKE_COST) to complete a card we could not otherwise claim this
-// turn. Immediate, certain, and only worth it if the unlocked card beats the best
-// card already claimable, because a turn allows one claim either way.
+// Cupcake TILE move at the spend step: relocate a tile (MOVE_TILE_CUPCAKE_COST)
+// to complete a card we could not otherwise claim this turn. Immediate, certain,
+// and only worth it if the unlocked card beats the best card already claimable,
+// because the FIRST claim of a turn is free either way.
 //
 // Returns { fromIndex, toIndex } or null.
+//
+// ASK IT AGAIN AFTER EVERY MOVE (11 August, second revision). The one-move
+// allowance is deleted, so the driver loops on this exactly as it already loops
+// on decideExtraTile; each call re-reads the board and prices the next move on
+// its own.
+//
+// WHAT THAT DOES AND DOES NOT BUY, because it is easy to over-read an unchanged
+// number here. `bestNowVp` is the best card ALREADY claimable, and a second move
+// is scored against it, so with one free claim in hand the second move can only
+// ever be a SUBSTITUTION - swap a 4 for a 6, having paid 2 - and the net test
+// mostly refuses it. A second move genuinely pays only when a further claim is
+// also being bought at getExtraClaimCupcakeCost(), which this heuristic does not
+// model. So a flat simulation result is bot vision before it is evidence about
+// the rule; see the spend menu block in game.js.
 //
 // THE PLATE HALF OF THIS FUNCTION HAS MOVED OUT to decideRemovePlate. It used to
 // be branch B here because a plate move and a tile move shared one per-turn
@@ -1467,7 +1481,9 @@ function bestOpenGap(board, pattern) {
 // them would only stop the bot doing something legal.
 export function decideMove(gameState) {
   const player = gameState.players[gameState.currentPlayerIndex];
-  if (gameState.moveUsedThisTurn || player.cupcakes <= 0) return null;
+  // canMoveTile carries the engine's own gate - phase, the (now absent) cap, the
+  // price, and that there is both a tile to lift and a cell to drop it in.
+  if (!canMoveTile(gameState) || player.cupcakes <= 0) return null;
 
   // Claimable candidates are the market cards PLUS this player's reserved cards
   // (which complete as normal claims). A cupcake move that helps any of them is
