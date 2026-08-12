@@ -1642,6 +1642,14 @@ export function decideRemovePlate(gameState) {
 // VP actually banked by sending `tile` to the destination decideDestination
 // would pick for it: the stand row's marginal value (plus the cupcake if that
 // plate carries one), or 1 for the crumb tray.
+//
+// THE CRUMB IS NOW UNDERPRICED HERE BY ABOUT 1 VP, deliberately left alone
+// (11 August). Since CRUMB_CLAIM_LEAVES_PLATE a crumb also hands back the board
+// cell, measured at roughly 1 VP in probe-crumb-no-plate-2026-08-11.js, so the
+// honest figure is nearer 2. Correcting it would re-tune every claim the bot
+// makes and invalidate every saved baseline for a change measured at +0.5 VP a
+// player a game, so the number stays and the bias is written down instead: every
+// crumb-vs-stand figure this bot produces leans slightly toward the stand.
 function destinationValue(player, tile, gameState) {
   const destination = decideDestination(player, tile, gameState);
   if (destination.type !== 'row') return { destination, value: 1 };

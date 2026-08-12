@@ -866,8 +866,55 @@ check('a real claim goes through with no plate supply behind it', () => {
   s.gamePhase = 'claim';
   claim(s, card.id, cells[0], { type: 'crumb' });
   assert(p.claimedCards.includes(card.id), 'the card was claimed');
-  assert(p.board[cells[0]] && p.board[cells[0]].type === 'blocked',
-    'and an empty plate landed on the cell, from an unlimited supply');
+  // 11 AUGUST: the assertion here used to be that a plate landed on the cell
+  // "from an unlimited supply". A CRUMB claim no longer plates the cell at all -
+  // see CRUMB_CLAIM_LEAVES_PLATE - so the thing this test exists to prove (that a
+  // claim is never refused for want of a plate) is now proved by the claim simply
+  // going through. The plating rule itself is covered by the test below.
+  eq(p.board[cells[0]], null, 'and a crumb claim left the cell empty and reusable');
+});
+
+check('the vacated cell is plated by a STAND claim and left empty by a CRUMB claim', () => {
+  // 11 AUGUST, the whole of the crumb-tray plate rule. The components taught this
+  // rule before the engine did: setup puts one plate on each of the 10 cake-stand
+  // squares, so a stand claim hands the player the plate to drop, and the crumb
+  // tray has none to hand. See CRUMB_CLAIM_LEAVES_PLATE for what it is worth.
+  const layout = (p, card) => {
+    p.board = Array(25).fill(null);
+    const cells = [];
+    for (let i = 0; i < card.pattern.length; i++) {
+      if (card.pattern[i] === null) continue;
+      const idx = Math.floor(i / 3) * 5 + (i % 3);
+      p.board[idx] = { colour: card.pattern[i], ingredient: 'lemon' };
+      cells.push(idx);
+    }
+    return cells;
+  };
+
+  const s = newGame(2);
+  s.currentPlayerIndex = 0;
+  const p = s.players[0];
+
+  // A STAND claim: the tile goes to a row, the plate comes off that row's square
+  // and lands on the cell.
+  const standCard = s.cardMarket[0];
+  const standCells = layout(p, standCard);
+  s.gamePhase = 'claim';
+  claim(s, standCard.id, standCells[0], { type: 'row', rowIndex: 3 });
+  eq(p.stand[3].tiles.length, 1, 'the tile was plated onto the top row');
+  assert(p.board[standCells[0]] && p.board[standCells[0]].type === 'blocked',
+    'and an empty plate fills the cell it came from');
+
+  // A CRUMB claim on the same board: no plate, the cell stays open.
+  s.claimsThisTurn = 0;
+  const crumbCard = s.cardMarket[0];
+  const crumbCells = layout(p, crumbCard);
+  s.gamePhase = 'claim';
+  claim(s, crumbCard.id, crumbCells[0], { type: 'crumb' });
+  eq(p.crumbTray.length, 1, 'the tile went into the crumb tray');
+  eq(p.board[crumbCells[0]], null, 'and the cell it came from is empty, not plated');
+  assert(getValidPlacements(p.board).includes(crumbCells[0]),
+    'so a new tile may be placed there again');
 });
 
 check('real bot games also finish on a whole number of rounds', () => {

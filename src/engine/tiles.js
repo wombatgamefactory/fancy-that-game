@@ -86,11 +86,14 @@ export const INGREDIENTS = ['lemon', 'chocolate', 'caramel', 'strawberry', 'almo
 // ends anything - the pot simply does not arrive - so what the bag size now
 // decides is WHETHER END CONDITION 2 IS REACHABLE AT ALL:
 //
-//   Every board cell permanently absorbs exactly one tile. A claim moves the tile
-//   off the cell to the cake stand or the crumb tray and drops an empty plate on
-//   the same cell, so the cell is spent either way. The table can therefore
-//   absorb 25 x playerCount tiles, plus one more for each plate a player pays 3
-//   cupcakes to take off their board.
+//   A board cell absorbs one tile and is then spent. A claim moves the tile off
+//   the cell to the cake stand and drops an empty plate on the same cell. The
+//   table can therefore absorb 25 x playerCount tiles, plus one more for each
+//   plate a player pays cupcakes to take off their board, plus one more for each
+//   CRUMB claim - which since 11 August leaves its cell empty rather than plating
+//   it (see CRUMB_CLAIM_LEAVES_PLATE in game.js). Crumbs run at 5-7% of claims
+//   and claims at 6-8 a player, so that last term is under one cell per player
+//   per game and does not disturb the arithmetic below.
 //
 //   That is 50 / 75 / 100 at 2 / 3 / 4 players against a bag of 125 since
 //   7 August. "The market and the bag are both empty" is now STRUCTURALLY

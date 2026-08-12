@@ -745,6 +745,53 @@ export const CARDS_PER_DEAL = 2;
 // predates the clock change and undervalues a reclaimed cell.
 export const REMOVE_PLATE_CUPCAKE_COST = 2;
 
+// DOES A CRUMB-TRAY CLAIM LEAVE AN EMPTY PLATE ON THE BOARD? Since 11 August, NO.
+// A claim that plates the tile onto the CAKE STAND blocks the cell it came from,
+// exactly as before. A claim that drops the tile into the CRUMB TRAY leaves that
+// cell EMPTY and immediately reusable.
+//
+// THE COMPONENTS DECIDED THIS, NOT THE MATHS. Setup puts one plate on each of the
+// 10 cake-stand squares (v10 rulebook), so plating onto the stand hands the player
+// the very plate they must drop on their board - a gesture that is right 100% of
+// the time without anybody reading a rule. The crumb tray holds no plates, so the
+// same gesture says "no plate" there. Every player at the table infers this rule
+// whether or not it is the rule, so the only question worth asking was whether it
+// is affordable. It is.
+//
+// AND THE PLATE COUNT NOW BALANCES EXACTLY, which is the argument that settled it.
+// The box ships 10 plates per player against 10 stand squares. Under the old rule
+// a crumb claim also wanted a plate and there was no supply left for one - and
+// 2-3% of seats claim more than 10 times (max observed 13 over 750 games), so the
+// component count was already short, on the players doing best. Under this rule
+// one plate is consumed exactly when its own stand square is filled, stand plating
+// is capped at 10 by construction, and the supply can never run short or run long.
+//
+// WHAT A FREED CELL IS ACTUALLY WORTH: about 1 VP. Measured in
+// probe-crumb-no-plate-2026-08-11.js by running a greedy seat that dumps to the
+// crumb tray to farm free cells, under both rule sets - same decisions, only this
+// constant differs. The greedy seat recovers 9.8 / 6.5 / 6.0 VP at 2 / 3 / 4
+// players over ~7 crumbs, and STILL loses catastrophically in both arms (16.8 /
+// 5.0 / 5.6% win share against 50 / 33 / 25 expected). A crumb pays 1 VP against
+// 3-14 for plating; a further ~1 VP of free cell does not come close to flipping
+// that. Note this is well under the engine's own price for the same cell -
+// REMOVE_PLATE_CUPCAKE_COST is 2 cupcakes and basicBot prices a cupcake at 2 VP,
+// a 4 VP hurdle it almost never clears, and now we know why.
+//
+// PASSIVE DRIFT, which is what a real table will see, because nobody will play for
+// this: the crumb tray runs at 5-7% of claims, so a player crumbs about 0.5 times
+// a game. Mean score +1.0 / +1.4 / +0.1 VP, turns +0.6, crumb rate essentially
+// unchanged. It does NOT convert the tray into a lane, which was the thing worth
+// worrying about - Dean's 6 August ruling that a crumb is a failure state stands.
+//
+// WHAT TO WATCH: a reopened cell defers the board-fill ending by roughly one tile,
+// and board-fill is the game's only clock (it ends 100% of games). Measured at
+// +0.6 turns and it applies to every seat equally, so it is not a clock lever
+// anybody can pull - but it is the second thing in the game that pushes the ending
+// away, after the paid plate removal above, and the two now compound.
+//
+// Left as a constant rather than inlined so the A/B can be re-run against it.
+export const CRUMB_CLAIM_LEAVES_PLATE = false;
+
 // (RESERVE_LIMIT stood here: 1 card held in a personal reserve. DELETED
 // 11 AUGUST with the reserve itself. A card is either on the shared row or
 // claimed - there is no third place for one to be, and no code should invent
@@ -1236,13 +1283,19 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     //                     you can and the excess goes back into the bag, and the
     //                     player keeps their spend and their claim. See place().
     //
-    // WHY CONDITION 2 CAN ESSENTIALLY NEVER FIRE, so nobody "fixes" it. Every
-    // board cell permanently absorbs exactly one tile - a claim moves the tile off
-    // the cell to the stand or the crumb tray and drops a plate on the same cell,
-    // so the cell is spent either way. The table can absorb 25 x playerCount tiles
-    // (plus one more per plate bought off a board) against a bag of TILE_BAG_SIZE =
-    // 100. That is 50 / 75 / 100, so at 2 and 3 players condition 2 is
-    // STRUCTURALLY UNREACHABLE and at 4 it is a photo finish the board fill wins.
+    // WHY CONDITION 2 CAN ESSENTIALLY NEVER FIRE, so nobody "fixes" it. A board
+    // cell absorbs one tile and is then spent - a claim moves the tile off to the
+    // stand and drops a plate on the same cell. The table can absorb 25 x
+    // playerCount tiles against a bag of TILE_BAG_SIZE = 100. That is 50 / 75 /
+    // 100, so at 2 and 3 players condition 2 is STRUCTURALLY UNREACHABLE and at 4
+    // it is a photo finish the board fill wins.
+    //
+    // TWO THINGS HAND CELLS BACK and so raise that ceiling: a plate bought off a
+    // board (one cell each, rare), and since 11 August a CRUMB claim, which leaves
+    // its cell empty rather than plating it (see CRUMB_CLAIM_LEAVES_PLATE). Crumbs
+    // run at 5-7% of claims and claims at 6-8 a player, so that is well under one
+    // extra cell per player per game and the arithmetic above survives it. Measured
+    // effect on game length: +0.6 turns at every player count.
     // Over 3,000 simulated games condition 1 ended 100% of them at every count. It
     // is kept because it is what stops a pathological table sitting on a dry market
     // for ever, and it costs one line.
@@ -2382,7 +2435,15 @@ export function claim(gameState, cardId, removedBoardIndex, destination) {
     }
   }
 
-  player.board[removedBoardIndex] = { type: 'blocked' };
+  // THE VACATED CELL. A stand claim always blocks it with an empty plate. A crumb
+  // claim leaves it empty and reusable unless CRUMB_CLAIM_LEAVES_PLATE says
+  // otherwise - see that constant for why, and for what it is worth. This is the
+  // ONLY place a claim writes to the board, so it is the only place the rule lives.
+  if (destination.type === 'row' || CRUMB_CLAIM_LEAVES_PLATE) {
+    player.board[removedBoardIndex] = { type: 'blocked' };
+  } else {
+    player.board[removedBoardIndex] = null;
+  }
   player.claimedCards.push(cardId);
   // A claim breaks the empty-market deadlock watch (see the backstop).
   gameState.turnsSinceLastClaim = 0;

@@ -379,7 +379,7 @@ export function showRulesModal() {
             <div class="ft-rules__text">If tiles on your board make a card's colour pattern, in any rotation or reflection, claim it. ${claimRule}</div>
             <div class="ft-rules__text">Remove 1 tile from the pattern and put it on a cake stand row or in your crumb tray.</div>
             <div class="ft-rules__text">Each ingredient locks to <strong>one</strong> stand row: the first tile you plate fixes that row, and no other row may ever hold that ingredient. Once the row is full, further tiles of it go to the crumb tray.</div>
-            <div class="ft-rules__text">An empty plate fills the cell the tile came from. Nothing can be placed there again and it breaks patterns. Plates are unlimited.</div>
+            <div class="ft-rules__text">If the tile went to a <strong>stand row</strong>, take the empty plate off that row's square and put it on the cell the tile came from. Nothing can be placed there again and it breaks patterns. If the tile went to the <strong>crumb tray</strong>, no plate: the cell stays empty and can be filled again.</div>
           </div>
 
           <!-- Step 5 used to be "Check Objectives", the end-of-turn pantry goal
