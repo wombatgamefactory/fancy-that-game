@@ -43,6 +43,8 @@ import {
   place, claim, skipClaim, skipSpend, moveTile, removePlate, canRemovePlate,
   getMoveCost, refill, calculateFinalScores,
   getTotalCardsClaimed, getValidPlacements, canClaimMore, getSweepPlacementCount,
+  // 12 August: end condition 3, a full cake stand.
+  isStandFull,
   MOVE_TILE_CUPCAKE_COST, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST,
   // 4 August: the tile-market and equal-turns blocks arm the tea trigger by hand,
   // which means uncovering the printed teapot cells rather than assuming indices.
@@ -444,31 +446,51 @@ check('nothing caps claiming, and no claim is ever refused for want of a plate',
 check('a full board ends the game, and it is the ending that fires in real play', () => {
   // The headline of the 6 August change, asserted against real bot games rather
   // than a constructed state: the board fill is the clock, and it is expected to
-  // end essentially every game (100% of 3,000 in simulation). Five games apiece is
-  // not a rate measurement - it is a check that the OTHER conditions have not
-  // quietly taken the job back.
+  // end the large majority of games (100% of 3,000 in simulation before a third
+  // condition existed). Five games apiece is not a rate measurement - it is a
+  // check that the OTHER conditions have not quietly taken the job back.
+  //
+  // 'standFull' WAS ADDED TO THIS LIST ON 12 AUGUST. It takes about 1% of games
+  // (probe-standfull-ab-2026-08-12), so across the 15 games here it will almost
+  // never appear - it is on the list so that the day it does, the suite reports a
+  // real result rather than a failure. Each reason is verified against the state
+  // that is supposed to have caused it, so a reason arriving with nothing behind
+  // it still fails.
   for (const pc of [2, 3, 4]) {
     for (let g = 0; g < 5; g++) {
       const s = playOut(pc);
-      assert(s.endGameReason === 'boardFull' || s.endGameReason === 'marketTiles',
-        `${pc}p: ended on '${s.endGameReason}', which is not one of the two live conditions`);
+      assert(['boardFull', 'marketTiles', 'standFull'].includes(s.endGameReason),
+        `${pc}p: ended on '${s.endGameReason}', which is not one of the three live conditions`);
       if (s.endGameReason === 'boardFull') {
         assert(s.players.some(p => getValidPlacements(p.board).length === 0),
           `${pc}p: 'boardFull' was reported but no board is actually full`);
+      }
+      if (s.endGameReason === 'standFull') {
+        assert(s.players.some(p => isStandFull(p)),
+          `${pc}p: 'standFull' was reported but no cake stand is actually full`);
       }
     }
   }
 });
 
-// --- 7. THE TWO END CONDITIONS (6 August) ----------------------------------
+// --- 7. THE END CONDITIONS (6 August, extended 12 August) ------------------
 //
-// THE RULE, in full. The game ends when EITHER
+// THE RULE, in full. The game ends when ANY of
 //   1. a player's board is completely full - all 25 cells hold a tile or an empty
-//      plate ('boardFull'), or
+//      plate ('boardFull'),
 //   2. no tiles remain in the supply - the tile market is empty AND the bag is
-//      empty ('marketTiles').
+//      empty ('marketTiles'), or
+//   3. a player's cake stand is completely full - all four rows at capacity,
+//      4 + 3 + 2 + 1 = 10 tiles ('standFull', new 12 August).
 // Nothing else ends the game. As before, a trigger only ARMS the ending and play
 // continues until the turn returns to the start player.
+//
+// CONDITION 3 IS NOT TESTED IN THIS SECTION. It has its own file,
+// test-rules-2026-08-12-standfull.mjs, because everything below is built around
+// driving the TILE SUPPLY through refill() and the stand is on the other side of
+// the game. What this section owes it is the negative: none of the states here
+// touches a stand, so every `endGameReason === null` assertion below is also an
+// assertion that condition 3 does not fire on its own.
 //
 // WHAT THIS SECTION USED TO SAY, and why it is worth writing down rather than
 // simply deleting: it pinned the 4 August tile-market rule, in which a pot of tea

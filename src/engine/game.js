@@ -1249,7 +1249,7 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     // turns but did not - a boundary check firing at seat 3 of 4 left seats 1-3
     // a turn ahead of seat 4.
     endTriggered: false,
-    // endGameReason - every value the engine can set. THERE ARE TWO (6 August).
+    // endGameReason - every value the engine can set. THERE ARE THREE (12 August).
     //
     //   'boardFull'   - END CONDITION 1, AND THE GAME'S CLOCK. Any player's
     //                   personal board is completely full: all 25 cells hold a
@@ -1259,6 +1259,28 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     //                   rather than waiting a lap for their next one.
     //   'marketTiles' - END CONDITION 2. No tiles remain in the supply: the tile
     //                   market is empty AND the bag is empty (applyEmptyMarketRule).
+    //   'standFull'   - END CONDITION 3, NEW ON 12 AUGUST. Any player's CAKE STAND
+    //                   is completely full: all four rows at capacity, 4+3+2+1 = 10
+    //                   tiles. Checked in the same loop as condition 1, and it is
+    //                   named ahead of it when a single turn arms both - see there.
+    //
+    // WHY CONDITION 3 EXISTS, AND WHY IT COULD NOT HAVE EXISTED BEFORE. A player
+    // with a full stand has nothing left to buy. Every one of the 10 platings
+    // arrived by a claim, and once all four rows are at capacity
+    // getLegalDestinations can only ever return the crumb tray - so every future
+    // claim is worth a flat 1 VP against the 3-14 a plating pays, and the card VP
+    // on top of it. That player is not playing the game any more, they are
+    // running out the clock on everybody else, and the game should stop.
+    //
+    // It was unreachable until 11 August. One claim a turn against a ~16-turn
+    // 2-player game left no route to 10 platings; uncapped repeat claims put it
+    // in range - just. It ends 0.4 / 0.8 / 1.2% of games at 2/3/4 players, and
+    // NOTHING ELSE MOVES when it is switched on: turns and scores both shift by
+    // less than the run-to-run spread. A full stand needs four distinct
+    // ingredients in exactly 4/3/2/1 under the one-row-per-ingredient rule, and
+    // measured claims run 7.2 a seat against the 10 platings it wants - about 30%
+    // of seats finish three rows and 0.5% finish four. Measured in
+    // probe-standfull-end-2026-08-12.js and probe-standfull-ab-2026-08-12.js.
     //
     // THE THREE THAT WERE DELETED ON 6 AUGUST, written down so none of them is
     // reinvented as "the obvious missing ending":
@@ -2299,6 +2321,34 @@ export function getLegalDestinations(player, tile) {
   return destinations;
 }
 
+// END CONDITION 3 (12 August): does a full cake stand end the game? Same
+// constant-plus-setter shape as TASTING_MENU_ENABLED and FLAVOUR_ENABLED, and the
+// same rule about it - PRODUCTION CODE MUST NEVER CALL THE SETTER; the game always
+// starts from the constant. It exists so a harness can play the control arm
+// without reconstructing the old behaviour by hand, which is how the incidence and
+// game-length figures in probe-standfull-ab-2026-08-12.js are measured.
+export const STAND_FULL_ENDS_GAME = true;
+let standFullEndsGame = STAND_FULL_ENDS_GAME;
+export function getStandFullEndsGame() { return standFullEndsGame; }
+export function setStandFullEndsGame(on) { standFullEndsGame = !!on; }   // tests and harnesses only
+
+// IS THIS PLAYER'S CAKE STAND COMPLETE? All four rows at capacity - 4 + 3 + 2 + 1
+// = 10 tiles, one row per ingredient. END CONDITION 3 (12 August); see the
+// endGameReason block in createGame for why a full stand ends the game.
+//
+// Exported because three different callers need the same answer and none of them
+// should be re-deriving it from `capacity`: advanceToNextTurn arms the ending on
+// it, the UI has to be able to say why a claim can only reach the crumb tray, and
+// any probe measuring how close a table gets wants the engine's own predicate
+// rather than its own copy of the arithmetic.
+//
+// EQUIVALENT TO "getLegalDestinations can only return the tray, whatever the
+// tile", and that equivalence is the rule. It is written against capacity instead
+// of by calling that function because it must hold with no tile in hand.
+export function isStandFull(player) {
+  return player.stand.every(row => row.tiles.length >= row.capacity);
+}
+
 // Claim a reward card: complete its pattern on the board, plant a tart token on
 // one of the matched cells, and send the tile that was there to a stand row or
 // the crumb tray.
@@ -2831,6 +2881,10 @@ function endTurn(gameState, teaDue) {
 //     ANY player's personal board is completely full - all 25 cells hold a tile or
 //     an empty plate. See the loop below for why it is every player rather than
 //     the incoming one, and why it runs before the stop.
+//   STAND-FULL TRIGGER (END CONDITION 3, new 12 August):
+//     ANY player's cake stand is completely full - all four rows at capacity. Same
+//     loop, same equal-turns stop, checked FIRST so it wins the naming when a turn
+//     arms both. See there.
 //
 // THE EMPTY-BAG CHECK IS GONE FROM HERE. An empty bag is no longer an ending in
 // itself (4 August), and since 6 August a pot due against one is not an ending
@@ -2886,6 +2940,31 @@ function advanceToNextTurn(gameState) {
   // turn begins. So "a full board sweeps and bins everything" is a corner rather
   // than a normal turn. It is legal and must not throw (see place()), but nothing
   // elaborate is built for it.
+  // END CONDITION 3: A CAKE STAND IS FULL (12 August), checked in the same pass.
+  //
+  // STAND BEFORE BOARD, and that is a deliberate choice about which reason a
+  // player is told rather than about which fires. triggerEndGame keeps the FIRST
+  // reason, so when one turn arms both - a stand completing while somebody's board
+  // fills - the order in this loop decides the name on the end screen.
+  // 'boardFull' ends 99% of games and says almost nothing; 'standFull' is the rare
+  // and specific one (0.4 / 0.8 / 1.2% of games at 2/3/4 players, measured), and it
+  // is the one worth reporting. Both arm the same ending on the same turn either
+  // way, so this ordering costs nothing and buys a better end screen.
+  //
+  // A stand can only fill on its owner's own turn - claim's 'row' branch is the
+  // only route a tile has onto a stand - so the loop across every player is not
+  // strictly needed for this one. It costs nothing, it matches how condition 1 is
+  // written directly below, and it is correct in advance of any future effect that
+  // plates a tile outside the claim step.
+  if (standFullEndsGame) {
+    for (const p of gameState.players) {
+      if (isStandFull(p)) {
+        triggerEndGame(gameState, 'standFull');
+        break;
+      }
+    }
+  }
+
   for (const p of gameState.players) {
     if (getValidPlacements(p.board).length === 0) {
       triggerEndGame(gameState, 'boardFull');

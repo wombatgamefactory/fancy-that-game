@@ -485,11 +485,20 @@ export function showRulesModal() {
              pot of tea that cannot be poured no longer ends anything, and
              sweeping more than you can hold is now the placement rule in step 2
              rather than an ending. The trigger-then-finish-the-round shape is
-             unchanged and still leads the section. -->
+             unchanged and still leads the section.
+
+             12 AUGUST: two bullets became three. A full cake stand ends the game
+             ('standFull'). It goes SECOND rather than last because it is the only
+             trigger on the list a player can aim at, even though it is the rarest -
+             about 1% of games. Its clause says what the player has achieved and
+             then why that is an ending, in that order, because the reason
+             ("nothing left to serve") is what makes the rule feel fair rather than
+             arbitrary. -->
         <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--end">
           <div class="ft-rules__section-title">Game Ends When</div>
-          <div class="ft-rules__text">Either trigger fires:</div>
-          <div class="ft-rules__text">• <strong>A player's board is full</strong> - all 25 cells hold a tile or an empty plate, or</div>
+          <div class="ft-rules__text">Any trigger fires:</div>
+          <div class="ft-rules__text">• <strong>A player's board is full</strong> - all 25 cells hold a tile or an empty plate,</div>
+          <div class="ft-rules__text">• <strong>A player's cake stand is full</strong> - all four rows complete, 10 treats served. There is nothing left for them to serve, or</div>
           <div class="ft-rules__text">• <strong>No tiles are left</strong> - the market and the bag are both empty.</div>
           <div class="ft-rules__text">Play then continues until the turn comes back round to the start player, so everyone has had the same number of turns. Then score.</div>
           <div class="ft-rules__text">Nothing else ends the game. If a pot of tea comes due with an empty bag, the pot simply does not happen and play continues.</div>
@@ -1215,10 +1224,16 @@ function bindSoundToggle() {
 // (a sweep bigger than the board) are all deleted from the rules, so their copy
 // goes with them rather than sitting here waiting for a value that can never
 // arrive.
+//
+// AND TWO BECAME THREE ON 12 AUGUST: 'standFull', a player completing all four
+// cake-stand rows. Its clause says what the player ACHIEVED rather than what ran
+// out, because unlike the other two this ending is somebody's doing - it is the
+// only reason on this list a player can be pleased to read.
 function endGameReasonText(gameState) {
   const reasons = {
     boardFull: 'A player filled their board completely.',
     marketTiles: 'The last tile left the market and the bag was empty.',
+    standFull: 'A player filled every row of their cake stand.',
   };
   const reason = reasons[gameState.endGameReason];
   if (!reason) return '';
