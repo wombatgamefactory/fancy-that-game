@@ -1752,8 +1752,20 @@ a .ft-icon {
 
    All the renderer emits now is the card's ADDRESS on the sheet - a column and
    a row - and the geometry is done in percentages, which are independent of the
-   rendered size. reward-cards-v6.webp is a TTS-style 10x7 sheet (3391 x 3290);
+   rendered size. reward-cards-v8.webp is a TTS-style 10x7 sheet (3391 x 3290);
    cards 1-50 fill the first five rows and the last two are blank.
+
+   v7/v8 (13 August) ARE THE PATTERN REMIX. Every card's pattern was redrawn so
+   it depicts its own patisserie - colour reads as appearance, not flavour - and
+   25 of the 50 subjects changed. v8 is the live one, resampled from
+   Reward-Cards-v12a.png; v7 came from the earlier Reward-Cards-v12.png and is
+   superseded twice over - card 17 was a duplicate of card 48, and a laurel
+   wreath had been left printed under the VP. THAT WREATH IS WHY THE SOURCE IS
+   NAMED v12a: .ft-card__vp draws its own badge over that spot, so a wreath in
+   the art double-prints under it. If a future export brings one back, either
+   drop it or re-fit the badge - measured, the wreath sits at 0.919 of card
+   height and 0.188 of card width, against the badge's 0.913 and 0.185.
+   v6 and v7 are both kept to diff against.
 
    WEB SCALE, NOT PRINT SCALE (ticket 17, 9 August). v5 was the print export
    dropped straight into the build at 7501 x 7277 and 11.3MB, which was 92.4% of
@@ -1794,7 +1806,7 @@ a .ft-icon {
   position: relative;
   height: var(--card-height);
   aspect-ratio: 0.72155;
-  background-image: url('images/reward-cards-v6.webp?v=6');
+  background-image: url('images/reward-cards-v8.webp?v=8');
   background-repeat: no-repeat;
   background-size: 1000% 700%;
   background-position: calc(var(--sprite-col) / 9 * 100%)
