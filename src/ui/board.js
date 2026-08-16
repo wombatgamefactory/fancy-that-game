@@ -418,16 +418,26 @@ export function showRulesModal() {
              STATELESS, like the cupcakes section below it: this modal opens from
              the SETUP screen as well as from a live game, so it cannot name which
              menus are on the table. The card value and the deck size are read off
-             the engine rather than typed in. -->
+             the engine rather than typed in.
+
+             THE ONE THING IT IS NO LONGER STATELESS ABOUT, 16 August: WHETHER TO
+             APPEAR AT ALL. The module is an expansion now and it is off by
+             default, so a first-time player reading the rules before their first
+             game must not be taught a rule that is not in their game - which was
+             Dean's ruling on exactly this question. rulesShowMenus carries the
+             setup screen's radio before Start and the live game's truth after it.
+             The section is also LABELLED as an expansion when it does appear, so
+             a player who has switched it on knows what they switched on. -->
+        ${rulesShowMenus ? `
         <div class="ft-rules__section ft-rules__section--boxed ft-rules__section--menus">
-          <div class="ft-rules__section-title">Tasting Menus</div>
+          <div class="ft-rules__section-title">Tasting Menus <span class="ft-rules__tag">mini expansion</span></div>
           <div class="ft-rules__text">At setup, deal one more than the number of players face up beside the market, from a deck of ${TASTING_MENUS.length}. They are never replaced.</div>
           <div class="ft-rules__text">Each asks for three tiles: one ingredient twice and a second once, or three different ingredients.</div>
           <div class="ft-rules__text">The moment your <strong>cake stand and crumb tray together</strong> show those ingredients, take the card. Free, automatic, and no part of your turn.</div>
           <div class="ft-rules__text">Ingredients are not spent - the same tiles can satisfy more than one menu.</div>
           <div class="ft-rules__text">Only one player can take a given menu. First to qualify keeps it, and it never returns.</div>
           <div class="ft-rules__text"><strong>${TASTING_MENU_VP} points</strong> each at the end of the game.</div>
-        </div>
+        </div>` : ''}
 
         <!-- THE FLAVOUR OF THE DAY (6 August). It sits directly after the Tasting
              Menu because that is where it sits on the table, and because the two
@@ -474,7 +484,7 @@ export function showRulesModal() {
           <div class="ft-rules__text"><strong>Cake stand:</strong> each row by how many plates it fills. The bottom row climbs ${STAND_ROW_VALUES[0].join(' / ')}; shorter rows print their own totals.</div>
           <div class="ft-rules__text"><strong>Crumb tray:</strong> 1 per tile.</div>
           <div class="ft-rules__text"><strong>Cards:</strong> the points printed on each card you claimed.</div>
-          <div class="ft-rules__text"><strong>Tasting Menus:</strong> ${TASTING_MENU_VP} each.</div>
+          ${rulesShowMenus ? `<div class="ft-rules__text"><strong>Tasting Menus:</strong> ${TASTING_MENU_VP} each.</div>` : ''}
           <div class="ft-rules__text"><strong>Flavour of the Day:</strong> ${FLAVOUR_VP_PER_TILE} per tile on your player board, and ${FLAVOUR_MAJORITY_VP} more to the player or players with the most.</div>
           <div class="ft-rules__text"><strong>Cupcakes:</strong> nothing.</div>
           <div class="ft-rules__text"><strong>Tiebreak:</strong> most cupcakes, then most cards claimed, then the victory is shared.</div>
@@ -515,6 +525,59 @@ export function showRulesModal() {
     if (e.target === modal) modal.remove();
   });
 };
+
+// ---------------------------------------------------------------------------
+// THE TASTING MENU EXPANSION SWITCH (16 August)
+// ---------------------------------------------------------------------------
+// The Tasting Menu is out of the base game and is a MINI EXPANSION FOR
+// EXPERIENCED PLAYERS. Dean's ruling: your first game does not use it.
+//
+// OFF IS THE DEFAULT AND THE DEFAULT IS THE POINT. A first-time visitor - and a
+// publisher opening the pitch link, which is the same visitor - gets the base
+// game with no decision to make. Turning it on is a deliberate act.
+//
+// THE PREFERENCE IS REMEMBERED, in its own localStorage key, following
+// sound.js's pattern exactly rather than inventing a second one: it is a
+// preference about this player and not game state, so it is never in the save
+// blob, it is not discarded with a save, and it survives a version bump. An
+// experienced player who turns it on keeps it on; absent means OFF, so the
+// first-ever visit is always the base game.
+//
+// HOW IT REACHES THE ENGINE, and this is the part worth reading before changing
+// anything: it does NOT call setTastingMenusEnabled. That setter is a global the
+// engine documents as harness-only, and mutating it here would poison
+// save.js's shapeFingerprint - the fingerprint calls createGame to derive the
+// state shape, so an off-game would compute a DIFFERENT stamp and silently
+// discard every save written by an on-game and vice versa. Instead the choice is
+// passed per game as createGame's `tastingMenus: []` pinned deal, which deals an
+// empty menu deck for THIS game only. Every hook in engine, bots and UI is gated
+// on isTastingMenuInPlay, which reads the state array, so an empty deal switches
+// the whole module off - and it rides in the save blob, so a resumed game
+// resumes in the mode it was started in with no extra bookkeeping.
+const MENU_PREF_KEY = 'ft-tasting-menu';
+let cachedMenuPref = null;
+
+function tastingMenuPref() {
+  if (cachedMenuPref === null) {
+    let v = null;
+    try { v = localStorage.getItem(MENU_PREF_KEY); } catch { /* privacy modes throw */ }
+    cachedMenuPref = (v === 'on');          // absent means OFF
+  }
+  return cachedMenuPref;
+}
+
+function setTastingMenuPref(on) {
+  cachedMenuPref = !!on;
+  try { localStorage.setItem(MENU_PREF_KEY, on ? 'on' : 'off'); } catch { /* nothing to do */ }
+}
+
+// WHAT THE RULES MODAL SHOULD SAY, which is not the same question as what this
+// game is playing. The modal opens from the SETUP screen as well as from a live
+// game and takes no arguments at either site, so the answer is held here: the
+// setup screen writes the radio's value into it as it changes, and
+// renderGameScreen writes the live game's truth into it. A player reading the
+// rules before pressing Start sees the game they are about to get.
+let rulesShowMenus = tastingMenuPref();
 
 // THE RESUME CARD (stage 8, plan section 10, decision 4)
 //
@@ -586,6 +649,41 @@ export function renderSetupScreen(container, onStart, resume = null) {
               <option value="3">3 Players</option>
               <option value="4">4 Players</option>
             </select>
+          </div>
+
+          <!-- THE TASTING MENU EXPANSION (16 August). Dean's placement: directly
+               under the player count and ABOVE the seats, because it is a
+               question about which game is being played rather than about who is
+               playing it, and the seats are the last thing you set before Start.
+
+               A REAL RADIO GROUP, not the segmented toggle the seats use, and
+               Dean chose it knowing the difference. The toggle pairs below say
+               "this seat is one of these two things"; this says "the game is
+               either the base game or the base game plus an expansion", which is
+               the sentence a radio group is for. It is a <fieldset> with a
+               <legend> so the note below is read out with the choice rather than
+               stranded after it.
+
+               THE NOTE IS NOT DECORATION. It is the only place the web build
+               says what the rulebook says - that this is a mini expansion, and
+               that a first game does not use it - so it stays visible rather
+               than becoming a tooltip. -->
+          <div class="ft-setup__section">
+            <fieldset class="ft-setup__fieldset">
+              <legend class="ft-setup__label">Tasting Menus</legend>
+              <div class="ft-setup__radio-group" id="tastingMenuGroup">
+                <label class="ft-setup__radio">
+                  <input type="radio" name="tastingMenu" value="off"${tastingMenuPref() ? '' : ' checked'}>
+                  <span>Off</span>
+                </label>
+                <label class="ft-setup__radio">
+                  <input type="radio" name="tastingMenu" value="on"${tastingMenuPref() ? ' checked' : ''}>
+                  <span>On</span>
+                </label>
+              </div>
+              <p class="ft-setup__note">A mini expansion for experienced players. Leave it
+                 off for your first game, then add it once you know the base game.</p>
+            </fieldset>
           </div>
 
           <div id="playerSetup" class="ft-setup__section"></div>
@@ -684,10 +782,28 @@ export function renderSetupScreen(container, onStart, resume = null) {
   playerCount.addEventListener('change', updatePlayerSetup);
   updatePlayerSetup();
 
+  // THE CHOICE IS WRITTEN AWAY AT THE MOMENT IT IS MADE, not at Start. A player
+  // who sets the radio and then closes the tab without playing still gets the
+  // setting they chose next time; and the rules modal, which can be opened
+  // between the two, is told at the same instant so it can never describe the
+  // other game.
+  const menuGroup = document.getElementById('tastingMenuGroup');
+  const menuRadios = menuGroup.querySelectorAll('input[name="tastingMenu"]');
+  menuRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      if (!radio.checked) return;
+      const on = radio.value === 'on';
+      setTastingMenuPref(on);
+      rulesShowMenus = on;
+    });
+  });
+  rulesShowMenus = tastingMenuPref();
+
   rulesButton.addEventListener('click', showRulesModal);
 
   startButton.addEventListener('click', () => {
     const count = parseInt(playerCount.value);
+    const tastingMenu = Array.from(menuRadios).find(r => r.checked)?.value === 'on';
     const playerConfigs = [];
     for (let i = 0; i < count; i++) {
       const toggleBtns = playerSetup.querySelectorAll(`[data-player="${i}"][data-type]`);
@@ -707,7 +823,7 @@ export function renderSetupScreen(container, onStart, resume = null) {
         aiDifficulty: isHuman ? null : difficulty,
       });
     }
-    onStart(playerConfigs);
+    onStart(playerConfigs, { tastingMenu });
   });
 
   // DISCARD TAKES TWO TAPS, IN PLACE. A mis-tap next to Resume would destroy a
@@ -872,6 +988,14 @@ function seatHTML(playerIdx, gameState) {
 // this parameter list by more positional callbacks. (The paid reserve was one of
 // them, with a toggle of its own, until it was deleted on 11 August.)
 export function renderGameScreen(container, gameState, onMarketClick, onBonusTile, onPlacementSubmit, onClaimSubmit, onSkipClaim, onSkipMove, onMoveTile, onCupcakeClick, spendHandlers = {}) {
+
+  // The rules modal is reachable from inside the game, where the game itself is
+  // the authority on whether the expansion is being played - not the setup
+  // radio, and not the stored preference. THIS IS THE LINE THAT MAKES RESUME
+  // CORRECT: a resumed game rebuilds from the saved state, whose menu deck was
+  // dealt (or not) when it was started, so the rules follow the game rather than
+  // whatever the player last chose on the seat screen.
+  rulesShowMenus = isTastingMenuInPlay(gameState);
 
   container.innerHTML = `
     <div class="ft-game">
@@ -1292,11 +1416,16 @@ export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup
                 <th>Card VP</th>
                 <!-- The <th>Objectives</th> column was deleted with the pantry
                      goals on the morning of 4 August; the flavour module has held
-                     the fourth scoring column ever since. It is rendered
-                     unconditionally - a game played with the module switched off
-                     (setTastingMenusEnabled) simply shows a column of zeroes, which
-                     is a truer end screen than one whose shape changes. -->
-                <th title="Tasting Menus - the first player whose cake stand shows the named ingredients takes the card, and nobody else can">Menus</th>
+                     the fourth scoring column ever since.
+                     IT WAS RENDERED UNCONDITIONALLY UNTIL 16 AUGUST, on the
+                     argument that a column of zeroes is a truer end screen than
+                     one whose shape changes. THAT ARGUMENT IS REVERSED, and by a
+                     change of fact rather than of taste: switching the module off
+                     used to be a harness-only act nobody at a table could
+                     perform, and it is now the DEFAULT for every base game. A
+                     column of zeroes on the shipped game is not truth, it is a
+                     scoring lane the player never had. Dean's ruling. -->
+                ${isTastingMenuInPlay(gameState) ? `<th title="Tasting Menus - the first player whose cake stand shows the named ingredients takes the card, and nobody else can">Menus</th>` : ''}
                 <!-- The FLAVOUR OF THE DAY (6 August) is the game's FIFTH scoring
                      column and the first one not fed by the claim step. Like the
                      Menus column it is rendered unconditionally, so a game with the
@@ -1319,7 +1448,7 @@ export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup
         <td>${bd.standTotal}</td>
         <td>${bd.crumbs}</td>
         <td>${bd.cardVP}</td>
-        <td>${bd.menus}</td>
+        ${isTastingMenuInPlay(gameState) ? `<td>${bd.menus}</td>` : ''}
         <td title="${bd.flavourTiles} tile${bd.flavourTiles === 1 ? '' : 's'} on the board${bd.flavourLeading ? `, plus ${FLAVOUR_MAJORITY_VP} for the most` : ''}">${bd.flavour}</td>
         <td>${bd.cupcakes}</td>
         <td class="ft-end-screen__score ${result.totalScore === 0 ? 'zero' : ''}">${result.totalScore}</td>
@@ -2656,6 +2785,19 @@ function updateSummaryRail(gameState) {
     const r = readings[c.id];
     const btn = rail.querySelector(`[data-pm-chip="${c.id}"]`);
     if (!btn || !r) continue;
+
+    // THE MENUS CHIP IS NOT IN A BASE GAME (16 August). It used to print a dash
+    // when the module was off, which was harmless while "off" was a harness-only
+    // state; as the default it would be a permanent chip reading "-" that opens
+    // an empty sheet. Hidden rather than removed from RAIL_CHIPS, because the
+    // rail is emitted once per game by summaryRailHTML and this is the one place
+    // that knows the game. The `hidden` attribute takes it out of the tab order
+    // and off the accessibility tree together.
+    if (c.id === 'menus') {
+      const off = !isTastingMenuInPlay(gameState);
+      if (btn.hidden !== off) btn.hidden = off;
+      if (off) continue;
+    }
 
     const markEl = btn.querySelector('[data-pm-mark]');
     if (markEl.dataset.pmKey !== r.mark) {
@@ -4241,15 +4383,22 @@ function updateStats(gameState) {
       ? `<span class="ft-score-total__cupcakes" title="Cupcakes held - they score nothing but break ties">Cupcakes ${bd.cupcakes}</span>`
       : '';
 
-    // The Tasting Menu line appears ALWAYS, including on 0. A player who has not
-    // taken a menu yet is exactly the player who needs reminding the race is
-    // running - and unlike the module it replaced, a 0 here is not a temporary
-    // state that the next pot of tea resets.
+    // The Tasting Menu line appears ALWAYS, including on 0, WHEN THE EXPANSION
+    // IS IN PLAY. A player who has not taken a menu yet is exactly the player who
+    // needs reminding the race is running - and unlike the module it replaced, a
+    // 0 here is not a temporary state that the next pot of tea resets.
+    //
+    // GATED ON THE GAME SINCE 16 AUGUST, when the module became an expansion.
+    // "Tasting Menus 0" on every panel of a base game is a scoring lane the
+    // player cannot reach, on the one readout they check every turn. Same gate
+    // as flavourLine below, which has always worked this way.
     //
     // IT SHOWS THE INGREDIENTS of each menu taken rather than only the total,
     // because "she took the two-lemon-two-chocolate one" is how players actually
     // talk about which cards have gone, and the number alone hides it.
-    const menuLine = (p.tastingMenus && p.tastingMenus.length > 0)
+    const menuLine = !isTastingMenuInPlay(gameState)
+      ? ''
+      : (p.tastingMenus && p.tastingMenus.length > 0)
       ? `<div class="ft-score-breakdown__item"><span>${p.tastingMenus.map(id => {
           const menu = TASTING_MENUS.find(m => m.id === id);
           if (!menu) return '';

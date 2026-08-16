@@ -204,17 +204,17 @@ function confirmTurn() {
 // otherwise be created and the second would render over the first.
 let starting = false;
 
-async function onGameStart(playerConfigs) {
+async function onGameStart(playerConfigs, options = {}) {
   if (starting) return;
   starting = true;
   try {
-    await startGame(playerConfigs);
+    await startGame(playerConfigs, options);
   } finally {
     starting = false;
   }
 }
 
-async function startGame(playerConfigs) {
+async function startGame(playerConfigs, { tastingMenu = false } = {}) {
   undoStack.length = 0;
   // A NEW GAME IS A DISCARD CASE (plan section 10, decision 6), and the rail's
   // memory, the count and the log line all belong to the game that is ending.
@@ -228,7 +228,16 @@ async function startGame(playerConfigs) {
   const deferred = await loadDeferredModules();
   bots = deferred;
   statsCollector = deferred.createStatsCollector();
-  gameState = createGame(playerConfigs, statsCollector);
+  // THE TASTING MENU IS AN EXPANSION AND IT IS OFF UNLESS THE SEAT SCREEN SAID
+  // OTHERWISE (16 August). `tastingMenus: []` is createGame's pinned-deal
+  // argument given an empty deal, so THIS game deals no menus; `null` is the
+  // ordinary random deal of playerCount + 1. Nothing global is touched - see the
+  // long note in board.js on why setTastingMenusEnabled is the wrong lever here
+  // and what it would do to save.js's fingerprint. The empty deck rides in the
+  // save blob, so a resumed game resumes in the mode it started in.
+  gameState = createGame(playerConfigs, statsCollector, {
+    tastingMenus: tastingMenu ? null : [],
+  });
   autoPlayMode = playerConfigs.every(p => !p.isHuman);
 
   mountGameScreen();

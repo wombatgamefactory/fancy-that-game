@@ -922,6 +922,79 @@ a .ft-icon {
   cursor: pointer;
 }
 
+/* THE TASTING MENU EXPANSION SWITCH (16 August). A real radio group, and it is
+   the only one on the setup screen - the seats use segmented toggles, which say
+   "this seat is one of two things"; this says "the game is one of two games".
+
+   THE FIELDSET CARRIES NO CHROME. A browser's default fieldset border and
+   legend inset would be the only box on a screen whose other controls sit flat
+   on the card, so both are reset and the <legend> is given the same
+   .ft-setup__label treatment as "Number of Players" above it. The semantics are
+   the whole reason the element is here: the legend names the group for a screen
+   reader, and the note below it is inside the fieldset so it is read with the
+   choice rather than orphaned after it. */
+.ft-setup__fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;          /* a fieldset's default min-content width breaks flex/grid parents */
+}
+
+.ft-setup__radio-group {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+/* The whole label is the target, not the 13px dot, which is what gets the
+   control over the touch floor - see the --touch-target list further down, which
+   this class joins. */
+.ft-setup__radio {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex: 1;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-card);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.ft-setup__radio:hover {
+  border-color: var(--color-accent);
+}
+
+/* :has() carries the selected state onto the label so the choice is legible as a
+   filled row rather than only as a 13px dot. Browsers without :has() lose the
+   tint and keep the dot, which is still a correct radio group - the state is
+   never carried by the styling alone. */
+.ft-setup__radio:has(input:checked) {
+  border-color: var(--accent-deep);
+  background: var(--rule-tint, rgba(196, 106, 62, 0.10));
+  font-weight: 600;
+}
+
+.ft-setup__radio input {
+  accent-color: var(--accent-deep);
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+}
+
+/* The expansion note. It is body copy rather than a caption, because it carries
+   the only instruction the web build gives about when to switch the module on. */
+.ft-setup__note {
+  margin: var(--spacing-sm) 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+
 .ft-setup__player-row {
   background: var(--color-card);
   border: 1px solid var(--color-border);
@@ -4654,6 +4727,26 @@ select:focus {
   margin-bottom: var(--spacing-md);
 }
 
+/* "mini expansion" beside the Tasting Menus heading (16 August). The section
+   only renders when the expansion is switched on, so this is not a warning - it
+   tells a player who turned it on that what follows is the thing they added,
+   which is what makes the rest of the modal read as the base game. */
+.ft-rules__tag {
+  display: inline-block;
+  margin-left: var(--spacing-sm);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-card);
+  border: 1px solid var(--rule-accent, var(--color-border));
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  vertical-align: middle;
+}
+
 .ft-rules__step {
   margin-bottom: var(--spacing-md);
   padding-left: var(--spacing-md);
@@ -5851,6 +5944,7 @@ select:focus {
 .ft-cupcake-spend-btn,
 .ft-setup__difficulty-btn,
 .ft-setup__toggle-btn,
+.ft-setup__radio,
 .ft-setup__select {
   min-height: var(--touch-target);
 }
@@ -7193,6 +7287,15 @@ select:focus {
     cursor: pointer;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  /* A DISPLAY VALUE BEATS THE hidden ATTRIBUTE, which is a UA rule, so a chip
+     given `hidden` by updateSummaryRail would still be laid out without this
+     line. It is the Menus chip that needs it: the Tasting Menu is an expansion
+     since 16 August and is off by default, so the base game runs a four-chip
+     rail. The four survivors are `flex: 1 1 0` and simply take the width. */
+  .pm-chip[hidden] {
+    display: none;
   }
 
   .pm-chip__line {
