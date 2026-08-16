@@ -922,77 +922,114 @@ a .ft-icon {
   cursor: pointer;
 }
 
-/* THE TASTING MENU EXPANSION SWITCH (16 August). A real radio group, and it is
-   the only one on the setup screen - the seats use segmented toggles, which say
-   "this seat is one of two things"; this says "the game is one of two games".
+/* THE TASTING MENU EXPANSION SWITCH (16 August), Dean's shape: a name, one
+   control and one short line, all on a single row. It replaces a two-option
+   radio group with a note beneath, which stood four lines deep on a screen whose
+   only other question is one line high.
 
-   THE FIELDSET CARRIES NO CHROME. A browser's default fieldset border and
-   legend inset would be the only box on a screen whose other controls sit flat
-   on the card, so both are reset and the <legend> is given the same
-   .ft-setup__label treatment as "Number of Players" above it. The semantics are
-   the whole reason the element is here: the legend names the group for a screen
-   reader, and the note below it is inside the fieldset so it is read with the
-   choice rather than orphaned after it. */
-.ft-setup__fieldset {
-  border: 0;
-  margin: 0;
-  padding: 0;
-  min-width: 0;          /* a fieldset's default min-content width breaks flex/grid parents */
-}
-
-.ft-setup__radio-group {
-  display: flex;
-  gap: var(--spacing-md);
-}
-
-/* The whole label is the target, not the 13px dot, which is what gets the
-   control over the touch floor - see the --touch-target list further down, which
-   this class joins. */
-.ft-setup__radio {
+   IT WRAPS RATHER THAN SHRINKS. The row is ~380px of content against a ~445px
+   column on a desktop and a ~322px one on a phone, so `flex-wrap` puts the note
+   on a second line at the narrow end instead of squeezing the name. The row-gap
+   is smaller than the column-gap for exactly that case. */
+.ft-setup__expansion {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  flex: 1;
-  padding: var(--spacing-sm) var(--spacing-md);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-card);
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text-primary);
+  flex-wrap: wrap;
+  gap: 4px var(--spacing-sm);
   cursor: pointer;
-  transition: border-color 0.2s ease;
+  /* The containing block for the clipped switch input below, which is
+     position: absolute. Without it the input resolves against whatever ancestor
+     happens to be positioned and drifts out of its own row. */
+  position: relative;
 }
 
-.ft-setup__radio:hover {
-  border-color: var(--color-accent);
+.ft-setup__expansion-name {
+  font-weight: 500;      /* matches .ft-setup__label, the row above */
 }
 
-/* :has() carries the selected state onto the label so the choice is legible as a
-   filled row rather than only as a 13px dot. Browsers without :has() lose the
-   tint and keep the dot, which is still a correct radio group - the state is
-   never carried by the styling alone. */
-.ft-setup__radio:has(input:checked) {
-  border-color: var(--accent-deep);
-  background: var(--rule-tint, rgba(196, 106, 62, 0.10));
-  font-weight: 600;
+.ft-setup__expansion-note {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
 }
 
-.ft-setup__radio input {
-  accent-color: var(--accent-deep);
+/* THE TOGGLE SWITCH. The input is a checkbox with role="switch" (see board.js
+   for why a checkbox and not a radio); this draws the pill it wears.
+
+   THE INPUT IS HIDDEN, NOT REMOVED. `display: none` and `visibility: hidden`
+   both take a control out of the focus order, and this one has to be reachable
+   by keyboard - so it is clipped to a 1px box instead and the sibling span is
+   painted in its place. The <label> wrapping both is what routes the click. */
+.ft-setup__switch-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* 36x20 track, 16px knob, 2px of inset, so the travel is 16px. Sized against
+   the 16px dot it replaces - a switch has to read as a switch at a glance, and
+   below about 32px wide the two states stop being distinguishable across a
+   table. */
+.ft-setup__switch {
+  flex: none;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--color-border);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.ft-setup__switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
   width: 16px;
   height: 16px;
-  margin: 0;
-  cursor: pointer;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease;
 }
 
-/* The expansion note. It is body copy rather than a caption, because it carries
-   the only instruction the web build gives about when to switch the module on. */
-.ft-setup__note {
-  margin: var(--spacing-sm) 0 0;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--color-text-secondary);
+.ft-setup__expansion:hover .ft-setup__switch {
+  background: var(--color-text-secondary);
+}
+
+.ft-setup__switch-input:checked + .ft-setup__switch {
+  background: var(--accent-deep);
+}
+
+.ft-setup__expansion:hover .ft-setup__switch-input:checked + .ft-setup__switch {
+  background: var(--color-accent);
+}
+
+.ft-setup__switch-input:checked + .ft-setup__switch::after {
+  transform: translateX(16px);
+}
+
+/* The focus ring has to be drawn on the TRACK, because the thing that actually
+   holds focus is the clipped 1px input and a ring on that would be invisible. */
+.ft-setup__switch-input:focus-visible + .ft-setup__switch {
+  outline: 2px solid var(--accent-deep);
+  outline-offset: 2px;
+}
+
+/* The knob slide is decoration, not information - the colour change carries the
+   state on its own - so it goes with everything else under reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .ft-setup__switch,
+  .ft-setup__switch::after {
+    transition: none;
+  }
 }
 
 .ft-setup__player-row {
@@ -2800,6 +2837,17 @@ a .ft-icon {
   font-size: var(--type-caption);
   line-height: 1.4;
   color: var(--color-text-secondary);
+}
+
+/* THE END TRIGGER BONUS note (16 August), on the board-fill gauge. Same caption
+   size as the note above it - it is a second caption, not a heading - but in the
+   primary ink rather than the secondary, because it is the only line on the panel
+   that is an INCENTIVE rather than a reading, and secondary grey is what the
+   build uses for "context you can skip". A top margin separates the two notes so
+   they do not read as one wrapped sentence. */
+.ft-section__note--reward {
+  margin-top: 4px;
+  color: var(--color-text-primary);
 }
 
 /* ---- Per-section identity: THERE ISN'T ANY, AND THAT IS THE POINT ----------
@@ -5944,7 +5992,7 @@ select:focus {
 .ft-cupcake-spend-btn,
 .ft-setup__difficulty-btn,
 .ft-setup__toggle-btn,
-.ft-setup__radio,
+.ft-setup__expansion,
 .ft-setup__select {
   min-height: var(--touch-target);
 }

@@ -5,7 +5,7 @@ import { BOARD_SIZE, REWARD_CARDS } from '../engine/tiles.js';
 // them is a hard error rather than a dead name. countBoardIngredient goes with
 // them: it survives in the engine for the bots, but the only thing that ever
 // asked it a question here was the objectives panel.
-import { getPatternMatches, getLegalDestinations, getMoveCost, canDealCards, canBuyExtraTile, canMoveTile, canRemovePlate, canClaimMore, getExtraClaimCupcakeCost, getMaxExtraTilesPerTurn, getPerTurnSpendCap, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, getSweepPlacementCount, getVisibleTeapotSymbols, getStartingCupcakes, isTastingMenuInPlay, getAvailableMenus, getMenuDeficit, getMenuIngredients, satisfiesMenu, TASTING_MENU_VP, TASTING_MENUS, isFlavourInPlay, getFlavourCount, getFlavourLeaders, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
+import { getPatternMatches, getLegalDestinations, getMoveCost, canDealCards, canBuyExtraTile, canMoveTile, canRemovePlate, canClaimMore, getExtraClaimCupcakeCost, getMaxExtraTilesPerTurn, getPerTurnSpendCap, getWinningPlayers, REFRESH_THRESHOLD, TEA_POT_REWARD, INITIAL_MARKET_CARDS, MAX_MARKET_CARDS, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, MOVE_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, getSweepPlacementCount, getVisibleTeapotSymbols, getStartingCupcakes, isTastingMenuInPlay, getAvailableMenus, getMenuDeficit, getMenuIngredients, satisfiesMenu, TASTING_MENU_VP, TASTING_MENUS, isFlavourInPlay, getFlavourCount, getFlavourLeaders, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP, END_TRIGGER_BONUS_VP } from '../engine/game.js';
 
 // THE MOTION VOCABULARY AND THE SOUND WORLD (stage 8, plan sections 7 and 13).
 // board.js owns exactly two of the seven movement sites - the settle, which fires
@@ -486,6 +486,7 @@ export function showRulesModal() {
           <div class="ft-rules__text"><strong>Cards:</strong> the points printed on each card you claimed.</div>
           ${rulesShowMenus ? `<div class="ft-rules__text"><strong>Tasting Menus:</strong> ${TASTING_MENU_VP} each.</div>` : ''}
           <div class="ft-rules__text"><strong>Flavour of the Day:</strong> ${FLAVOUR_VP_PER_TILE} per tile on your player board, and ${FLAVOUR_MAJORITY_VP} more to the player or players with the most.</div>
+          <div class="ft-rules__text"><strong>Triggering the end:</strong> ${END_TRIGGER_BONUS_VP} to the one player who ends the game.</div>
           <div class="ft-rules__text"><strong>Cupcakes:</strong> nothing.</div>
           <div class="ft-rules__text"><strong>Tiebreak:</strong> most cupcakes, then most cards claimed, then the victory is shared.</div>
         </div>
@@ -511,6 +512,15 @@ export function showRulesModal() {
           <div class="ft-rules__text">• <strong>A player's cake stand is full</strong> - all four rows complete, 10 treats served. There is nothing left for them to serve, or</div>
           <div class="ft-rules__text">• <strong>No tiles are left</strong> - the market and the bag are both empty.</div>
           <div class="ft-rules__text">Play then continues until the turn comes back round to the start player, so everyone has had the same number of turns. Then score.</div>
+          <!-- 16 AUGUST. It sits INSIDE this box rather than in the Scoring box
+               below, because it is a fact about the ending first and a scoring
+               line second - a player reading "the game ends when your board
+               fills" needs to know in the same breath that this is worth having.
+               It is repeated in the Scoring box as a one-liner, the same way
+               every other lane appears in both places.
+               THE THIRD TRIGGER PAYS NOBODY and the copy says so plainly: the
+               market running dry is not something a player does. -->
+          <div class="ft-rules__text"><strong>The player who triggers the end of the game scores ${END_TRIGGER_BONUS_VP} points.</strong> The first of the three above to happen is the one that counts. An empty market pays nobody - no one player caused it.</div>
           <div class="ft-rules__text">Nothing else ends the game. If a pot of tea comes due with an empty bag, the pot simply does not happen and play continues.</div>
         </div>
       </div>
@@ -656,34 +666,42 @@ export function renderSetupScreen(container, onStart, resume = null) {
                question about which game is being played rather than about who is
                playing it, and the seats are the last thing you set before Start.
 
-               A REAL RADIO GROUP, not the segmented toggle the seats use, and
-               Dean chose it knowing the difference. The toggle pairs below say
-               "this seat is one of these two things"; this says "the game is
-               either the base game or the base game plus an expansion", which is
-               the sentence a radio group is for. It is a <fieldset> with a
-               <legend> so the note below is read out with the choice rather than
-               stranded after it.
+               ONE LINE, ONE CONTROL, NO On/Off PAIR - Dean's shape, and the
+               second version of this block. The first was a two-option radio
+               group with the note under it, four lines deep on a screen whose
+               other question is one line. There is nothing for a pair of labels
+               to disambiguate here: the base game is the default and the only
+               thing the player can say is "add the expansion".
 
-               THE NOTE IS NOT DECORATION. It is the only place the web build
-               says what the rulebook says - that this is a mini expansion, and
-               that a first game does not use it - so it stays visible rather
-               than becoming a tooltip. -->
+               A TOGGLE SWITCH, and the element under it is a checkbox carrying
+               role="switch". Both halves of that matter. A checkbox is the right
+               control because this is ONE thing being turned on rather than a
+               choice between two - and it is the only shape that can be turned
+               back OFF, which a lone radio cannot: a radio has no sibling to hand
+               the selection to, so a player who tried the expansion out of
+               curiosity would be stuck with it until they reloaded. role="switch"
+               is what makes a screen reader say "on/off" rather than
+               "ticked/unticked", which is the sentence the visual is making.
+
+               THE TRACK IS A SIBLING <span>, NOT A PSEUDO-ELEMENT ON THE INPUT.
+               ::before and ::after on an <input> are not reliable across
+               browsers even under appearance: none, so the input is visually
+               hidden - hidden, but NOT display: none, because it still has to
+               take focus and take the click - and the span next to it is drawn
+               as the track with its own ::after for the knob.
+
+               ONE <label> WRAPS ALL FOUR PIECES, so the control's accessible
+               name is the whole sentence - "Tasting Menu, a mini expansion for
+               experienced players" - rather than a bare switch with a heading
+               floating near it, and the whole row is the hit target. -->
           <div class="ft-setup__section">
-            <fieldset class="ft-setup__fieldset">
-              <legend class="ft-setup__label">Tasting Menus</legend>
-              <div class="ft-setup__radio-group" id="tastingMenuGroup">
-                <label class="ft-setup__radio">
-                  <input type="radio" name="tastingMenu" value="off"${tastingMenuPref() ? '' : ' checked'}>
-                  <span>Off</span>
-                </label>
-                <label class="ft-setup__radio">
-                  <input type="radio" name="tastingMenu" value="on"${tastingMenuPref() ? ' checked' : ''}>
-                  <span>On</span>
-                </label>
-              </div>
-              <p class="ft-setup__note">A mini expansion for experienced players. Leave it
-                 off for your first game, then add it once you know the base game.</p>
-            </fieldset>
+            <label class="ft-setup__expansion">
+              <span class="ft-setup__expansion-name">Tasting Menu</span>
+              <input type="checkbox" role="switch" id="tastingMenuToggle"
+                     class="ft-setup__switch-input"${tastingMenuPref() ? ' checked' : ''}>
+              <span class="ft-setup__switch" aria-hidden="true"></span>
+              <span class="ft-setup__expansion-note">A mini expansion for experienced players.</span>
+            </label>
           </div>
 
           <div id="playerSetup" class="ft-setup__section"></div>
@@ -783,19 +801,14 @@ export function renderSetupScreen(container, onStart, resume = null) {
   updatePlayerSetup();
 
   // THE CHOICE IS WRITTEN AWAY AT THE MOMENT IT IS MADE, not at Start. A player
-  // who sets the radio and then closes the tab without playing still gets the
+  // who sets the toggle and then closes the tab without playing still gets the
   // setting they chose next time; and the rules modal, which can be opened
   // between the two, is told at the same instant so it can never describe the
   // other game.
-  const menuGroup = document.getElementById('tastingMenuGroup');
-  const menuRadios = menuGroup.querySelectorAll('input[name="tastingMenu"]');
-  menuRadios.forEach(radio => {
-    radio.addEventListener('change', () => {
-      if (!radio.checked) return;
-      const on = radio.value === 'on';
-      setTastingMenuPref(on);
-      rulesShowMenus = on;
-    });
+  const menuToggle = document.getElementById('tastingMenuToggle');
+  menuToggle.addEventListener('change', () => {
+    setTastingMenuPref(menuToggle.checked);
+    rulesShowMenus = menuToggle.checked;
   });
   rulesShowMenus = tastingMenuPref();
 
@@ -803,7 +816,7 @@ export function renderSetupScreen(container, onStart, resume = null) {
 
   startButton.addEventListener('click', () => {
     const count = parseInt(playerCount.value);
-    const tastingMenu = Array.from(menuRadios).find(r => r.checked)?.value === 'on';
+    const tastingMenu = menuToggle.checked;
     const playerConfigs = [];
     for (let i = 0; i < count; i++) {
       const toggleBtns = playerSetup.querySelectorAll(`[data-player="${i}"][data-type]`);
@@ -1123,6 +1136,20 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
                 <div id="cardProgressBar" class="ft-claim-meter__bar"></div>
               </div>
               <p class="ft-section__note">Board filled. The game ends at 25.</p>
+              <!-- THE END TRIGGER BONUS (16 August), Dean's placement: directly
+                   under the caption, on the gauge that counts toward the very
+                   thing it pays for. This is the only panel in the build a player
+                   watches with the ending in mind, so it is the one place the
+                   reward can be read at the moment it becomes worth chasing.
+
+                   IT IS A SECOND NOTE RATHER THAN A LONGER FIRST ONE. The caption
+                   states the rule the number obeys ("the game ends at 25"); this
+                   states what you are paid for getting there, which is a different
+                   kind of fact and the one that changes a decision. Emphasised
+                   because it is the only line on the panel that is an incentive
+                   rather than a reading. -->
+              <p class="ft-section__note ft-section__note--reward">Whoever triggers the
+                 end of the game scores <strong>${END_TRIGGER_BONUS_VP} VP</strong>.</p>
             </section>
 
             <!-- The fresh-pot affordance is PERSISTENT and sits beside the market
@@ -1353,13 +1380,30 @@ function bindSoundToggle() {
 // cake-stand rows. Its clause says what the player ACHIEVED rather than what ran
 // out, because unlike the other two this ending is somebody's doing - it is the
 // only reason on this list a player can be pleased to read.
+// 16 AUGUST: THE LINE NOW NAMES THE PLAYER, because the ending pays them. "A
+// player filled their board completely" was adequate while the trigger was an
+// externality nobody was rewarded for; with END_TRIGGER_BONUS_VP on the table the
+// end screen has to say whose 3 VP those are, and the sentence that explains the
+// stop is the natural place. The anonymous wording is kept as the fallback for
+// the one ending with no owner, and for a reason string this build does not know.
 function endGameReasonText(gameState) {
-  const reasons = {
+  const who = gameState.players.find(p => p.id === gameState.endTriggeredBy);
+  const named = {
+    boardFull: n => `${n} filled their board completely`,
+    standFull: n => `${n} filled every row of their cake stand`,
+  };
+  const anonymous = {
     boardFull: 'A player filled their board completely.',
     marketTiles: 'The last tile left the market and the bag was empty.',
     standFull: 'A player filled every row of their cake stand.',
   };
-  const reason = reasons[gameState.endGameReason];
+
+  let reason;
+  if (who && named[gameState.endGameReason]) {
+    reason = `${named[gameState.endGameReason](who.name)}, and scores ${END_TRIGGER_BONUS_VP} VP for ending the game.`;
+  } else {
+    reason = anonymous[gameState.endGameReason];
+  }
   if (!reason) return '';
   return `${reason} Play then continued until everyone had taken the same number of turns.`;
 }
@@ -1431,6 +1475,16 @@ export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup
                      Menus column it is rendered unconditionally, so a game with the
                      module switched off shows zeroes rather than a different table. -->
                 <th title="Flavour of the Day - 1 VP for every tile of the revealed ingredient on your PLAYER BOARD, and 3 more to the player or players with the most. The cake stand and crumb tray do not count.">Flavour</th>
+                <!-- THE END TRIGGER BONUS (16 August) gets a column of its own
+                     rather than being folded silently into Score. It is 3 VP to
+                     exactly one player, decided by a single event, and the end
+                     screen is where the table argues about who won - a column
+                     that is 0 for everyone but one player is exactly the shape
+                     of the fact. It is rendered unconditionally, unlike Menus:
+                     the rule is base game and always in play, and the game that
+                     ends on an empty market and pays nobody is the informative
+                     case rather than a reason to hide the column. -->
+                <th title="3 VP to the player who triggered the end of the game - filling their board, or completing their cake stand. A game that ends because the market ran dry pays nobody.">Ended it</th>
                 <th title="Cupcakes score nothing since 3 August - they are the first tiebreaker">Cupcakes*</th>
                 <th>Score</th>
               </tr>
@@ -1450,6 +1504,7 @@ export function renderEndScreen(container, gameState, onPlayAgain, onBackToSetup
         <td>${bd.cardVP}</td>
         ${isTastingMenuInPlay(gameState) ? `<td>${bd.menus}</td>` : ''}
         <td title="${bd.flavourTiles} tile${bd.flavourTiles === 1 ? '' : 's'} on the board${bd.flavourLeading ? `, plus ${FLAVOUR_MAJORITY_VP} for the most` : ''}">${bd.flavour}</td>
+        <td>${bd.endBonus}</td>
         <td>${bd.cupcakes}</td>
         <td class="ft-end-screen__score ${result.totalScore === 0 ? 'zero' : ''}">${result.totalScore}</td>
       </tr>
@@ -4157,10 +4212,17 @@ function getScoreBreakdown(player, gameState = null) {
     && getFlavourLeaders(gameState).includes(player.id);
   const flavour = flavourTiles * FLAVOUR_VP_PER_TILE + (flavourLeading ? FLAVOUR_MAJORITY_VP : 0);
 
+  // THE END TRIGGER BONUS (16 August). It has to be in `total`, because this
+  // function's whole job is to mirror calculateFinalScores exactly - a breakdown
+  // whose lines do not add up to the engine's score is worse than no breakdown.
+  // Zero for everybody until something arms the ending, and zero for everybody
+  // ever in a game that ends on an empty market, which pays nobody.
+  const endBonus = (gameState && gameState.endTriggeredBy === player.id) ? END_TRIGGER_BONUS_VP : 0;
+
   return {
     standTotal, crumbs, cardVP, cupcakes, menus,
-    flavour, flavourTiles, flavourLeading,
-    total: standTotal + crumbs + cardVP + menus + flavour,
+    flavour, flavourTiles, flavourLeading, endBonus,
+    total: standTotal + crumbs + cardVP + menus + flavour + endBonus,
   };
 }
 
@@ -4416,6 +4478,16 @@ function updateStats(gameState) {
     // on the board in front of the player, and "you have four" is what they can
     // check. The majority chip is marked as provisional in its tooltip because it
     // is not settled until the game ends.
+    // THE END TRIGGER BONUS line, which appears only for the player who earned it
+    // and only once the ending is armed. Unlike the Menus and Flavour lines there
+    // is no case for showing a 0: this is not a contest anybody is running in, it
+    // is a single event that has either happened or not, and a row of zeroes on
+    // every panel for most of the game would be noise. When it does appear it is
+    // news, and the panel is the place the player finds out they have earned it.
+    const endBonusLine = bd.endBonus > 0
+      ? `<div class="ft-score-breakdown__item"><span>Ended the game</span><strong>${bd.endBonus}</strong></div>`
+      : '';
+
     const flavourLine = isFlavourInPlay(gameState)
       ? `<div class="ft-score-breakdown__item"><span><img src="images/symbol-${gameState.flavourOfTheDay}-v3.png" class="ft-score-breakdown__symbol" alt="${gameState.flavourOfTheDay}" title="Flavour of the Day: ${ingredientLabel(gameState.flavourOfTheDay)}"> Flavour${bd.flavourLeading ? ` <span class="ft-score-breakdown__lead" title="Currently holds the most - worth ${FLAVOUR_MAJORITY_VP} VP at the end, and shared if the lead is level">most +${FLAVOUR_MAJORITY_VP}</span>` : ''} <span class="ft-score-breakdown__sub">${bd.flavourTiles} on board</span></span><strong>${bd.flavour}</strong></div>`
       : '';
@@ -4464,6 +4536,7 @@ function updateStats(gameState) {
         <div class="ft-score-breakdown__item"><span>Card VP</span><strong>${bd.cardVP}</strong></div>
         ${menuLine}
         ${flavourLine}
+        ${endBonusLine}
       </div>
       ${destinationMode ? `<div class="ft-stand__prompt">Choose where this tile goes ${icon('arrow-down', 16)}</div>` : ''}
       ${renderStand(p, { interactive: destinationMode, legalRows, own: !isOpponentSeat })}

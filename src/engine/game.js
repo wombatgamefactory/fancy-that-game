@@ -265,6 +265,50 @@ export const FLAVOUR_VP_PER_TILE = 1;
 // RAISE IT TO 5 IF the module measures thin in play. Do not lower it below 3.
 export const FLAVOUR_MAJORITY_VP = 3;
 
+// ---------------------------------------------------------------------------
+// THE END TRIGGER BONUS (16 August). Dean's ruling:
+//
+//     THE PLAYER WHO TRIGGERS THE END OF THE GAME GAINS 3 VP.
+//
+// WHICH ENDINGS PAY IT, and this needed a decision the ruling does not make.
+// There are three end conditions and only two of them have an owner:
+//
+//   'boardFull'   - the player whose board filled. PAYS.
+//   'standFull'   - the player whose cake stand completed. PAYS.
+//   'marketTiles' - the market and the bag are both empty. PAYS NOBODY. There is
+//                   no player to pay: the market is shared, the condition is
+//                   noticed at the START of a turn by whoever happens to be next,
+//                   and that player did nothing to cause it. Paying them would be
+//                   paying a seat for its position in the rotation. It is also
+//                   very nearly free to get wrong in either direction - this
+//                   reason ends well under 1% of games.
+//
+// Only the FIRST condition to arm pays, because only the first one ends the game
+// - see triggerEndGame, which keeps the first reason and now the first player
+// with it.
+//
+// WHAT IT IS FOR. The ending has been a pure externality since the plate pool was
+// deleted on 6 August: filling your board is something that happens TO you, and
+// the player it happens to hands everybody else a deadline they did not choose.
+// Three points make it a thing a player can want.
+//
+// THE OBJECTION, WRITTEN DOWN RATHER THAN WAVED AWAY, because it is the same one
+// that deleted the old clock and it is recorded against condition 3 already: this
+// pays the player most likely to be winning. A seat finishing on a full stand
+// scores about 88-91 against a table mean of about 62 (see the endGameReason
+// block below), so 3 VP to that player is 3 VP to the leader in the 1% of games
+// that end that way. The board-fill case - 99% of games - is the one that
+// matters, and it is much less lopsided, because a board fills with EMPTY PLATES
+// as well as tiles and a player who claims often fills faster. Measured before
+// shipping; see `probe-endtrigger-ab-2026-08-16.js` and section 1.6 of
+// `Rulebook\outstanding-changes-v7.md`.
+//
+// Set to 0 to switch the rule off wholesale, which is what the A/B does.
+export const END_TRIGGER_BONUS_VP = 3;
+let endTriggerBonus = END_TRIGGER_BONUS_VP;
+export function getEndTriggerBonus() { return endTriggerBonus; }
+export function setEndTriggerBonus(vp) { endTriggerBonus = vp; }   // tests and harnesses only
+
 export const FLAVOUR_ENABLED = true;
 let flavourEnabled = FLAVOUR_ENABLED;
 export function getFlavourEnabled() { return flavourEnabled; }
@@ -1322,6 +1366,11 @@ export function createGame(playerConfigs, statsCollector = null, { tastingMenus 
     // is kept because it is what stops a pathological table sitting on a dry market
     // for ever, and it costs one line.
     endGameReason: null,
+    // WHO ARMED IT, and therefore who is owed END_TRIGGER_BONUS_VP (16 August).
+    // A player id, or null for an ending nobody caused ('marketTiles') and for a
+    // game still running. Set once, by the first condition to arm, and never
+    // cleared - the same first-wins rule as endGameReason above.
+    endTriggeredBy: null,
     // Turns since the last card was claimed by anybody (reset in claim). This was
     // the deadlock safety valve for the empty-market rule: with market and bag
     // both dry no sweep is possible, so a run of turns could pass with nobody
@@ -1629,10 +1678,15 @@ export function sweep(gameState, rowOrCol, isRow, declaration, declarationType) 
 // (the plate pool running out and then the bag running dry, say), and the reason
 // a player is told is the one that actually ended the game, not the last thing
 // that happened to be true when the round closed.
-function triggerEndGame(gameState, reason) {
+//
+// IT ALSO RECORDS WHO, SINCE 16 AUGUST, because the trigger is now worth
+// END_TRIGGER_BONUS_VP to them. `playerId` is null for an ending nobody caused -
+// see the constant for which those are.
+function triggerEndGame(gameState, reason, playerId = null) {
   if (gameState.endTriggered) return;
   gameState.endTriggered = true;
   gameState.endGameReason = reason;
+  gameState.endTriggeredBy = playerId;
 }
 
 // THE TRIM RULE (6 August), replacing checkBoardOverflowOnPlace.
@@ -2959,7 +3013,7 @@ function advanceToNextTurn(gameState) {
   if (standFullEndsGame) {
     for (const p of gameState.players) {
       if (isStandFull(p)) {
-        triggerEndGame(gameState, 'standFull');
+        triggerEndGame(gameState, 'standFull', p.id);
         break;
       }
     }
@@ -2967,7 +3021,7 @@ function advanceToNextTurn(gameState) {
 
   for (const p of gameState.players) {
     if (getValidPlacements(p.board).length === 0) {
-      triggerEndGame(gameState, 'boardFull');
+      triggerEndGame(gameState, 'boardFull', p.id);
       break;
     }
   }
@@ -3059,6 +3113,10 @@ function applyEmptyMarketRule(gameState) {
   // has (triggerEndGame keeps the first reason, so a board that filled earlier
   // still gets the credit), then jump to the spend phase so the player can still
   // move a tile and claim this turn.
+  //
+  // NO PLAYER ID, AND THAT IS THE RULE RATHER THAN AN OMISSION: this ending pays
+  // no END_TRIGGER_BONUS_VP because nobody caused it. The incoming player merely
+  // arrived to find the market bare. See the constant.
   triggerEndGame(gameState, 'marketTiles');
   gameState.gamePhase = 'spend';
 }
@@ -3382,6 +3440,13 @@ export function calculateFinalScores(gameState) {
       score += getFlavourCount(gameState, player) * FLAVOUR_VP_PER_TILE;
       if (flavourLeaders.has(player.id)) score += FLAVOUR_MAJORITY_VP;
     }
+
+    // THE END TRIGGER BONUS (16 August). Flat, once, to the one player who armed
+    // the ending - see END_TRIGGER_BONUS_VP for which endings have an owner at
+    // all. `endTriggeredBy` is null in every other case, and null never equals a
+    // player id, so no guard on gameOver is needed here: a game that has not
+    // armed anything pays nobody.
+    if (gameState.endTriggeredBy === player.id) score += endTriggerBonus;
 
     // (Ingredient objectives scored 3 VP per pair here until 4 August. The pantry
     // goals are deleted - see the note at the top of this file. Expect mean
