@@ -1,4 +1,4 @@
-import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getVisibleTeapotSymbols, getMenuIngredients, getAvailableMenus, isTastingMenuInPlay, isFlavourInPlay, getFlavourCount, getMoveCost, canMoveTile, canDealCards, canBuyExtraTile, getMaxExtraTilesPerTurn, canRemovePlate, canClaimMore, countBoardIngredient, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, TASTING_MENU_VP, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
+import { getValidSweeps, getPatternMatches, getPatternWindows, getValidPlacements, getVisibleTeapotSymbols, getMenuIngredients, getAvailableMenus, isTastingMenuInPlay, isFlavourInPlay, getFlavourCount, getMoveCost, canMoveTile, canDealCards, canBuyExtraTile, getMaxExtraTilesPerTurn, canRemovePlate, canClaimMore, countBoardIngredient, isStandFull, getEndTriggerBonus, getStandFullEndsGame, STAND_ROW_VALUES, CUPCAKE_PLATES, TEAPOT_SYMBOL_CELLS, REFRESH_THRESHOLD, TEA_POT_REWARD, REWARD_CARDS, COLOURS, INGREDIENTS, BOARD_SIZE, DEAL_CARDS_CUPCAKE_COST, CARDS_PER_DEAL, EXTRA_TILE_CUPCAKE_COST, REMOVE_PLATE_CUPCAKE_COST, TASTING_MENU_VP, FLAVOUR_VP_PER_TILE, FLAVOUR_MAJORITY_VP } from '../engine/game.js';
 
 // Approximate value of a completed claim beyond the card's printed VP: the
 // sacrificed tile is banked on the stand or crumb tray. A conservative floor —
@@ -48,6 +48,69 @@ function turnsRemaining(gameState) {
     minFree = Math.min(minFree, getValidPlacements(p.board).length);
   }
   return Math.max(1, Math.ceil(minFree / TILES_DRAWN_PER_TURN));
+}
+
+// ── THE 3 VP END TRIGGER (17 August) ───────────────────────────────────────
+// THE BOT WAS BLIND TO IT, AND THAT MADE EVERY FIGURE MEASURED ON IT PASSIVE
+// DRIFT. END_TRIGGER_BONUS_VP shipped on 16 August: the player who arms the
+// ending scores 3 VP. calculateFinalScores pays it, so the bonus was landing in
+// the results - but nothing in this file had ever heard of it, so what the
+// 16 August A/B measured was "what happens when the bonus is paid and nobody
+// chases it". "Turns per game moved 0.00" was evidence about the bot.
+//
+// A HUMAN WHO WANTS 3 VP CAN DELIBERATELY RUSH THEIR BOARD FULL, and that is what
+// the rule is FOR. This block is what lets the bot do the same, so the rule can be
+// measured being played rather than being ignored.
+//
+// FOUR DECISIONS CAN ARM OR GIVE AWAY THE ENDING, and all four are wired below.
+// They are not four heuristics but one term applied four times:
+//
+//   scoreSweeps          a sweep that leaves no free cell fills the board. This is
+//                        the big one - the board-full ending decides ~99% of games.
+//   decideExtraTile      cupcakes will buy the last cells outright.
+//   decideRemovePlate    a removal REOPENS a cell, and hands the ending back.
+//   destinationValue     plating the tenth tile completes the cake stand.
+//
+// DELIBERATELY NOT WIRED: decidePlacements. Placement is not a choice about how
+// full the board gets - you must place everything you can - so a term there would
+// change which cell a tile lands in and nothing else.
+//
+// IT IS PRICED AT FACE VALUE AND NO MORE. The stake is the engine's own
+// getEndTriggerBonus(), read live so the A/B seam (setEndTriggerBonus(0)) turns
+// this whole block off exactly as it turns the rule off. No multiplier, no
+// "ending the game while ahead" term: this bot cannot tell whether it is winning,
+// and a rushed ending is worth 3 VP to a leader and 3 VP to a trailer alike.
+//
+// WHAT THIS DOES NOT DO, so nobody reads more into a re-measurement than is
+// there: it does not weigh the ending against the turns it COSTS the other
+// players, and it does not hold the trigger back to bank one more claim first.
+// Both are real parts of playing the rule hard and neither is modelled. The
+// honest claim is that the bot now takes a trigger it can see and pays a modest
+// price for it, where before it took one only by accident.
+
+// What arming the ending is worth to the player about to decide something. Zero
+// once somebody has armed it - the first condition to arm is the one that pays,
+// so a second trigger this turn earns nothing at all.
+function endTriggerStake(gameState) {
+  if (gameState.endTriggered) return 0;
+  return getEndTriggerBonus();
+}
+
+// Would plating one more tile into `rowIndex` complete this player's cake stand,
+// and so arm END CONDITION 3 in their name? Written against capacity rather than
+// by mutating a copy of the stand, the same way the engine's isStandFull is.
+//
+// Gated on getStandFullEndsGame() because the condition itself has an A/B seam:
+// with it off a full stand ends nothing and pays nobody, and a bot that still
+// chased it would be chasing a rule that is not in the game.
+function wouldCompleteStand(player, rowIndex) {
+  if (!getStandFullEndsGame()) return false;
+  if (isStandFull(player)) return false;   // already complete - nothing left to arm
+  return player.stand.every((row, i) => (
+    i === rowIndex
+      ? row.tiles.length + 1 >= row.capacity
+      : row.tiles.length >= row.capacity
+  ));
 }
 
 // Value of gaining a cupcake by plating onto a cupcake plate. There is no cap,
@@ -341,7 +404,7 @@ function menuValueOfPlating(gameState, player, ingredient) {
 // similar sweeps rather than a magnet.
 //
 // `wanted` is how many more of that ingredient the nearest live menu still needs,
-// which is what the sweep taper counts against - a fourth lemon does nothing for a
+// which is what the sweep taper counts against - a fourth citrus does nothing for a
 // menu that wants two.
 function menuIngredientDemand(gameState, player) {
   const demand = {};
@@ -770,8 +833,8 @@ function rawSweepScore(market, sweep, marketSize, ctx) {
       const already = menuTaken[tile.ingredient] || 0;
       const held = (ctx.menuHeld[tile.ingredient] || 0) + already;
       menuTaken[tile.ingredient] = already + 1;
-      // SUPPLY PAST WHAT THE MENU WANTS BUYS LITTLE. A menu short two lemons is
-      // not helped by a sixth lemon on the board - but the taper is a taper rather
+      // SUPPLY PAST WHAT THE MENU WANTS BUYS LITTLE. A menu short two citrus tiles is
+      // not helped by a sixth citrus on the board - but the taper is a taper rather
       // than a cliff, because a tile in the wrong PLACE is not removable, so spare
       // copies genuinely do help a little.
       score += demand.value * (held >= demand.wanted ? 0.4 : 1);
@@ -863,12 +926,31 @@ function scoreSweeps(gameState) {
   // SWEEP_WASTED_TILE_COST. Computed once: nothing in the loop touches the board.
   const capacity = sweepCapacity(gameState);
 
+  // THE 3 VP END TRIGGER. A sweep that takes at least `capacity` tiles leaves this
+  // board with no free cell, which arms END CONDITION 1 in this player's name at
+  // the end of the turn - and that is worth the bonus.
+  //
+  // IT IS THE SAME TILES THAT SWEEP_WASTED_TILE_COST IS CHARGING FOR, and that
+  // opposition is the decision rather than a double count. The waste term exists
+  // to stop the bot lifting tiles it cannot place; the stake is what those tiles
+  // BUY when the reason for lifting them is that the board is nearly full. A sweep
+  // of four into three free cells pays 3 VP and is charged 3.0 for the tile that
+  // goes back in the bag, so the trigger wins narrowly - which is the intended
+  // shape. The bot rushes the ending when it is one sweep away, not from across
+  // the board.
+  //
+  // capacity === 0 pays nothing: the board is ALREADY full, the ending is already
+  // armed or about to be, and no choice of sweep changes it.
+  const endStake = endTriggerStake(gameState);
+
   const scored = validSweeps.map(sweep => {
     const taken = getSweptTiles(gameState.market, sweep, marketSize).length;
     const wasted = Math.max(0, taken - capacity);
+    const fillsBoard = capacity > 0 && taken >= capacity;
     const score = rawSweepScore(gameState.market, sweep, marketSize, ctx)
       + symbolTriggerValue(visibleNow, symbolsExposedBySweep(gameState.market, sweep, marketSize))
-      - wasted * SWEEP_WASTED_TILE_COST;
+      - wasted * SWEEP_WASTED_TILE_COST
+      + (fillsBoard ? endStake : 0);
     return { sweep, score };
   });
 
@@ -1037,6 +1119,20 @@ function colourTowardMultiTileUnlock(player, board, spots, candidateCards, marke
   return null;
 }
 
+// colour -> the market indices holding it. Built twice inside decideExtraTile
+// since the end-trigger branch went in above the card-lock one, so it is a
+// function rather than two copies of the same six lines.
+function colourIndex(gameState) {
+  const byColour = new Map();
+  for (let i = 0; i < gameState.market.length; i++) {
+    const tile = gameState.market[i];
+    if (!tile) continue;
+    if (!byColour.has(tile.colour)) byColour.set(tile.colour, []);
+    byColour.get(tile.colour).push(i);
+  }
+  return byColour;
+}
+
 export function decideExtraTile(gameState) {
   if (!canBuyExtraTile(gameState)) return null;
   const player = gameState.players[gameState.currentPlayerIndex];
@@ -1051,21 +1147,58 @@ export function decideExtraTile(gameState) {
   const board = player.board;
   const candidateCards = gameState.cardMarket;
 
+  const spots = getValidPlacements(board);
+  if (spots.length === 0) return null;
+
+  // THE 3 VP END TRIGGER, AND IT IS ASKED FIRST (17 August). Everything below this
+  // block is about being CARD-LOCKED, and answers "no" the moment a claim is
+  // already available - which is exactly the turn on which a player one tile from
+  // a full board most wants to buy that tile. So the trigger is priced ahead of
+  // the lock, not inside it.
+  //
+  // WHAT IT BUYS: the last free cells on our own board, closing END CONDITION 1 in
+  // our name at the end of this turn. The whole purchase has to be affordable in
+  // one turn - buying three of four cells arms nothing and hands the fourth to
+  // whoever fills their board next - so the purse is checked against ALL of them
+  // and a partial run is never started.
+  //
+  // NET, NOT GROSS. `spots.length` cupcakes at CUPCAKE_VALUE each is what the
+  // cupcakes would otherwise be worth, and the trigger has to beat that. At 3 VP
+  // against a cupcake priced at 2 this clears for ONE cell and not for two, which
+  // is the right shape and is stated rather than tuned: this is meant to be the
+  // last step of a board the bot filled by playing, not a way to buy an ending
+  // outright from a half-empty board.
+  //
+  // A CRUMB CLAIM LATER THIS TURN CAN UNDO IT - the claim step follows the spend
+  // step, and a crumbed sacrifice leaves its cell empty. Not modelled: decideClaim
+  // plates rather than crumbs whenever a stand row will take the tile, so the case
+  // is rare, and losing the bonus is the smaller of the two mistakes.
+  const endStake = endTriggerStake(gameState);
+  if (endStake > 0 && spots.length <= player.cupcakes
+      && endStake > spots.length * EXTRA_TILE_CUPCAKE_COST * CUPCAKE_VALUE) {
+    const marketColours = colourIndex(gameState);
+    // Prefer a colour that also advances a card - the tile still has to sit
+    // somewhere, and a free unlock costs nothing on top of the trigger.
+    for (const cellIndex of spots) {
+      for (const [colour, indices] of marketColours) {
+        const trial = [...board];
+        trial[cellIndex] = { colour, ingredient: null };
+        if (!candidateCards.some(card => getPatternMatches(trial, card.pattern).length > 0)) continue;
+        const marketIndex = pickMarketIndexOfColour(gameState, player, indices);
+        if (marketIndex !== null) return { marketIndex, boardIndex: cellIndex };
+      }
+    }
+    const any = marketColours.values().next().value;
+    const marketIndex = pickMarketIndexOfColour(gameState, player, any);
+    if (marketIndex !== null) return { marketIndex, boardIndex: spots[0] };
+  }
+
   // Already claimable? Then we are not locked and there is nothing here to buy.
   for (const card of candidateCards) {
     if (getPatternMatches(board, card.pattern).length > 0) return null;
   }
 
-  const spots = getValidPlacements(board);
-  if (spots.length === 0) return null;
-
-  const marketColours = new Map(); // colour -> market indices holding it
-  for (let i = 0; i < gameState.market.length; i++) {
-    const tile = gameState.market[i];
-    if (!tile) continue;
-    if (!marketColours.has(tile.colour)) marketColours.set(tile.colour, []);
-    marketColours.get(tile.colour).push(i);
-  }
+  const marketColours = colourIndex(gameState);
 
   let bestColour = null;
   let bestCell = null;
@@ -1587,6 +1720,27 @@ export function decideRemovePlate(gameState) {
   if (!canRemovePlate(gameState)) return null;
   const player = gameState.players[gameState.currentPlayerIndex];
 
+  // THE 3 VP END TRIGGER, ON THE ONLY DECISION IN THE FILE THAT GIVES IT AWAY
+  // (17 August). Every other end-trigger term in this bot is a reason to do
+  // something; this is a reason NOT to.
+  //
+  // A removal REOPENS A CELL. On a board with no free cell left, the ending is
+  // about to arm in this player's name at the end of this turn - and paying two
+  // cupcakes to reopen a cell un-arms it and hands the trigger to whoever fills
+  // their board next. That is the bonus given away, plus the cupcakes.
+  //
+  // ONLY AT ZERO FREE CELLS, and deliberately not "nearly full". At one free cell
+  // the ending is not armed and a removal costs nothing but tempo; it is the
+  // full-board case that turns a spend into a forfeit.
+  //
+  // Charged rather than forbidden, in the same spirit as every other gate here: a
+  // removal that revives a 5 VP card and a Tasting Menu can still be worth more
+  // than 3 VP and a turn's delay, and the bot should feel the cost rather than be
+  // refused the option.
+  const forfeit = getValidPlacements(player.board).length === 0
+    ? endTriggerStake(gameState)
+    : 0;
+
   const candidateCards = gameState.cardMarket;
   const matchedNow = new Set();
   for (const card of candidateCards) {
@@ -1631,7 +1785,7 @@ export function decideRemovePlate(gameState) {
     let value = gains[0];
     for (let i = 1; i < gains.length; i++) value += gains[i] * PLATE_REMOVE_SECONDARY_SHARE;
 
-    const net = value - REMOVE_PLATE_CUPCAKE_COST * CUPCAKE_VALUE;
+    const net = value - REMOVE_PLATE_CUPCAKE_COST * CUPCAKE_VALUE - forfeit;
     if (net <= 0) continue;
     if (!best || net > best.net) best = { index: plateIndex, net };
   }
@@ -1656,6 +1810,18 @@ function destinationValue(player, tile, gameState) {
   const filled = player.stand[destination.rowIndex].tiles.length;
   let value = rowMarginalValue(destination.rowIndex, filled);
   if (isCupcakePlate(destination.rowIndex, filled)) value += CUPCAKE_PLATE_BONUS;
+  // THE 3 VP END TRIGGER, on the tenth tile (17 August). Completing all four
+  // stand rows arms END CONDITION 3 in this player's name, and unlike a filling
+  // board - which creeps up over many turns in plain sight - it lands on a single
+  // claim. It rides on the ROW branch only, because the crumb tray is not part of
+  // the stand and completes nothing.
+  //
+  // gameState is optional on this path (decideDestination's own signature says
+  // so), and without it there is no endTriggered flag to read, so the term is
+  // simply absent rather than guessed.
+  if (gameState && wouldCompleteStand(player, destination.rowIndex)) {
+    value += endTriggerStake(gameState);
+  }
   return { destination, value };
 }
 

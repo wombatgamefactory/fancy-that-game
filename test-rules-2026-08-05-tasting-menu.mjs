@@ -83,7 +83,7 @@ function armTeaTrigger(s) {
 // Card 1 (Lemon madeleine) is two adjacent yellows - the smallest pattern in the
 // deck, which keeps the constructed board to two cells and leaves everything else
 // about the position uninteresting on purpose.
-function claimState({ tileIngredient = 'lemon', playerCount = 2, seat = 0, menus = null } = {}) {
+function claimState({ tileIngredient = 'citrus', playerCount = 2, seat = 0, menus = null } = {}) {
   const s = newGame(playerCount, menus ? { tastingMenus: menus } : {});
   s.gamePhase = 'claim';
   s.currentPlayerIndex = seat;
@@ -92,7 +92,7 @@ function claimState({ tileIngredient = 'lemon', playerCount = 2, seat = 0, menus
   p.board = Array(25).fill(null);
   // Cells 0 and 1: the tile at 0 is the one the tests remove.
   p.board[0] = { colour: 'yellow', ingredient: tileIngredient };
-  p.board[1] = { colour: 'yellow', ingredient: 'almond' };
+  p.board[1] = { colour: 'yellow', ingredient: 'nuts' };
   const card = REWARD_CARDS.find(c => c.id === 1);
   s.cardMarket = [card];
   assert(getPatternMatches(p.board, card.pattern).length > 0, 'setup: the pattern must match');
@@ -108,8 +108,8 @@ function stock(player, rowIndex, ingredient, count) {
   for (let i = 0; i < count; i++) row.tiles.push({ colour: 'yellow', ingredient });
 }
 
-// The two menus the tests pin. t1 is 2 lemon + 2 chocolate; t6 is 2 lemon +
-// caramel + strawberry. They OVERLAP on their two lemon, which is what makes them
+// The two menus the tests pin. t1 is 2 citrus + 2 chocolate; t6 is 2 citrus +
+// caramel + fruit. They OVERLAP on their two citrus, which is what makes them
 // the right pair for the ingredients-are-not-consumed test.
 const MENU_T1 = TASTING_MENUS.find(m => m.id === 't1');
 const MENU_T6 = TASTING_MENUS.find(m => m.id === 't6');
@@ -174,10 +174,10 @@ check('1d: a dealt menu never aliases the deck constant', () => {
   // the process - and a simulation run is thousands of games in one process.
   const s = newGame(2, { tastingMenus: ['t1'] });
   s.tastingMenus[0].takenBy = 99;
-  s.tastingMenus[0].need.lemon = 99;
+  s.tastingMenus[0].need.citrus = 99;
   const fresh = newGame(2, { tastingMenus: ['t1'] });
   eq(fresh.tastingMenus[0].takenBy, null, 'the deck constant was not written to');
-  eq(fresh.tastingMenus[0].need.lemon, MENU_T1.need.lemon, 'nor was its need map');
+  eq(fresh.tastingMenus[0].need.citrus, MENU_T1.need.citrus, 'nor was its need map');
 });
 
 check('1e: players start holding nothing', () => {
@@ -193,24 +193,24 @@ check('1e: players start holding nothing', () => {
 check('2a: getStandIngredients counts the STAND and nothing else', () => {
   const s = newGame(2);
   const p = s.players[0];
-  stock(p, 0, 'lemon', 2);
+  stock(p, 0, 'citrus', 2);
   stock(p, 1, 'chocolate', 1);
   p.crumbTray.push({ colour: 'brown', ingredient: 'chocolate' });
   p.board[0] = { colour: 'brown', ingredient: 'chocolate' };
   const counts = getStandIngredients(p);
-  eq(counts.lemon, 2, 'two lemon on the stand');
+  eq(counts.citrus, 2, 'two citrus on the stand');
   eq(counts.chocolate, 1, 'ONE chocolate - the crumb tray and the board are invisible');
 });
 
 check('2b: qualifiesForMenu and getMenuDeficit agree', () => {
   const s = newGame(2, { tastingMenus: ['t1'] });
   const p = s.players[0];
-  // t1 is 2 lemon + 1 chocolate since the deck was lightened to three tiles.
+  // t1 is 2 citrus + 1 chocolate since the deck was lightened to three tiles.
   eq(getMenuDeficit(p, MENU_T1), 3, 'an empty stand is three tiles short');
   assert(!qualifiesForMenu(p, MENU_T1), 'and does not qualify');
-  stock(p, 0, 'lemon', 1);
-  eq(getMenuDeficit(p, MENU_T1), 2, 'one lemon leaves a lemon and the chocolate');
-  p.stand[0].tiles.push({ colour: 'yellow', ingredient: 'lemon' });
+  stock(p, 0, 'citrus', 1);
+  eq(getMenuDeficit(p, MENU_T1), 2, 'one citrus leaves a citrus and the chocolate');
+  p.stand[0].tiles.push({ colour: 'yellow', ingredient: 'citrus' });
   eq(getMenuDeficit(p, MENU_T1), 1, 'one chocolate short');
   assert(!qualifiesForMenu(p, MENU_T1), 'one short is not qualified');
   stock(p, 1, 'chocolate', 1);
@@ -221,7 +221,7 @@ check('2b: qualifiesForMenu and getMenuDeficit agree', () => {
 check('2c: getClaimableMenus never returns a menu already taken', () => {
   const s = newGame(2, { tastingMenus: ['t1', 't6'] });
   const p = s.players[0];
-  stock(p, 0, 'lemon', 2);
+  stock(p, 0, 'citrus', 2);
   stock(p, 1, 'chocolate', 2);
   eq(getClaimableMenus(s, p).length, 1, 't1 is met, t6 is not');
   s.tastingMenus[0].takenBy = 1;
@@ -235,7 +235,7 @@ check('2c: getClaimableMenus never returns a menu already taken', () => {
 
 check('3a: a player takes the menu on the claim that completes it, in the same call', () => {
   const { s, p } = claimState({ tileIngredient: 'chocolate', menus: ['t1'] });
-  stock(p, 0, 'lemon', 2);
+  stock(p, 0, 'citrus', 2);
   eq(getMenuDeficit(p, s.tastingMenus[0]), 1, 'setup: exactly one tile short');
   eq(p.tastingMenus.length, 0, 'setup: holding nothing yet');
 
@@ -248,9 +248,9 @@ check('3a: a player takes the menu on the claim that completes it, in the same c
 
 check('3b: a claim that does NOT complete a menu takes nothing', () => {
   const { s, p } = claimState({ tileIngredient: 'chocolate', menus: ['t1'] });
-  stock(p, 0, 'lemon', 1);
+  stock(p, 0, 'citrus', 1);
   claim(s, 1, 0, { type: 'row', rowIndex: 1 });
-  eq(p.tastingMenus.length, 0, 'still a lemon short after plating the chocolate');
+  eq(p.tastingMenus.length, 0, 'still a citrus short after plating the chocolate');
   eq(s.tastingMenus[0].takenBy, null, 'so the card is still on the table');
 });
 
@@ -258,17 +258,17 @@ check('3c: A SECOND PLAYER MEETING THE SAME MENU SCORES NOTHING', () => {
   // The whole mechanism. If this ever silently passes, the module has become a
   // public objective everybody scores and there is no race left in it.
   const { s, p } = claimState({ tileIngredient: 'chocolate', playerCount: 2, menus: ['t1'] });
-  stock(p, 0, 'lemon', 2);
+  stock(p, 0, 'citrus', 2);
   claim(s, 1, 0, { type: 'row', rowIndex: 1 });
   eq(p.tastingMenus.length, 1, 'first player takes it');
 
   // Second player, same menu, already qualifying on the stand.
   const p2 = s.players[1];
-  stock(p2, 0, 'lemon', 2);
+  stock(p2, 0, 'citrus', 2);
   stock(p2, 1, 'chocolate', 1);
   p2.board = Array(25).fill(null);
   p2.board[0] = { colour: 'yellow', ingredient: 'chocolate' };
-  p2.board[1] = { colour: 'yellow', ingredient: 'almond' };
+  p2.board[1] = { colour: 'yellow', ingredient: 'nuts' };
   s.cardMarket = [REWARD_CARDS.find(c => c.id === 1)];
   s.currentPlayerIndex = 1;
   s.gamePhase = 'claim';
@@ -285,11 +285,11 @@ check('3c: A SECOND PLAYER MEETING THE SAME MENU SCORES NOTHING', () => {
 
 check('3d: a rejected claim takes no menu', () => {
   // The hook sits after every validation for exactly this reason. rowIndex 1 is
-  // locked to chocolate below, so plating a lemon there is illegal.
-  const { s, p } = claimState({ tileIngredient: 'lemon', menus: ['t1'] });
-  stock(p, 0, 'lemon', 1);
+  // locked to chocolate below, so plating a citrus there is illegal.
+  const { s, p } = claimState({ tileIngredient: 'citrus', menus: ['t1'] });
+  stock(p, 0, 'citrus', 1);
   stock(p, 1, 'chocolate', 2);
-  // One more lemon on the stand would complete t1 - but the destination is illegal.
+  // One more citrus on the stand would complete t1 - but the destination is illegal.
   let threw = false;
   try {
     claim(s, 1, 0, { type: 'row', rowIndex: 1 });
@@ -312,7 +312,7 @@ check('4a: A TILE SENT TO THE CRUMB TRAY DOES COMPLETE A MENU', () => {
   // stand's convex reward: menus read the stand, so the player with the deepest
   // stand won 2.5x as many of them. Reading the crumb tray decouples the two.
   const { s, p } = claimState({ tileIngredient: 'chocolate', menus: ['t1'] });
-  stock(p, 0, 'lemon', 2);
+  stock(p, 0, 'citrus', 2);
   eq(getMenuDeficit(p, s.tastingMenus[0]), 1, 'setup: one chocolate short');
 
   claim(s, 1, 0, { type: 'crumb' });
@@ -328,11 +328,11 @@ check('4b: getStandIngredients still reads the STAND ALONE', () => {
   // The two accessors must not collapse into each other: the stand-shape metrics
   // and the UI's stand panel depend on the narrow one staying narrow.
   const { s, p } = claimState({ tileIngredient: 'chocolate', menus: ['t1'] });
-  stock(p, 0, 'lemon', 2);
+  stock(p, 0, 'citrus', 2);
   claim(s, 1, 0, { type: 'crumb' });
 
   eq(getStandIngredients(p).chocolate || 0, 0, 'the crumbed tile is NOT on the stand');
-  eq(getStandIngredients(p).lemon, 2, 'the stand read is otherwise intact');
+  eq(getStandIngredients(p).citrus, 2, 'the stand read is otherwise intact');
   eq(getMenuIngredients(p).chocolate, 1, 'but the MENU read sees it');
 });
 
@@ -341,14 +341,14 @@ check('4b: getStandIngredients still reads the STAND ALONE', () => {
 // ---------------------------------------------------------------------------
 
 check('5a: a stand meeting two overlapping menus takes BOTH, undiminished', () => {
-  // t1 (2 lemon + chocolate) and t6 (lemon + caramel + strawberry) share a lemon.
+  // t1 (2 citrus + chocolate) and t6 (citrus + caramel + fruit) share a citrus.
   // Five tiles satisfy both; if ingredients were consumed it would take six.
-  const { s, p } = claimState({ tileIngredient: 'strawberry', menus: ['t1', 't6'] });
-  stock(p, 0, 'lemon', 2);
+  const { s, p } = claimState({ tileIngredient: 'fruit', menus: ['t1', 't6'] });
+  stock(p, 0, 'citrus', 2);
   stock(p, 1, 'chocolate', 1);
   stock(p, 2, 'caramel', 1);
   eq(getMenuDeficit(p, MENU_T1), 0, 'setup: t1 would already be met');
-  eq(getMenuDeficit(p, MENU_T6), 1, 'setup: t6 is one strawberry short');
+  eq(getMenuDeficit(p, MENU_T6), 1, 'setup: t6 is one fruit short');
 
   claim(s, 1, 0, { type: 'row', rowIndex: 3 });
 
@@ -364,7 +364,7 @@ check('5a: a stand meeting two overlapping menus takes BOTH, undiminished', () =
     // And neither is diminished by the other: the stand still meets both.
     assert(qualifiesForMenu(p, MENU_T1), 't1 is still met after t6 was taken');
     assert(qualifiesForMenu(p, MENU_T6), 't6 is still met after t1 was taken');
-    eq(p.stand[0].tiles.length, 2, 'and no tile was spent - both lemon are still there');
+    eq(p.stand[0].tiles.length, 2, 'and no tile was spent - both citrus are still there');
   }
 });
 
@@ -385,7 +385,7 @@ check('6a: a pot of tea does not release a taken menu, or deal a new one', () =>
   // it. If this test ever fails, the module has lost the only thing it was built
   // for.
   const { s, p } = claimState({ tileIngredient: 'chocolate', menus: ['t1', 't6'] });
-  stock(p, 0, 'lemon', 2);
+  stock(p, 0, 'citrus', 2);
   claim(s, 1, 0, { type: 'row', rowIndex: 1 });
   eq(s.tastingMenus[0].takenBy, p.id, 'setup: t1 has been taken');
 
@@ -488,8 +488,8 @@ async function checkCloneHazard() {
   // of real turns will plate one many times over.
   const s = createGame([{ name: 'A' }, { name: 'B' }], null, { tastingMenus: ['t1'] });
   for (const p of s.players) {
-    // Two lemon is one chocolate short of t1 on the three-tile deck.
-    stock(p, 0, 'lemon', 2);
+    // Two citrus is one chocolate short of t1 on the three-tile deck.
+    stock(p, 0, 'citrus', 2);
   }
   s.gamePhase = 'sweep';
   s.currentPlayerIndex = 0;
@@ -524,7 +524,7 @@ check('8a: calculateFinalScores adds exactly TASTING_MENU_VP per held menu', () 
   const s = newGame(2, { tastingMenus: ['t1', 't6'] });
   const p = s.players[0];
   // A bare stand of known value, so the menu term can be isolated by subtraction.
-  stock(p, 0, 'lemon', 2);
+  stock(p, 0, 'citrus', 2);
   const standOnly = STAND_ROW_VALUES[0][1];
   calculateFinalScores(s);
   eq(p.score, standOnly, 'baseline: stand only');
@@ -545,10 +545,10 @@ check('8b: the collector records the deal and every take', () => {
   s.currentPlayerIndex = 0;
   s.claimsThisTurn = 0;
   const p = s.players[0];
-  stock(p, 0, 'lemon', 2);
+  stock(p, 0, 'citrus', 2);
   p.board = Array(25).fill(null);
   p.board[0] = { colour: 'yellow', ingredient: 'chocolate' };
-  p.board[1] = { colour: 'yellow', ingredient: 'almond' };
+  p.board[1] = { colour: 'yellow', ingredient: 'nuts' };
   s.cardMarket = [REWARD_CARDS.find(c => c.id === 1)];
   claim(s, 1, 0, { type: 'row', rowIndex: 1 });
 
@@ -573,7 +573,7 @@ check('8c: setTastingMenusEnabled(false) awards nothing and scores nothing', () 
     // EXACT total, so every lane that is not under test has to be held at zero -
     // otherwise it is asserting the whole scoring function rather than the absence
     // of one term. It also made the test FLAKY rather than merely wrong: the
-    // Flavour is drawn at random from five, so it collided with the almond left on
+    // Flavour is drawn at random from five, so it collided with the nuts left on
     // the board about one run in five and the suite passed four times out of five.
     setFlavourEnabled(false);
     const s = newGame(3);
@@ -584,16 +584,16 @@ check('8c: setTastingMenusEnabled(false) awards nothing and scores nothing', () 
     s.currentPlayerIndex = 0;
     s.claimsThisTurn = 0;
     const p = s.players[0];
-    stock(p, 0, 'lemon', 2);
+    stock(p, 0, 'citrus', 2);
     stock(p, 1, 'chocolate', 1);
     p.board = Array(25).fill(null);
     p.board[0] = { colour: 'yellow', ingredient: 'chocolate' };
-    p.board[1] = { colour: 'yellow', ingredient: 'almond' };
+    p.board[1] = { colour: 'yellow', ingredient: 'nuts' };
     s.cardMarket = [REWARD_CARDS.find(c => c.id === 1)];
     claim(s, 1, 0, { type: 'row', rowIndex: 1 });
     eq(p.tastingMenus.length, 0, 'a qualifying stand awards nothing');
 
-    // The whole score, term by term, with no menu term anywhere in it: two lemon
+    // The whole score, term by term, with no menu term anywhere in it: two citrus
     // on the bottom row, two chocolate on the second (the claim plated one), and
     // the claimed card's printed VP.
     const cardVp = REWARD_CARDS.find(c => c.id === 1).vp;

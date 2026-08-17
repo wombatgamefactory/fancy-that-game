@@ -19,35 +19,12 @@ import {
   reduced,
 } from './motion.js';
 import { playCue, soundEnabled, setSoundEnabled } from './sound.js';
-
-// Ingredient names as they appear in copy. The engine's INGREDIENTS are lowercase
-// keys that double as image filenames (images/symbol-<ingredient>-v3.png), and a
-// sentence should not be the place that discovers that.
-//
-// The -v2 files are the web-scale export (ticket 17, 9 August): 88px on the long
-// side, which is 2x .ft-flavour__symbol at 44px, the largest box any of these is
-// ever drawn in. The v1 files were 794 to 1200px and 531KB combined; these are
-// 4.6KB. The originals stay in images/ under their old symbol_<ingredient>.png
-// names, unreferenced, so the two can be compared.
-const INGREDIENT_LABELS = {
-  lemon: 'Lemon',
-  chocolate: 'Chocolate',
-  caramel: 'Caramel',
-  strawberry: 'Strawberry',
-  almond: 'Almond',
-};
-
-function ingredientLabel(ingredient) {
-  return INGREDIENT_LABELS[ingredient] || ingredient || '';
-}
-
-// "an almond tile", "a lemon tile". Only one of the five ingredients starts with
-// a vowel today, but an ingredient is dropped at random into a sentence, so the
-// article has to be derived rather than written.
-function ingredientPhrase(ingredient) {
-  const word = ingredientLabel(ingredient).toLowerCase();
-  return `${/^[aeiou]/.test(word) ? 'an' : 'a'} ${word}`;
-}
+// THE INGREDIENT RENAME OF 17 AUGUST (lemon -> Citrus, strawberry -> Fruit,
+// almond -> Nuts) is what pulled these three out of this file. An id, the word a
+// player reads, and the picture's filename stopped being one string, and
+// motion.js needs the same translation for a flying tile clone - so the map lives
+// in a module both can import rather than in this one. See ingredients.js.
+import { ingredientLabel, ingredientArt, ingredientPhrase } from './ingredients.js';
 
 // ---------------------------------------------------------------------------
 // THE INTERFACE ICONS (stage 2, plan section 8.7)
@@ -923,11 +900,41 @@ function seatHTML(playerIdx, gameState) {
   const present = playerIdx < gameState.players.length;
   const player = gameState.players[playerIdx];
 
+  // THE START PLAYER MARKER (17 August). The teapot is load-bearing in the book -
+  // it names who went first, and the equal-turns rule that closes the game is
+  // written entirely in terms of "until the turn comes back to the start player" -
+  // and this build showed it nowhere at all.
+  //
+  // IT MATTERS AT THE MOMENT THE ENDING FIRES, which is why it went in with the
+  // second gauge and the final-round line rather than on its own: knowing the
+  // ending is armed is only half of knowing how many turns are left, and the other
+  // half is which seat closes the lap.
+  //
+  // STATIC, ON THE SEAT HEADER, and that is a fact about the rules rather than a
+  // shortcut. startPlayerIndex is set once in createGame and is never written
+  // again - there is no first-player token to pass in this game - so the marker
+  // belongs in the markup the seat is built from and needs no update path.
+  //
+  // The teapot image is the component itself, at the 16px the seat header's other
+  // marker uses. Aria-hidden with a visually hidden word beside it, on this
+  // build's standing rule that no icon is ever the accessible name of anything.
+  const startMark = (present && playerIdx === gameState.startPlayerIndex)
+    ? ` <span class="ft-seat__start" title="Start player">`
+      + `<img src="images/teapot.png" width="16" height="16" alt="" aria-hidden="true">`
+      + `<span class="ft-sr-only">Start player</span></span>`
+    : '';
+
   // updateGameDisplay rewrites seat 1's header text when player 1 is a bot (the
   // all-bot demo), so the id has to survive.
+  //
+  // THE START MARKER SITS OUTSIDE THE <h2> ON BOTH BRANCHES, which is not
+  // symmetry for its own sake: that rewrite assigns #player1Header.innerHTML, so a
+  // marker inside seat 1's heading would be wiped the first time a bot took a
+  // turn. Keeping both outside means one rule rather than one rule and an
+  // exception.
   const title = isOwnSeat
-    ? `<h2 class="ft-panel__title" id="player1Header">Your Board</h2>`
-    : `<h2 class="ft-panel__title">Player ${n} ${seatMarker(player)}</h2>`;
+    ? `<h2 class="ft-panel__title" id="player1Header">Your Board</h2>${startMark}`
+    : `<h2 class="ft-panel__title">Player ${n} ${seatMarker(player)}</h2>${startMark}`;
 
   // The "Swept Tiles" caption names a row of tiles that appears directly above
   // your own board during the one step where you are placing them, which is
@@ -973,7 +980,7 @@ function seatHTML(playerIdx, gameState) {
   const oppSheetHead = isOwnSeat ? '' : `
         <div class="pm-sheet-head">
           <span class="pm-sheet-head__handle" aria-hidden="true"></span>
-          <h2 class="pm-sheet-head__title">Player ${n} ${seatMarker(player)}</h2>
+          <h2 class="pm-sheet-head__title">Player ${n} ${seatMarker(player)}${startMark}</h2>
           <button class="pm-sheet-head__close" type="button" data-pm-opp-close>Close</button>
         </div>`;
 
@@ -1136,6 +1143,35 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
                 <div id="cardProgressBar" class="ft-claim-meter__bar"></div>
               </div>
               <p class="ft-section__note">Board filled. The game ends at 25.</p>
+
+              <!-- THE SECOND GAUGE (17 August, Dean's shape). There are TWO
+                   clocks and this panel showed one. The third end condition -
+                   a completed cake stand - shipped on 12 August into the rules
+                   modal and the end screen, but the board never carried it, so
+                   a player could not see that an opponent was one treat from
+                   ending the game.
+
+                   IT IS THE SAME PLACE AND THE SAME FORM as the bar above,
+                   deliberately: this is the panel a player already watches with
+                   the ending in mind, and a second reading of the same kind is
+                   read without being learned. A WARNING THAT APPEARED ONLY AT
+                   9 OF 10 WAS REJECTED - appearing without warning is the exact
+                   complaint.
+
+                   AND IT IS THE ONE THAT NEEDS THE WARNING MOST. A board fills
+                   over many turns in plain sight; a stand can complete on a
+                   single turn's second claim, because an extra claim is on the
+                   spend menu. Same rule as the bar above: the FULLEST stand at
+                   the table, not yours - the game ends when ANY of them
+                   completes. -->
+              <div class="ft-section__head ft-section__head--figure ft-section__head--second">
+                <span class="ft-section__meta ft-section__meta--figure" id="standProgressText">0/10</span>
+              </div>
+              <div class="ft-claim-meter__track">
+                <div id="standProgressBar" class="ft-claim-meter__bar ft-claim-meter__bar--stand"></div>
+              </div>
+              <p class="ft-section__note">Cake stand filled. The game also ends at 10.</p>
+
               <!-- THE END TRIGGER BONUS (16 August), Dean's placement: directly
                    under the caption, on the gauge that counts toward the very
                    thing it pays for. This is the only panel in the build a player
@@ -1147,9 +1183,37 @@ export function renderGameScreen(container, gameState, onMarketClick, onBonusTil
                    states what you are paid for getting there, which is a different
                    kind of fact and the one that changes a decision. Emphasised
                    because it is the only line on the panel that is an incentive
-                   rather than a reading. -->
+                   rather than a reading.
+
+                   IT MOVED DOWN ONE READING ON 17 AUGUST, and stayed one line
+                   rather than becoming two. The stand gauge above went in between
+                   it and the caption it was written under, and the bonus is paid
+                   for EITHER ending - 'boardFull' and 'standFull' both have an
+                   owner - so a sentence sitting under both gauges is more nearly
+                   true than one sitting under the first. -->
               <p class="ft-section__note ft-section__note--reward">Whoever triggers the
                  end of the game scores <strong>${END_TRIGGER_BONUS_VP} VP</strong>.</p>
+
+              <!-- THE FINAL-ROUND INDICATOR (17 August). Once a condition has
+                   armed, play continues until the turn returns to the start
+                   player so every seat has had the same number of turns - the
+                   book makes that equal-turns rule load-bearing and the build
+                   showed nothing at all. A player needs to know this is their
+                   last turn AT THE MOMENT IT IS, not on the end screen.
+
+                   It lives on this panel rather than in the turn bar because it
+                   is the same fact the two gauges above are counting toward, and
+                   the phase bar is the command line - it says what to do, not
+                   what has happened.
+
+                   LAST ON THE PANEL, under the standing readings rather than
+                   among them. The two gauges and the bonus line are true all game;
+                   this one is absent for the whole game and then appears for a
+                   single lap, and a rule that only sometimes applies should not
+                   push a rule that always does out of place while it is showing.
+                   Empty and hidden until the ending arms; updateGameInfo fills
+                   it. -->
+              <p class="ft-section__note ft-section__note--final ft-hidden" id="finalRoundNote"></p>
             </section>
 
             <!-- The fresh-pot affordance is PERSISTENT and sits beside the market
@@ -1820,7 +1884,7 @@ function updateMarket(gameState) {
     // you may still use", which is the true statement.
     return `
       <div class="${tileClass} market-tile" data-index="${idx}" style="${(isBonusAvailable || isBuyable) ? 'cursor: pointer;' : ''}">
-        ${tile ? `<img src="images/symbol-${tile.ingredient}-v3.png" class="ft-tile__icon" alt="${tile.ingredient}">` : ''}
+        ${tile ? `<img src="${ingredientArt(tile.ingredient)}" class="ft-tile__icon" alt="${ingredientLabel(tile.ingredient)}">` : ''}
         ${showTeapotSymbol ? `<img src="images/teapot.png" class="ft-market-teapot-symbol${gateArmed ? ' ft-market-teapot-symbol--armed' : ''}" alt="teapot symbol" title="${symbolTitle}">` : ''}
       </div>
     `;
@@ -2042,7 +2106,7 @@ function updateTastingMenus(gameState) {
     if (short < closest) closest = short;
 
     // Ingredients in descending quantity, so the "2" always reads first - which is
-    // how a player says the card out loud ("two lemon and a caramel").
+    // how a player says the card out loud ("two citrus and a caramel").
     // The count is a CORNER BADGE rather than a digit sitting beside the symbol,
     // and it is drawn only for a 2. That is what pays for the bigger art: the chip
     // is exactly as wide as the symbol, which is what pays for art at 48px in a
@@ -2050,7 +2114,7 @@ function updateTastingMenus(gameState) {
     const needs = Object.entries(menu.need).sort((a, b) => b[1] - a[1]);
     const chips = needs.map(([ingredient, need]) => `
       <span class="ft-menu__need" title="${need} x ${ingredientLabel(ingredient)}">
-        <img src="images/symbol-${ingredient}-v3.png" class="ft-menu__symbol" alt="${ingredient}">
+        <img src="${ingredientArt(ingredient)}" class="ft-menu__symbol" alt="${ingredientLabel(ingredient)}">
         ${need > 1 ? `<span class="ft-menu__count">${need}</span>` : ''}
       </span>`).join('');
 
@@ -2210,7 +2274,7 @@ function updateFlavourOfTheDay(gameState) {
          "somewhere in your player area" by anyone who has just learned that Tasting
          Menus read the stand; naming the stand and ruling it out is what stops it. -->
     <div class="ft-flavour__card" title="Today's flavour is ${ingredientLabel(flavour)}. Score ${FLAVOUR_VP_PER_TILE} VP for every ${ingredientLabel(flavour)} tile on your PLAYER BOARD at the end, and ${FLAVOUR_MAJORITY_VP} VP more for the most - ties are friendly. Your cake stand and crumb tray do not count. It was revealed at setup and does not change.">
-      <img src="images/symbol-${flavour}-v3.png" class="ft-flavour__symbol" alt="${flavour}">
+      <img src="${ingredientArt(flavour)}" class="ft-flavour__symbol" alt="${ingredientLabel(flavour)}">
       <div class="ft-flavour__where">
         <span class="ft-flavour__label">${ingredientLabel(flavour)}</span>
         <span class="ft-flavour__place">tiles on your player board, <strong>not</strong> your cake stand</span>
@@ -2801,12 +2865,12 @@ function railReadings(gameState) {
     // revealed at setup and does not change - so the chip carries the CONTEST
     // around it: how many of the day's flavour you hold, and whether you lead.
     // The mark is drawn at 20px and not 16, and the size is derived rather than
-    // chosen: in a 16px box the lemon's median ink run measures 1.64 against the
+    // chosen: in a 16px box the citrus symbol's median ink run measures 1.64 against the
     // 2.00 CSS pixel floor, and at 20 it reaches 2.05.
     flavour: {
       fig: myFlavour === null ? '-' : String(myFlavour),
       mark: flavourInPlay
-        ? `<img src="images/symbol-${gameState.flavourOfTheDay}-v3.png" width="20" height="20" alt="" aria-hidden="true">`
+        ? `<img src="${ingredientArt(gameState.flavourOfTheDay)}" width="20" height="20" alt="" aria-hidden="true">`
         : icon('card', 16),
       ord: myFlavour,
       // Taking or losing the majority is an EVENT rather than a state, so it is
@@ -3208,7 +3272,7 @@ function sweepOptionHTML(option, index, isRow, freeCells) {
   const lost = count - keep;
   const inner = option.tiles.map((tile, i) => `
         <span class="ds-tile ${getColourClass(tile.colour)}${i >= keep ? ' ds-tile--tobag' : ''}">
-          <img src="images/symbol-${tile.ingredient}-v3.png" class="ds-tile__icon" alt="">
+          <img src="${ingredientArt(tile.ingredient)}" class="ds-tile__icon" alt="">
         </span>`).join('');
 
   // THE ACCESSIBLE NAME IS WHERE THE WORDS WENT. No icon and no painted object
@@ -3708,7 +3772,7 @@ function updatePlayerBoards(gameState) {
       // measured 95,269 bytes and drew its filigree at 0.39 / 0.32 / 0.29 CSS px
       // and its scallops at 1.11 / 0.89 / 0.81 - under the 2.00px floor at every
       // size the board ever draws it, four times further under it than the
-      // almond. A plate on this board is a plain plate whatever it is made of,
+      // nuts. A plate on this board is a plain plate whatever it is made of,
       // so it is a disc, a rim band, a sunk well, one 10 o'clock highlight and a
       // contact shadow, at zero bytes.
       //
@@ -3716,7 +3780,7 @@ function updatePlayerBoards(gameState) {
       // only thing announcing an empty plate to a screen reader.
       const imageHtml = isBlockedCell
         ? `<div class="ft-plate" role="img" aria-label="empty plate"></div>`
-        : (displayTile ? `<img src="images/symbol-${displayTile.ingredient}-v3.png" class="ft-tile__icon" alt="${displayTile.ingredient}">` : '');
+        : (displayTile ? `<img src="${ingredientArt(displayTile.ingredient)}" class="ft-tile__icon" alt="${ingredientLabel(displayTile.ingredient)}">` : '');
       const menuBadge = menuPayout > 0
         ? `<span class="ft-tile__menu" title="Tasting Menu - remove this tile and plate it on your cake stand and you complete a menu, worth ${menuPayout} VP">+${menuPayout}</span>`
         : '';
@@ -3758,11 +3822,11 @@ function updatePlayerBoards(gameState) {
           ? ' working-tile--to-bag'
           : '';
         const title = trayIsTheBag
-          ? `${tile.ingredient} - no room on your board, this one goes back into the bag`
+          ? `${ingredientLabel(tile.ingredient)} - no room on your board, this one goes back into the bag`
           : tile.ingredient;
         return !isPlaced ? `
           <div class="ft-tile working-tile${isSelected ? ' working-tile--selected' : ''}${backToBag} ${getColourClass(tile.colour)}" draggable="true" data-tile-index="${idx}" style="cursor: grab; user-select: none; flex-shrink: 0;" title="${title}">
-            <img src="images/symbol-${tile.ingredient}-v3.png" class="ft-tile__icon" style="pointer-events: none;" alt="${tile.ingredient}">
+            <img src="${ingredientArt(tile.ingredient)}" class="ft-tile__icon" style="pointer-events: none;" alt="${ingredientLabel(tile.ingredient)}">
           </div>
         ` : '';
       }).join('');
@@ -4253,7 +4317,7 @@ function renderStand(player, opts = {}) {
       const tile = row.tiles[k];
       const filled = k < row.tiles.length;
       const plate = tile
-        ? `<div class="ft-stand__plate ft-stand__plate--filled ${getColourClass(tile.colour)}"><img src="images/symbol-${tile.ingredient}-v3.png" class="ft-stand__symbol" alt="${tile.ingredient}"></div>`
+        ? `<div class="ft-stand__plate ft-stand__plate--filled ${getColourClass(tile.colour)}"><img src="${ingredientArt(tile.ingredient)}" class="ft-stand__symbol" alt="${ingredientLabel(tile.ingredient)}"></div>`
         : `<div class="ft-stand__plate ft-stand__plate--empty"></div>`;
       // Cupcake plates (bottom[1], second[1], third[1], top[0]) grant a cupcake
       // when plated onto; mark them on the board whether empty or filled.
@@ -4280,7 +4344,7 @@ function renderStand(player, opts = {}) {
     }
 
     const marker = row.ingredient
-      ? `<img src="images/symbol-${row.ingredient}-v3.png" class="ft-stand__lock" alt="${row.ingredient}" title="Row locked to ${row.ingredient}">`
+      ? `<img src="${ingredientArt(row.ingredient)}" class="ft-stand__lock" alt="${ingredientLabel(row.ingredient)}" title="Row locked to ${ingredientLabel(row.ingredient)}">`
       : `<div class="ft-stand__lock ft-stand__lock--empty" title="Row not yet locked"></div>`;
 
     // NAMING THE COMPONENT. The rules, the Tasting Menus and the cards all say
@@ -4354,10 +4418,10 @@ function renderStandSummary(player) {
     const row = player.stand[rowIndex];
     const full = row.tiles.length >= row.capacity;
     const marker = row.ingredient
-      ? `<img src="images/symbol-${row.ingredient}-v3.png" class="ft-stand-mini__lock" alt="${row.ingredient}">`
+      ? `<img src="${ingredientArt(row.ingredient)}" class="ft-stand-mini__lock" alt="${ingredientLabel(row.ingredient)}">`
       : `<span class="ft-stand-mini__lock ft-stand-mini__lock--empty"></span>`;
     const title = row.ingredient
-      ? `Locked to ${row.ingredient} - ${row.tiles.length} of ${row.capacity} plated`
+      ? `Locked to ${ingredientLabel(row.ingredient)} - ${row.tiles.length} of ${row.capacity} plated`
       : `Not yet locked - ${row.tiles.length} of ${row.capacity} plated`;
     rows += `
       <span class="ft-stand-mini__row ${full ? 'ft-stand-mini__row--full' : ''}" title="${title}">
@@ -4456,7 +4520,7 @@ function updateStats(gameState) {
     // as flavourLine below, which has always worked this way.
     //
     // IT SHOWS THE INGREDIENTS of each menu taken rather than only the total,
-    // because "she took the two-lemon-two-chocolate one" is how players actually
+    // because "she took the two-citrus-two-chocolate one" is how players actually
     // talk about which cards have gone, and the number alone hides it.
     const menuLine = !isTastingMenuInPlay(gameState)
       ? ''
@@ -4465,7 +4529,7 @@ function updateStats(gameState) {
           const menu = TASTING_MENUS.find(m => m.id === id);
           if (!menu) return '';
           return Object.entries(menu.need).map(([ing, need]) =>
-            `<img src="images/symbol-${ing}-v3.png" class="ft-score-breakdown__symbol" alt="${ing}" title="${need} x ${ingredientLabel(ing)}">`).join('');
+            `<img src="${ingredientArt(ing)}" class="ft-score-breakdown__symbol" alt="${ingredientLabel(ing)}" title="${need} x ${ingredientLabel(ing)}">`).join('');
         }).join(' ')} Tasting Menus</span><strong>${bd.menus}</strong></div>`
       : `<div class="ft-score-breakdown__item"><span>Tasting Menus</span><strong>0</strong></div>`;
 
@@ -4489,7 +4553,7 @@ function updateStats(gameState) {
       : '';
 
     const flavourLine = isFlavourInPlay(gameState)
-      ? `<div class="ft-score-breakdown__item"><span><img src="images/symbol-${gameState.flavourOfTheDay}-v3.png" class="ft-score-breakdown__symbol" alt="${gameState.flavourOfTheDay}" title="Flavour of the Day: ${ingredientLabel(gameState.flavourOfTheDay)}"> Flavour${bd.flavourLeading ? ` <span class="ft-score-breakdown__lead" title="Currently holds the most - worth ${FLAVOUR_MAJORITY_VP} VP at the end, and shared if the lead is level">most +${FLAVOUR_MAJORITY_VP}</span>` : ''} <span class="ft-score-breakdown__sub">${bd.flavourTiles} on board</span></span><strong>${bd.flavour}</strong></div>`
+      ? `<div class="ft-score-breakdown__item"><span><img src="${ingredientArt(gameState.flavourOfTheDay)}" class="ft-score-breakdown__symbol" alt="${ingredientLabel(gameState.flavourOfTheDay)}" title="Flavour of the Day: ${ingredientLabel(gameState.flavourOfTheDay)}"> Flavour${bd.flavourLeading ? ` <span class="ft-score-breakdown__lead" title="Currently holds the most - worth ${FLAVOUR_MAJORITY_VP} VP at the end, and shared if the lead is level">most +${FLAVOUR_MAJORITY_VP}</span>` : ''} <span class="ft-score-breakdown__sub">${bd.flavourTiles} on board</span></span><strong>${bd.flavour}</strong></div>`
       : '';
 
     // THE SHEET HEAD (stage 6, plan section 3.1). Your own score column and your
@@ -4771,6 +4835,57 @@ function updateGameInfo(gameState) {
     cardProgressBar.style.width = Math.min((fullest / total) * 100, 100) + '%';
     cardProgressText.textContent = `${fullest}/${total}`;
   }
+
+  // THE FULLEST CAKE STAND - END CONDITION 3, and the game's second clock since
+  // 12 August. Same rule and same shape as the board bar above: the fullest stand
+  // AT THE TABLE, because the game ends when any of them completes.
+  //
+  // THE CAPACITY IS SUMMED FROM THE STAND ITSELF rather than typed as 10. The four
+  // rows are 4 + 3 + 2 + 1 and that is a stand shape, not a constant - the engine
+  // builds it in createGame and isStandFull tests it row by row. Reading it here
+  // means this gauge cannot be the thing that still says 10 if the stand is ever
+  // redrawn.
+  const standProgressBar = document.getElementById('standProgressBar');
+  const standProgressText = document.getElementById('standProgressText');
+  if (standProgressBar && standProgressText) {
+    const standTiles = p => p.stand.reduce((n, row) => n + row.tiles.length, 0);
+    const standTotal = gameState.players[0].stand.reduce((n, row) => n + row.capacity, 0);
+    const fullestStand = Math.max(...gameState.players.map(standTiles));
+    standProgressBar.style.width = Math.min((fullestStand / standTotal) * 100, 100) + '%';
+    standProgressText.textContent = `${fullestStand}/${standTotal}`;
+  }
+
+  // THE FINAL ROUND. `endTriggered` arms the ending; `gameOver` is set only when
+  // the turn comes back round to startPlayerIndex, so between the two there is a
+  // lap of play the build had no way of announcing.
+  //
+  // IT NAMES THE PLAYER WHO ARMED IT, because that is the same player who scores
+  // END_TRIGGER_BONUS_VP and the end screen already says so - saying it here as
+  // well means a player learns who is being paid while there is still a turn left
+  // to do something about it. `endTriggeredBy` is null for the one ending nobody
+  // caused ('marketTiles'), and the sentence drops that clause rather than
+  // inventing an owner.
+  //
+  // "This is your last turn" is only true on YOUR turn, so the line says whose
+  // turn it is rather than addressing whoever happens to be watching.
+  const finalRoundNote = document.getElementById('finalRoundNote');
+  if (finalRoundNote) {
+    if (!gameState.endTriggered || gameState.gameOver) {
+      finalRoundNote.classList.add('ft-hidden');
+      finalRoundNote.textContent = '';
+    } else {
+      const armedBy = gameState.players.find(p => p.id === gameState.endTriggeredBy);
+      const current = gameState.players[gameState.currentPlayerIndex];
+      const cause = armedBy
+        ? `${armedBy.name} triggered the end of the game`
+        : 'The end of the game is triggered';
+      const yours = current.isHuman && gameState.currentPlayerIndex === 0;
+      finalRoundNote.innerHTML = `<strong>Final round.</strong> ${cause} - `
+        + `everyone finishes on the same number of turns, so `
+        + (yours ? 'this is your last turn.' : `${current.name} is taking their last turn.`);
+      finalRoundNote.classList.remove('ft-hidden');
+    }
+  }
 }
 
 function updatePhaseControls(gameState) {
@@ -4781,7 +4896,7 @@ function updatePhaseControls(gameState) {
   if (!player.isHuman) {
     // THE ONE-LINE LOG TAKES THE BAR (stage 8, plan section 7.5). Motion cannot
     // say WHICH, and the single most important fact of an opponent's sweep is
-    // the declaration - pink, or lemon - which no flight carries. The bar was
+    // the declaration - pink, or citrus - which no flight carries. The bar was
     // hidden outright on a bot's turn, so this is the slot the line was always
     // meant to have: it is addressed to a player who has nothing to do, it
     // carries no controls, and IT COSTS NO PAGE HEIGHT - below 1400 the bar is

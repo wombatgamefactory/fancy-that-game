@@ -86,7 +86,7 @@ function stockStand(player, rowIndex, ingredient, count) {
 // is interesting, which is the point.
 //
 // The tile at cell 0 is the one the tests sacrifice.
-function claimState({ tileIngredient = 'lemon', playerCount = 2, seat = 0, flavour = 'lemon' } = {}) {
+function claimState({ tileIngredient = 'citrus', playerCount = 2, seat = 0, flavour = 'citrus' } = {}) {
   const s = newGame(playerCount, { flavour });
   s.gamePhase = 'claim';
   s.currentPlayerIndex = seat;
@@ -94,7 +94,7 @@ function claimState({ tileIngredient = 'lemon', playerCount = 2, seat = 0, flavo
   const p = s.players[seat];
   p.board = Array(25).fill(null);
   p.board[0] = { colour: 'yellow', ingredient: tileIngredient };
-  p.board[1] = { colour: 'yellow', ingredient: 'almond' };
+  p.board[1] = { colour: 'yellow', ingredient: 'nuts' };
   const card = REWARD_CARDS.find(c => c.id === 1);
   s.cardMarket = [card];
   assert(getPatternMatches(p.board, card.pattern).length > 0, 'setup: the pattern must match');
@@ -126,8 +126,8 @@ check('1a2: the draw is uniform over all five ingredients', () => {
 });
 
 check('1b: a pinned flavour is used verbatim, and a bad pin falls back to a real draw', () => {
-  const s = newGame(3, { flavour: 'lemon' });
-  eq(s.flavourOfTheDay, 'lemon', 'the pin is honoured');
+  const s = newGame(3, { flavour: 'citrus' });
+  eq(s.flavourOfTheDay, 'citrus', 'the pin is honoured');
 
   // An invalid pin is DROPPED in favour of a random valid draw rather than
   // throwing or being taken at face value - the same way normaliseTastingMenus
@@ -145,7 +145,7 @@ check('1c: no player state is added - the count is a pure read of the board', ()
   // Deliberately asserted. A player.flavourTiles running total would be a second
   // thing that could disagree with the first, which is the bug class the engine
   // comments warn about elsewhere.
-  const s = newGame(2, { flavour: 'lemon' });
+  const s = newGame(2, { flavour: 'citrus' });
   for (const p of s.players) {
     assert(p.flavourTiles === undefined, `${p.name} carries no flavour total`);
     eq(getFlavourCount(s, p), 0, `${p.name} starts on zero, read off an empty board`);
@@ -164,11 +164,11 @@ check('1d: the collector records which flavour was revealed', () => {
 // ---------------------------------------------------------------------------
 
 check('2a: getFlavourCount counts board tiles of the Flavour and nothing else', () => {
-  const s = newGame(2, { flavour: 'lemon' });
+  const s = newGame(2, { flavour: 'citrus' });
   const p = s.players[0];
-  stockBoard(p, 'lemon', 4);
+  stockBoard(p, 'citrus', 4);
   stockBoard(p, 'chocolate', 3, 10);
-  eq(getFlavourCount(s, p), 4, 'four lemon; the chocolate is another ingredient');
+  eq(getFlavourCount(s, p), 4, 'four citrus; the chocolate is another ingredient');
   eq(countBoardIngredient(p.board, 'chocolate'), 3, 'and the chocolate is really there');
 });
 
@@ -177,18 +177,18 @@ check('2b: IT DOES NOT COUNT CAKE-STAND TILES', () => {
   // so a stand that counted would route this lane straight back through the claim
   // step - and the whole reason the module exists is that the claim is refused to
   // the trailing player on 37.7 / 42.5 / 44.2% of the claim steps they reach.
-  const s = newGame(2, { flavour: 'lemon' });
+  const s = newGame(2, { flavour: 'citrus' });
   const p = s.players[0];
-  stockStand(p, 0, 'lemon', 3);
-  eq(p.stand[0].tiles.length, 3, 'setup: three lemon really are on the stand');
+  stockStand(p, 0, 'citrus', 3);
+  eq(p.stand[0].tiles.length, 3, 'setup: three citrus really are on the stand');
   eq(getFlavourCount(s, p), 0, 'AND THE COUNT IS ZERO - the board is empty');
 });
 
 check('2c: IT DOES NOT COUNT CRUMB-TRAY TILES', () => {
-  const s = newGame(2, { flavour: 'lemon' });
+  const s = newGame(2, { flavour: 'citrus' });
   const p = s.players[0];
-  for (let i = 0; i < 3; i++) p.crumbTray.push({ colour: 'yellow', ingredient: 'lemon' });
-  eq(p.crumbTray.length, 3, 'setup: three lemon really are in the tray');
+  for (let i = 0; i < 3; i++) p.crumbTray.push({ colour: 'yellow', ingredient: 'citrus' });
+  eq(p.crumbTray.length, 3, 'setup: three citrus really are in the tray');
   eq(getFlavourCount(s, p), 0, 'AND THE COUNT IS ZERO');
 });
 
@@ -197,11 +197,11 @@ check('2c2: IT DOES NOT COUNT ANYTHING OFF THE BOARD', () => {
   // (It also stocked the personal RESERVE here, because "not the reserve" was in
   // the stated rule. The reserve is deleted - 11 August - so the stand and the
   // crumb tray are the whole of "everything else" now.)
-  const s = newGame(2, { flavour: 'lemon' });
+  const s = newGame(2, { flavour: 'citrus' });
   const p = s.players[0];
-  stockStand(p, 0, 'lemon', 2);
-  p.crumbTray.push({ colour: 'yellow', ingredient: 'lemon' });
-  stockBoard(p, 'lemon', 1);
+  stockStand(p, 0, 'citrus', 2);
+  p.crumbTray.push({ colour: 'yellow', ingredient: 'citrus' });
+  stockBoard(p, 'citrus', 1);
   eq(getFlavourCount(s, p), 1, 'exactly the ONE tile on the board');
 });
 
@@ -209,21 +209,21 @@ check('2d: empty plates and empty cells count for nothing', () => {
   // An empty plate is an object with no `ingredient`; an empty cell is null.
   // countBoardIngredient skips both, which is why it survived the deletion of the
   // pantry goals it was written for.
-  const s = newGame(2, { flavour: 'lemon' });
+  const s = newGame(2, { flavour: 'citrus' });
   const p = s.players[0];
   p.board = Array(25).fill(null);
   p.board[0] = { type: 'blocked' };
   p.board[1] = { type: 'blocked' };
-  eq(getFlavourCount(s, p), 0, 'a board of plates and holes holds no lemon');
-  stockBoard(p, 'lemon', 2, 5);
+  eq(getFlavourCount(s, p), 0, 'a board of plates and holes holds no citrus');
+  stockBoard(p, 'citrus', 2, 5);
   eq(getFlavourCount(s, p), 2, 'and the two real tiles still read correctly');
 });
 
 check('2e: when the module is off every accessor is a no-op', () => {
-  const s = newGame(2, { flavour: 'lemon' });
+  const s = newGame(2, { flavour: 'citrus' });
   s.flavourOfTheDay = null;
   const p = s.players[0];
-  stockBoard(p, 'lemon', 5);
+  stockBoard(p, 'citrus', 5);
   assert(!isFlavourInPlay(s), 'not in play');
   eq(getFlavourCount(s, p), 0, 'the count is zero however full the board is');
   eq(getFlavourLeaders(s).length, 0, 'and nobody leads');
@@ -234,21 +234,21 @@ check('2e: when the module is off every accessor is a no-op', () => {
 // ---------------------------------------------------------------------------
 
 check('3a: getFlavourLeaders returns the sole leader, as a player id', () => {
-  const s = newGame(3, { flavour: 'lemon' });
-  stockBoard(s.players[0], 'lemon', 2);
-  stockBoard(s.players[1], 'lemon', 5);
-  stockBoard(s.players[2], 'lemon', 4);
+  const s = newGame(3, { flavour: 'citrus' });
+  stockBoard(s.players[0], 'citrus', 2);
+  stockBoard(s.players[1], 'citrus', 5);
+  stockBoard(s.players[2], 'citrus', 4);
   const leaders = getFlavourLeaders(s);
   eq(leaders.length, 1, 'one leader');
   eq(leaders[0], s.players[1].id, 'and it is the player id, not the seat object');
 });
 
 check('3b: ON A TIE IT RETURNS THEM ALL', () => {
-  const s = newGame(4, { flavour: 'lemon' });
-  stockBoard(s.players[0], 'lemon', 4);
-  stockBoard(s.players[1], 'lemon', 4);
-  stockBoard(s.players[2], 'lemon', 1);
-  stockBoard(s.players[3], 'lemon', 4);
+  const s = newGame(4, { flavour: 'citrus' });
+  stockBoard(s.players[0], 'citrus', 4);
+  stockBoard(s.players[1], 'citrus', 4);
+  stockBoard(s.players[2], 'citrus', 1);
+  stockBoard(s.players[3], 'citrus', 4);
   const leaders = getFlavourLeaders(s).slice().sort();
   eq(leaders.join(','), '0,1,3', 'every player tied at the top');
 });
@@ -257,7 +257,7 @@ check('3c: A TOP COUNT OF ZERO LEADS NOBODY', () => {
   // Nobody holds a single Flavour tile, so there is nothing to hold the most of.
   // Measured incidence is negligible, but a 3 VP bonus paid to a whole table for
   // having none of the thing is exactly what reads as a bug when it fires.
-  const s = newGame(3, { flavour: 'lemon' });
+  const s = newGame(3, { flavour: 'citrus' });
   for (const p of s.players) stockBoard(p, 'chocolate', 3);
   eq(getFlavourLeaders(s).length, 0, 'nobody leads a race nobody entered');
 });
@@ -267,19 +267,19 @@ check('3c: A TOP COUNT OF ZERO LEADS NOBODY', () => {
 // ---------------------------------------------------------------------------
 
 check('4a: a board with 4 Flavour tiles and no majority scores exactly 4', () => {
-  const s = newGame(2, { flavour: 'lemon' });
+  const s = newGame(2, { flavour: 'citrus' });
   const [p, rival] = s.players;
-  stockBoard(p, 'lemon', 4);
-  stockBoard(rival, 'lemon', 9);          // the rival takes the majority
+  stockBoard(p, 'citrus', 4);
+  stockBoard(rival, 'citrus', 9);          // the rival takes the majority
   calculateFinalScores(s);
   eq(p.score, 4 * FLAVOUR_VP_PER_TILE, 'per-tile only - no bonus, no other lane in play');
 });
 
 check('4b: the sole leader scores count + the majority bonus', () => {
-  const s = newGame(2, { flavour: 'lemon' });
+  const s = newGame(2, { flavour: 'citrus' });
   const [p, rival] = s.players;
-  stockBoard(p, 'lemon', 6);
-  stockBoard(rival, 'lemon', 2);
+  stockBoard(p, 'citrus', 6);
+  stockBoard(rival, 'citrus', 2);
   calculateFinalScores(s);
   eq(p.score, 6 * FLAVOUR_VP_PER_TILE + FLAVOUR_MAJORITY_VP, 'leader: count + bonus');
   eq(rival.score, 2 * FLAVOUR_VP_PER_TILE, 'and the trailing player takes the per-tile clause only');
@@ -289,11 +289,11 @@ check('4c: FRIENDLY TIES - two players tied at the top BOTH score count + bonus'
   // The tie is friendly BY DESIGN and there must never be a tiebreak rule: ties
   // occur in 11.3 / 13.8 / 18.0% of games at 2/3/4 players, so a tiebreaker would
   // fire about one game in five at a gateway weight.
-  const s = newGame(3, { flavour: 'lemon' });
+  const s = newGame(3, { flavour: 'citrus' });
   const [a, b, c] = s.players;
-  stockBoard(a, 'lemon', 5);
-  stockBoard(b, 'lemon', 5);
-  stockBoard(c, 'lemon', 4);
+  stockBoard(a, 'citrus', 5);
+  stockBoard(b, 'citrus', 5);
+  stockBoard(c, 'citrus', 4);
   calculateFinalScores(s);
   eq(a.score, 5 + FLAVOUR_MAJORITY_VP, 'first tied player takes the FULL bonus');
   eq(b.score, 5 + FLAVOUR_MAJORITY_VP, 'so does the second - it is not split, and not withheld');
@@ -301,7 +301,7 @@ check('4c: FRIENDLY TIES - two players tied at the top BOTH score count + bonus'
 });
 
 check('4d: A TOP COUNT OF ZERO PAYS NOBODY THE BONUS', () => {
-  const s = newGame(3, { flavour: 'lemon' });
+  const s = newGame(3, { flavour: 'citrus' });
   for (const p of s.players) stockBoard(p, 'chocolate', 4);
   calculateFinalScores(s);
   for (const p of s.players) eq(p.score, 0, `${p.name} scores nothing at all`);
@@ -310,25 +310,25 @@ check('4d: A TOP COUNT OF ZERO PAYS NOBODY THE BONUS', () => {
 check('4e: the stand and the crumb tray score their OWN lanes and not this one', () => {
   // The board-only rule stated as arithmetic. The stand row and the crumb tile
   // still pay what they always paid; what they must not do is pay again here.
-  const s = newGame(2, { flavour: 'lemon' });
+  const s = newGame(2, { flavour: 'citrus' });
   const [p, rival] = s.players;
-  stockStand(p, 0, 'lemon', 2);
-  p.crumbTray.push({ colour: 'yellow', ingredient: 'lemon' });
-  stockBoard(p, 'lemon', 1);
-  stockBoard(rival, 'lemon', 9);
+  stockStand(p, 0, 'citrus', 2);
+  p.crumbTray.push({ colour: 'yellow', ingredient: 'citrus' });
+  stockBoard(p, 'citrus', 1);
+  stockBoard(rival, 'citrus', 9);
   calculateFinalScores(s);
   eq(p.score, STAND_ROW_VALUES[0][1] + 1 + 1 * FLAVOUR_VP_PER_TILE,
-    'stand row + one crumb + ONE board lemon');
+    'stand row + one crumb + ONE board citrus');
 });
 
 check('4f: calculateFinalScores is IDEMPOTENT', () => {
   // The two-pass change in the 6 August handoff §5.3 is exactly the kind of edit
   // that accidentally accumulates - a leaders Set computed inside the loop, or a
   // score that starts from player.score instead of 0.
-  const s = newGame(3, { flavour: 'lemon' });
-  stockBoard(s.players[0], 'lemon', 4);
-  stockBoard(s.players[1], 'lemon', 4);
-  stockBoard(s.players[2], 'lemon', 2);
+  const s = newGame(3, { flavour: 'citrus' });
+  stockBoard(s.players[0], 'citrus', 4);
+  stockBoard(s.players[1], 'citrus', 4);
+  stockBoard(s.players[2], 'citrus', 2);
   stockStand(s.players[0], 0, 'chocolate', 3);
   s.players[1].crumbTray.push({ colour: 'brown', ingredient: 'chocolate' });
   calculateFinalScores(s);
@@ -342,10 +342,10 @@ check('4g: THE MAJORITY IS RESOLVED BEFORE ANYBODY IS PAID', () => {
   // The failure mode the two-pass change exists to stop: a single loop pays the
   // FIRST player against an incomplete picture. Seat 0 is the one that would be
   // scored wrongly, so it is seat 0 that must NOT lead here.
-  const s = newGame(3, { flavour: 'lemon' });
-  stockBoard(s.players[0], 'lemon', 3);
-  stockBoard(s.players[1], 'lemon', 8);
-  stockBoard(s.players[2], 'lemon', 1);
+  const s = newGame(3, { flavour: 'citrus' });
+  stockBoard(s.players[0], 'citrus', 3);
+  stockBoard(s.players[1], 'citrus', 8);
+  stockBoard(s.players[2], 'citrus', 1);
   calculateFinalScores(s);
   eq(s.players[0].score, 3, 'seat 0 is scored against everybody, including seats it precedes');
   eq(s.players[1].score, 8 + FLAVOUR_MAJORITY_VP, 'the real leader takes the bonus');
@@ -360,16 +360,16 @@ check('5a: a claim that sacrifices a Flavour tile reduces that count by exactly 
   // stand, where it stops counting for this lane, so the claim costs 1 VP and
   // possibly the majority. It is a FEATURE: the claim was a purely positive act
   // until 6 August.
-  const { s, p } = claimState({ tileIngredient: 'lemon', flavour: 'lemon' });
-  eq(getFlavourCount(s, p), 1, 'setup: one lemon on the board');
+  const { s, p } = claimState({ tileIngredient: 'citrus', flavour: 'citrus' });
+  eq(getFlavourCount(s, p), 1, 'setup: one citrus on the board');
   claim(s, 1, 0, { type: 'row', rowIndex: 0 });
   eq(getFlavourCount(s, p), 0, 'the sacrificed tile is off the board and stops counting');
   eq(p.stand[0].tiles.length, 1, 'it really is on the stand - it did not vanish');
 });
 
 check('5b: a claim that sacrifices a NON-Flavour tile leaves the count alone', () => {
-  const { s, p } = claimState({ tileIngredient: 'chocolate', flavour: 'lemon' });
-  stockBoard(p, 'lemon', 3, 10);
+  const { s, p } = claimState({ tileIngredient: 'chocolate', flavour: 'citrus' });
+  stockBoard(p, 'citrus', 3, 10);
   eq(getFlavourCount(s, p), 3, 'setup');
   claim(s, 1, 0, { type: 'row', rowIndex: 0 });
   eq(getFlavourCount(s, p), 3, 'still three - the chocolate was the one given up');
@@ -378,7 +378,7 @@ check('5b: a claim that sacrifices a NON-Flavour tile leaves the count alone', (
 check('5c: crumbing a Flavour tile costs the same as plating it', () => {
   // Both destinations are off the board, so both cost the point. The lane cannot
   // be dodged by choosing the tray.
-  const { s, p } = claimState({ tileIngredient: 'lemon', flavour: 'lemon' });
+  const { s, p } = claimState({ tileIngredient: 'citrus', flavour: 'citrus' });
   claim(s, 1, 0, { type: 'crumb' });
   eq(getFlavourCount(s, p), 0, 'the crumb tray is not the board either');
   eq(p.crumbTray.length, 1, 'and the tile is really in the tray');
@@ -389,22 +389,22 @@ check('5d: basicBot prefers to sacrifice a tile that is NOT the Flavour', () => 
   // Without it the bot cheerfully gives up its own Flavour tiles and the lane
   // measures as pure noise - see §6 of the handoff.
   //
-  // The two pattern cells hold one lemon (the Flavour) and one almond, and the
+  // The two pattern cells hold one citrus (the Flavour) and one nuts, and the
   // card matches either way round, so the ONLY thing separating the two removals
   // is this term.
-  const s = newGame(2, { flavour: 'lemon' });
+  const s = newGame(2, { flavour: 'citrus' });
   s.gamePhase = 'claim';
   s.currentPlayerIndex = 0;
   s.claimsThisTurn = 0;
   const p = s.players[0];
   p.board = Array(25).fill(null);
-  p.board[0] = { colour: 'yellow', ingredient: 'lemon' };
-  p.board[1] = { colour: 'yellow', ingredient: 'almond' };
+  p.board[0] = { colour: 'yellow', ingredient: 'citrus' };
+  p.board[1] = { colour: 'yellow', ingredient: 'nuts' };
   s.cardMarket = [REWARD_CARDS.find(c => c.id === 1)];
 
   const decision = bot.decideClaim(s);
   assert(decision, 'the bot still claims - the term is a preference, not a veto');
-  eq(decision.removedBoardIndex, 1, 'it gives up the ALMOND and keeps the lemon');
+  eq(decision.removedBoardIndex, 1, 'it gives up the NUTS and keeps the citrus');
 });
 
 // ---------------------------------------------------------------------------
@@ -415,24 +415,24 @@ check('6a: a pot of tea does not touch it', () => {
   // The structural claim. Today's Speciality and the Freshness Bonus were both
   // deleted because a reward on a reset cycle is never your last chance at it, and
   // a Flavour that could change would be the same mistake a third time.
-  const s = newGame(2, { flavour: 'lemon' });
+  const s = newGame(2, { flavour: 'citrus' });
   armTeaTrigger(s);
   s.gamePhase = 'refill';
   refill(s);
-  eq(s.flavourOfTheDay, 'lemon', 'the same ingredient after a full pot of tea');
+  eq(s.flavourOfTheDay, 'citrus', 'the same ingredient after a full pot of tea');
 });
 
 check('6b: a claim and a turn rotation do not touch it', () => {
-  const { s } = claimState({ tileIngredient: 'lemon', flavour: 'lemon' });
+  const { s } = claimState({ tileIngredient: 'citrus', flavour: 'citrus' });
   claim(s, 1, 0, { type: 'row', rowIndex: 0 });
-  eq(s.flavourOfTheDay, 'lemon', 'unchanged by the claim');
+  eq(s.flavourOfTheDay, 'citrus', 'unchanged by the claim');
   // A claim no longer ends the claim step (9 August: further cards are for sale
   // at 1 cupcake, so the phase stays open while the player can pay). Close it the
   // way a real turn does before rotating - this used to fall through to 'refill'
   // on its own.
   if (s.gamePhase === 'claim') skipClaim(s);
   refill(s);
-  eq(s.flavourOfTheDay, 'lemon', 'and unchanged by the rotation that follows it');
+  eq(s.flavourOfTheDay, 'citrus', 'and unchanged by the rotation that follows it');
 });
 
 check('6c: it survives a whole played-out game, at every player count', () => {
@@ -440,7 +440,7 @@ check('6c: it survives a whole played-out game, at every player count', () => {
   // against real play, where sweeps, trims, tea flushes and both end conditions
   // fire in their natural order and any of them could have grown a write.
   for (const pc of [2, 3, 4]) {
-    let s = createGame(Array.from({ length: pc }, (_, i) => ({ name: `P${i + 1}` })), null, { flavour: 'lemon' });
+    let s = createGame(Array.from({ length: pc }, (_, i) => ({ name: `P${i + 1}` })), null, { flavour: 'citrus' });
     let steps = 0;
     while (!s.gameOver && steps < 5000) {
       switch (s.gamePhase) {
@@ -470,14 +470,14 @@ check('6c: it survives a whole played-out game, at every player count', () => {
       // Checked after EVERY phase step rather than once a turn, because a write
       // could be hiding in any of them - a tea flush inside refill being the
       // obvious candidate.
-      eq(s.flavourOfTheDay, 'lemon', `${pc}p: the Flavour changed at step ${steps} (${s.gamePhase})`);
+      eq(s.flavourOfTheDay, 'citrus', `${pc}p: the Flavour changed at step ${steps} (${s.gamePhase})`);
       steps++;
     }
     assert(s.gameOver, `${pc}p: the game finished (${steps} steps)`);
 
     // And the scores the engine produced really do contain this lane: recompute
     // the module by hand off the finished boards and check every player against it.
-    const counts = s.players.map(p => countBoardIngredient(p.board, 'lemon'));
+    const counts = s.players.map(p => countBoardIngredient(p.board, 'citrus'));
     const top = Math.max(...counts);
     const leaders = new Set(getFlavourLeaders(s));
     for (let i = 0; i < s.players.length; i++) {
@@ -506,7 +506,7 @@ check('7a: setFlavourEnabled(false) deals no Flavour and scores nothing', () => 
     assert(!isFlavourInPlay(s), 'and the module is not in play');
 
     // Even a pinned flavour is refused while the module is off - the seam wins.
-    eq(newGame(2, { flavour: 'lemon' }).flavourOfTheDay, null, 'a pin cannot switch it back on');
+    eq(newGame(2, { flavour: 'citrus' }).flavourOfTheDay, null, 'a pin cannot switch it back on');
 
     // A board stacked with every ingredient scores exactly its other lanes: an
     // empty stand, an empty tray and no cards is zero.

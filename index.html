@@ -74,13 +74,13 @@
        instead of 1,497ms, warm long before anyone finishes choosing seats, and
        finding 19's card pop-in stays answered.
 
-       The ?v=6 must match .card-market-sprite's in style.css EXACTLY or this
+       The ?v= must match .card-market-sprite's in style.css EXACTLY or this
        warms a second copy of the sheet rather than the one the page draws. -->
   <script>
     addEventListener('load', () => {
       const sprite = new Image();
       sprite.fetchPriority = 'low';
-      sprite.src = 'images/reward-cards-v8.webp?v=8';
+      sprite.src = 'images/reward-cards-v9.webp?v=9';
     });
   </script>
 

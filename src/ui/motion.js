@@ -61,6 +61,11 @@ export function timings() {
   };
 }
 
+// The only thing this module needs from outside it: which picture an ingredient
+// id draws. Since the 17 August rename the id ('citrus') and the file stem
+// ('lemon') are different words, so a tile clone cannot build its own src.
+import { ingredientArt } from './ingredients.js';
+
 const EASE_TRAVEL = 'cubic-bezier(.2, 0, 0, 1)';
 const EASE_ENTER = 'cubic-bezier(.05, .7, .1, 1)';
 const EASE_EXIT = 'cubic-bezier(.4, 0, 1, 1)';
@@ -416,7 +421,10 @@ export function tileClone(tile, colourClass) {
   el.className = `ft-tile ${colourClass || ''}`;
   if (tile && tile.ingredient) {
     const img = document.createElement('img');
-    img.src = `images/symbol-${tile.ingredient}-v3.png`;
+    // Through board.js's map, not built from the id: since the 17 August rename
+    // the ingredient is `citrus` and the picture is still `lemon`. A clone that
+    // built its own src would be the one tile on screen with a broken symbol.
+    img.src = ingredientArt(tile.ingredient);
     img.className = 'ft-tile__icon';
     img.alt = '';
     el.appendChild(img);
@@ -695,7 +703,7 @@ export function namesInDom() {
 // nothing.
 //
 // AND ONE LINE OF LOG, BECAUSE MOTION CANNOT SAY WHICH. The single most
-// important fact of an opponent's sweep is the declaration - pink, or lemon -
+// important fact of an opponent's sweep is the declaration - pink, or citrus -
 // and no flight carries it. It takes the phase bar's own instruction slot, which
 // on an opponent's turn is addressed to a player who has nothing to do, so it
 // costs NO HEIGHT; it persists until the next action replaces it rather than

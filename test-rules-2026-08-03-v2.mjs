@@ -209,7 +209,7 @@ check('an extra tile is refused at 0 cupcakes, and 1 is now enough', () => {
 
 check('a tile prices at 1; an empty plate and an empty cell both price as null', () => {
   const { s, p } = spendState();
-  p.board[0] = { colour: 'pink', ingredient: 'lemon' };
+  p.board[0] = { colour: 'pink', ingredient: 'citrus' };
   p.board[1] = { type: 'blocked' };
   eq(getMoveCost(p, 0), MOVE_TILE_CUPCAKE_COST, 'a tile prices as a tile');
   eq(getMoveCost(p, 1), null, 'an empty plate is not movable at any price');
@@ -232,8 +232,8 @@ check('moving an empty plate is refused, and says to remove it instead', () => {
 // test-rules-2026-08-11-uncapped-spends.mjs.
 check('a second cupcake buys a second tile move', () => {
   const { s, p } = spendState();
-  p.board[0] = { colour: 'pink', ingredient: 'lemon' };
-  p.board[1] = { colour: 'blue', ingredient: 'lemon' };
+  p.board[0] = { colour: 'pink', ingredient: 'citrus' };
+  p.board[1] = { colour: 'blue', ingredient: 'citrus' };
   moveTile(s, 0, 24);
   eq(p.cupcakes, 9 - MOVE_TILE_CUPCAKE_COST, 'charged the tile price');
   moveTile(s, 1, 23);
@@ -295,7 +295,7 @@ check('a full purse clears two plates in one turn', () => {
 // short of it: 2 was a refusal at the old price of 3 and is now the price itself.
 check('a removal is refused on a tile, an empty cell, and at 1 cupcake', () => {
   const { s, p } = spendState(2, 1);
-  p.board[0] = { colour: 'pink', ingredient: 'lemon' };
+  p.board[0] = { colour: 'pink', ingredient: 'citrus' };
   p.board[1] = { type: 'blocked' };
   threw(() => removePlate(s, 0), 'No empty plate at that cell');
   threw(() => removePlate(s, 2), 'No empty plate at that cell');
@@ -306,7 +306,7 @@ check('a removal is refused on a tile, an empty cell, and at 1 cupcake', () => {
 
 check('canRemovePlate is false when the board holds no plate', () => {
   const { s, p } = spendState();
-  p.board[0] = { colour: 'pink', ingredient: 'lemon' };
+  p.board[0] = { colour: 'pink', ingredient: 'citrus' };
   assert(!canRemovePlate(s), 'no plate, no removal');
 });
 
@@ -327,7 +327,7 @@ check('a removal is refused outside the spend phase', () => {
 // one does not close the other.)
 check('a move and a removal can both happen on the same turn', () => {
   const { s, p } = spendState(2, 9);
-  p.board[0] = { colour: 'pink', ingredient: 'lemon' };
+  p.board[0] = { colour: 'pink', ingredient: 'citrus' };
   p.board[7] = { type: 'blocked' };
 
   moveTile(s, 0, 24);
@@ -341,7 +341,7 @@ check('a move and a removal can both happen on the same turn', () => {
 
 check('both counters reset on the next turn', () => {
   const { s, p } = spendState(2, 9);
-  p.board[0] = { colour: 'pink', ingredient: 'lemon' };
+  p.board[0] = { colour: 'pink', ingredient: 'citrus' };
   p.board[7] = { type: 'blocked' };
   moveTile(s, 0, 24);
   removePlate(s, 7);
@@ -654,7 +654,7 @@ function placeState(free, swept) {
   p.board = Array(25).fill(null).map((_, i) => (i < free ? null : { type: 'blocked' }));
   s.gamePhase = 'place';
   s.pendingSweepTiles = Array.from({ length: swept }, (_, i) => ({
-    colour: COLOURS[i % COLOURS.length], ingredient: 'lemon',
+    colour: COLOURS[i % COLOURS.length], ingredient: 'citrus',
   }));
   return { s, p };
 }
@@ -881,7 +881,7 @@ check('a real claim goes through with no plate supply behind it', () => {
   for (let i = 0; i < card.pattern.length; i++) {
     if (card.pattern[i] === null) continue;
     const idx = Math.floor(i / 3) * 5 + (i % 3);
-    p.board[idx] = { colour: card.pattern[i], ingredient: 'lemon' };
+    p.board[idx] = { colour: card.pattern[i], ingredient: 'citrus' };
     cells.push(idx);
   }
 
@@ -907,7 +907,7 @@ check('the vacated cell is plated by a STAND claim and left empty by a CRUMB cla
     for (let i = 0; i < card.pattern.length; i++) {
       if (card.pattern[i] === null) continue;
       const idx = Math.floor(i / 3) * 5 + (i % 3);
-      p.board[idx] = { colour: card.pattern[i], ingredient: 'lemon' };
+      p.board[idx] = { colour: card.pattern[i], ingredient: 'citrus' };
       cells.push(idx);
     }
     return cells;

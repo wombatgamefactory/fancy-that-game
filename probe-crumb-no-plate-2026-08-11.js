@@ -32,8 +32,26 @@
 // exactly the number of cake-stand slots - so the setup trick consumes the entire
 // supply and a crumb claim under the live rules has no plate left to take. That
 // is a component-count question, and the claim distribution below answers it.
+// DRIVER FIXED 17 AUGUST, AND EVERY FIGURE BELOW IS NEWER THAN THE ONES QUOTED
+// IN outstanding-changes-v7.md §1.3. This probe was written on 11 August against
+// a driver that was already a day stale: it asked `decideExtraTile` at the PLACE
+// step and called `takeExtraTile(s, x)` with one argument. The action moved to the
+// SPEND step on 10 August, so `canBuyExtraTile` refused it every time, the bot
+// returned null on every call, and NOTHING THREW - the probe simply played a
+// cheaper game in which no cupcake ever bought a tile. It also drove the move and
+// the plate removal ONCE per turn, which was the rule until 11 August, and never
+// drove the paid 2-card deal at all.
+//
+// The A/B compared two arms under the same broken driver, so the DIRECTION of the
+// crumb-plate result was probably safe; the LEVELS were not. That is why v7's
+// "~1 VP per freed cell", its greedy-seat win shares and its "+0.6 turns" were
+// marked provisional. This run replaces them.
+//
+// The spend-step block below is arena.js's, which is the only driver in the repo
+// that always was correct - copied rather than shared, on the same reasoning the
+// worklist records for the other 24 stale probes.
 import {
-  createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, place, claim,
+  createGame, sweep, takeBonusTile, declineBonusTile, takeExtraTile, dealCards, place, claim,
   skipClaim, skipSpend, moveTile, removePlate, refill, calculateFinalScores,
   getLegalDestinations, STAND_ROW_VALUES, CUPCAKE_PLATES,
 } from './src/engine/game.js';
@@ -96,16 +114,34 @@ function runGame(playerCount, { restoreOldPlateRule, greedySeat }, acc) {
         break;
       }
       case 'place': {
-        const x = bot.decideExtraTile ? bot.decideExtraTile(s) : null;
-        if (x !== null && x !== undefined) s = takeExtraTile(s, x);
+        // The extra tile was bought HERE until 10 August. It is a spend-step
+        // action now and is bought below - see the driver note at the imports.
         s = place(s, bot.decidePlacements(s));
         break;
       }
       case 'spend': {
-        const md = bot.decideMove ? bot.decideMove(s) : null;
-        if (md) s = moveTile(s, md.fromIndex, md.toIndex);
-        const rp = bot.decideRemovePlate ? bot.decideRemovePlate(s) : null;
-        if (rp !== null && rp !== undefined) s = removePlate(s, rp);
+        // All four spends are UNCAPPED (11 August, second revision), so each one
+        // is a loop that ends when the bot declines or the engine's own gate
+        // closes. The iteration counts are runaway stops, not rules.
+        for (let n = 0; n < 25; n++) {
+          const x = bot.decideExtraTile ? bot.decideExtraTile(s) : null;
+          if (x === null || x === undefined) break;
+          s = takeExtraTile(s, x.marketIndex, x.boardIndex);
+        }
+        for (let n = 0; n < 25; n++) {
+          const md = bot.decideMove ? bot.decideMove(s) : null;
+          if (!md) break;
+          s = moveTile(s, md.fromIndex, md.toIndex);
+        }
+        for (let n = 0; n < 25; n++) {
+          const rp = bot.decideRemovePlate ? bot.decideRemovePlate(s) : null;
+          if (rp === null || rp === undefined) break;
+          s = removePlate(s, rp);
+        }
+        for (let n = 0; n < 10; n++) {
+          if (!(bot.decideDealCards && bot.decideDealCards(s))) break;
+          s = dealCards(s);
+        }
         s = skipSpend(s);
         break;
       }

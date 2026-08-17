@@ -52,7 +52,7 @@ function spendState({ cupcakes = 9, playerCount = 2 } = {}) {
   p.board = Array(25).fill(null);
   return { s, p };
 }
-const tile = (colour, ingredient = 'lemon') => ({ colour, ingredient });
+const tile = (colour, ingredient = 'citrus') => ({ colour, ingredient });
 
 console.log('\n=== The adopted rule: no cap on any of the three ===');
 check('MAX_TILE_MOVES_PER_TURN is null', MAX_TILE_MOVES_PER_TURN === null);

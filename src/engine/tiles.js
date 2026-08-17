@@ -3,61 +3,75 @@
 // mechanical effect), pattern (3×2 grid with nulls), vp (per-card victory points,
 // data-driven from reward_cards.csv — no fixed band)
 export const REWARD_CARDS = [
-  { id: 1, name: 'Lemon madeleine', family: 'lemon', pattern: ["yellow","yellow",null,null,null,null], vp: 1 },
+  { id: 1, name: 'Lemon madeleine', family: 'citrus', pattern: ["yellow","yellow",null,null,null,null], vp: 1 },
   { id: 2, name: 'Crème brûlée', family: 'caramel', pattern: ["yellow","orange",null,null,null,null], vp: 1 },
-  { id: 3, name: 'Strawberry tartlet', family: 'strawberry', pattern: ["pink","pink",null,null,null,null], vp: 1 },
-  { id: 4, name: 'Pistachio macaron', family: 'almond', pattern: ["green","green",null,null,null,null], vp: 1 },
-  { id: 5, name: 'Blackcurrant tartlet', family: 'strawberry', pattern: ["blue","blue",null,null,null,null], vp: 1 },
-  { id: 6, name: 'Victoria sponge', family: 'almond', pattern: ["yellow","pink","yellow",null,null,null], vp: 2 },
-  { id: 7, name: 'Apple turnover', family: 'almond', pattern: ["yellow","green","yellow",null,null,null], vp: 2 },
-  { id: 8, name: 'Tarte au citron', family: 'lemon', pattern: ["yellow","yellow","yellow",null,null,null], vp: 2 },
-  { id: 9, name: 'Blueberry mille-feuille', family: 'lemon', pattern: ["yellow","blue","blue",null,null,null], vp: 2 },
-  { id: 10, name: 'Fraisier', family: 'strawberry', pattern: ["pink","pink","pink",null,null,null], vp: 2 },
-  { id: 11, name: 'Pistachio tart', family: 'almond', pattern: ["green","green","green",null,null,null], vp: 2 },
-  { id: 12, name: 'Damson tart', family: 'strawberry', pattern: ["blue","blue","blue",null,null,null], vp: 2 },
+  { id: 3, name: 'Strawberry tartlet', family: 'fruit', pattern: ["pink","pink",null,null,null,null], vp: 1 },
+  { id: 4, name: 'Pistachio macaron', family: 'nuts', pattern: ["green","green",null,null,null,null], vp: 1 },
+  { id: 5, name: 'Blackcurrant tartlet', family: 'fruit', pattern: ["blue","blue",null,null,null,null], vp: 1 },
+  { id: 6, name: 'Victoria sponge', family: 'nuts', pattern: ["yellow","pink","yellow",null,null,null], vp: 2 },
+  { id: 7, name: 'Apple turnover', family: 'nuts', pattern: ["yellow","green","yellow",null,null,null], vp: 2 },
+  { id: 8, name: 'Tarte au citron', family: 'citrus', pattern: ["yellow","yellow","yellow",null,null,null], vp: 2 },
+  { id: 9, name: 'Blueberry mille-feuille', family: 'citrus', pattern: ["yellow","blue","blue",null,null,null], vp: 2 },
+  { id: 10, name: 'Fraisier', family: 'fruit', pattern: ["pink","pink","pink",null,null,null], vp: 2 },
+  { id: 11, name: 'Pistachio tart', family: 'nuts', pattern: ["green","green","green",null,null,null], vp: 2 },
+  { id: 12, name: 'Damson tart', family: 'fruit', pattern: ["blue","blue","blue",null,null,null], vp: 2 },
   { id: 13, name: 'Tarte Tatin', family: 'caramel', pattern: ["orange","green","orange",null,null,null], vp: 2 },
-  { id: 14, name: 'Blackcurrant cheesecake', family: 'strawberry', pattern: ["orange","yellow","blue",null,null,null], vp: 2 },
-  { id: 15, name: 'Blood orange tart', family: 'lemon', pattern: ["orange","orange","pink",null,null,null], vp: 2 },
-  { id: 16, name: 'Rhubarb and custard slice', family: 'strawberry', pattern: ["pink","yellow","pink",null,null,null], vp: 2 },
-  { id: 17, name: 'Raspberry and pistachio tart', family: 'almond', pattern: ["green","pink","green",null,null,null], vp: 2 },
+  { id: 14, name: 'Blackcurrant cheesecake', family: 'fruit', pattern: ["orange","yellow","blue",null,null,null], vp: 2 },
+  { id: 15, name: 'Blood orange tart', family: 'citrus', pattern: ["orange","orange","pink",null,null,null], vp: 2 },
+  { id: 16, name: 'Rhubarb and custard slice', family: 'fruit', pattern: ["pink","yellow","pink",null,null,null], vp: 2 },
+  { id: 17, name: 'Raspberry and pistachio tart', family: 'nuts', pattern: ["green","pink","green",null,null,null], vp: 2 },
   { id: 18, name: 'Crème caramel', family: 'caramel', pattern: ["orange","yellow","orange",null,null,null], vp: 2 },
-  { id: 19, name: 'Orange marmalade slice', family: 'lemon', pattern: ["orange","orange","yellow",null,null,null], vp: 2 },
+  { id: 19, name: 'Orange marmalade slice', family: 'citrus', pattern: ["orange","orange","yellow",null,null,null], vp: 2 },
   { id: 20, name: 'Blackberry and apple crumble', family: 'caramel', pattern: ["orange","green","blue",null,null,null], vp: 2 },
-  { id: 21, name: 'Raspberry Swiss roll', family: 'strawberry', pattern: [null,"yellow","yellow","pink","pink",null], vp: 3 },
+  { id: 21, name: 'Raspberry Swiss roll', family: 'fruit', pattern: [null,"yellow","yellow","pink","pink",null], vp: 3 },
   { id: 22, name: 'Sticky toffee pudding', family: 'caramel', pattern: [null,"orange","orange","yellow","yellow",null], vp: 3 },
-  { id: 23, name: 'Earl Grey financier', family: 'lemon', pattern: [null,"blue","blue","yellow","yellow",null], vp: 3 },
+  { id: 23, name: 'Earl Grey financier', family: 'citrus', pattern: [null,"blue","blue","yellow","yellow",null], vp: 3 },
   { id: 24, name: 'Rhubarb and ginger swirl', family: 'caramel', pattern: [null,"orange","orange","pink","pink",null], vp: 3 },
-  { id: 25, name: 'Apple and rhubarb strudel', family: 'strawberry', pattern: [null,"green","green","pink","pink",null], vp: 3 },
-  { id: 26, name: 'Mixed berry pavlova', family: 'strawberry', pattern: [null,"blue","blue","pink","pink",null], vp: 3 },
-  { id: 27, name: 'Plum tart', family: 'strawberry', pattern: [null,"blue","blue","orange","orange",null], vp: 3 },
-  { id: 28, name: 'Pistachio and blueberry religieuse', family: 'almond', pattern: [null,"blue","blue","green","green",null], vp: 3 },
+  { id: 25, name: 'Apple and rhubarb strudel', family: 'fruit', pattern: [null,"green","green","pink","pink",null], vp: 3 },
+  { id: 26, name: 'Mixed berry pavlova', family: 'fruit', pattern: [null,"blue","blue","pink","pink",null], vp: 3 },
+  { id: 27, name: 'Plum tart', family: 'fruit', pattern: [null,"blue","blue","orange","orange",null], vp: 3 },
+  { id: 28, name: 'Pistachio and blueberry religieuse', family: 'nuts', pattern: [null,"blue","blue","green","green",null], vp: 3 },
   { id: 29, name: 'Apple Danish', family: 'caramel', pattern: [null,"yellow","yellow","green","green",null], vp: 3 },
   { id: 30, name: 'Toffee apple whirl', family: 'caramel', pattern: [null,"orange","orange","green","green",null], vp: 3 },
-  { id: 31, name: 'Fondant fancy', family: 'almond', pattern: [null,"pink",null,"yellow","yellow","yellow"], vp: 4 },
+  { id: 31, name: 'Fondant fancy', family: 'nuts', pattern: [null,"pink",null,"yellow","yellow","yellow"], vp: 4 },
   { id: 32, name: 'Rhubarb crumble', family: 'caramel', pattern: [null,"orange",null,"pink","pink","pink"], vp: 4 },
   { id: 33, name: 'Carrot cake', family: 'caramel', pattern: [null,"green",null,"orange","orange","orange"], vp: 4 },
-  { id: 34, name: 'Key lime and blueberry tart', family: 'lemon', pattern: [null,"blue",null,"green","green","green"], vp: 4 },
-  { id: 35, name: 'Blueberry frangipane tart', family: 'almond', pattern: [null,"yellow",null,"blue","blue","blue"], vp: 4 },
-  { id: 36, name: 'Paris-Brest', family: 'almond', pattern: [null,"orange",null,"yellow","orange","yellow"], vp: 4 },
-  { id: 37, name: 'Rose and pistachio gâteau', family: 'almond', pattern: [null,"green",null,"pink","green","pink"], vp: 4 },
-  { id: 38, name: 'Earl Grey and caramel tart', family: 'lemon', pattern: [null,"blue",null,"orange","blue","orange"], vp: 4 },
+  { id: 34, name: 'Key lime and blueberry tart', family: 'citrus', pattern: [null,"blue",null,"green","green","green"], vp: 4 },
+  { id: 35, name: 'Blueberry frangipane tart', family: 'nuts', pattern: [null,"yellow",null,"blue","blue","blue"], vp: 4 },
+  { id: 36, name: 'Paris-Brest', family: 'nuts', pattern: [null,"orange",null,"yellow","orange","yellow"], vp: 4 },
+  { id: 37, name: 'Rose and pistachio gâteau', family: 'nuts', pattern: [null,"green",null,"pink","green","pink"], vp: 4 },
+  { id: 38, name: 'Earl Grey and caramel tart', family: 'citrus', pattern: [null,"blue",null,"orange","blue","orange"], vp: 4 },
   { id: 39, name: 'Apple charlotte', family: 'caramel', pattern: [null,"green",null,"yellow","green","yellow"], vp: 4 },
-  { id: 40, name: 'Summer pudding', family: 'strawberry', pattern: [null,"pink",null,"blue","pink","blue"], vp: 4 },
-  { id: 41, name: 'Battenberg', family: 'almond', pattern: ["pink","yellow",null,"yellow","pink",null], vp: 5 },
-  { id: 42, name: 'Angel slice', family: 'strawberry', pattern: ["yellow","yellow",null,"pink","pink",null], vp: 5 },
-  { id: 43, name: 'Summer fruit tart', family: 'lemon', pattern: ["pink","green",null,"blue","orange",null], vp: 5 },
-  { id: 44, name: 'Fig and almond tart', family: 'almond', pattern: ["pink","pink",null,"blue","blue",null], vp: 5 },
-  { id: 45, name: 'Blackberry and apple square', family: 'strawberry', pattern: ["blue","blue",null,"green","green",null], vp: 5 },
+  { id: 40, name: 'Summer pudding', family: 'fruit', pattern: [null,"pink",null,"blue","pink","blue"], vp: 4 },
+  { id: 41, name: 'Battenberg', family: 'nuts', pattern: ["pink","yellow",null,"yellow","pink",null], vp: 5 },
+  { id: 42, name: 'Angel slice', family: 'fruit', pattern: ["yellow","yellow",null,"pink","pink",null], vp: 5 },
+  { id: 43, name: 'Blood orange harlequin', family: 'citrus', pattern: ["orange","pink",null,"pink","orange",null], vp: 5 },
+  { id: 44, name: 'Fig and almond tart', family: 'nuts', pattern: ["pink","pink",null,"blue","blue",null], vp: 5 },
+  { id: 45, name: 'Blackberry and apple square', family: 'fruit', pattern: ["blue","blue",null,"green","green",null], vp: 5 },
   { id: 46, name: 'Toffee apple square', family: 'caramel', pattern: ["orange","orange",null,"green","green",null], vp: 5 },
-  { id: 47, name: 'Damson and ginger slice', family: 'lemon', pattern: ["blue","blue",null,"orange","orange",null], vp: 5 },
-  { id: 48, name: 'Raspberry and pistachio gâteau', family: 'almond', pattern: ["green","green",null,"pink","pink",null], vp: 5 },
-  { id: 49, name: 'Iced fancies', family: 'lemon', pattern: ["blue","green",null,"orange","blue",null], vp: 5 },
-  { id: 50, name: 'Autumn fruit tart', family: 'lemon', pattern: ["orange","blue",null,"green","orange",null], vp: 5 }
+  { id: 47, name: 'Damson and ginger slice', family: 'citrus', pattern: ["blue","blue",null,"orange","orange",null], vp: 5 },
+  { id: 48, name: 'Raspberry and pistachio gâteau', family: 'nuts', pattern: ["green","green",null,"pink","pink",null], vp: 5 },
+  { id: 49, name: 'Marmalade and damson chequerboard', family: 'citrus', pattern: ["orange","blue",null,"blue","orange",null], vp: 5 },
+  { id: 50, name: 'Lime and blueberry chequer slice', family: 'citrus', pattern: ["green","blue",null,"blue","green",null], vp: 5 }
 ];
 
 // Tile system: 5 colours × 5 ingredients = 25 unique tile types, TILE_COPIES each.
 export const COLOURS = ['yellow', 'pink', 'green', 'blue', 'orange'];
-export const INGREDIENTS = ['lemon', 'chocolate', 'caramel', 'strawberry', 'almond'];
+// THE FIVE INGREDIENTS, RENAMED 17 AUGUST to the names the game has used since
+// 11 August: lemon -> citrus, strawberry -> fruit, almond -> nuts. Chocolate and
+// caramel were always right and do not move.
+//
+// THE SYMBOL ART DOES NOT CHANGE, and that is the point rather than an oversight:
+// a lemon wheel IS Citrus, an almond IS Nuts, a strawberry IS Fruit. The picture
+// names its subject and the id names its category, which is also why the image
+// files keep their old stems - see INGREDIENT_ART in src/ui/board.js, the one
+// place that translation lives.
+//
+// THIS ARRAY IS THE ONLY DEFINITION. tastingMenus.js generates the whole deck
+// from it, the bots read it, and the ring construction in tastingMenus.js depends
+// on the ORDER as well as the contents - so a future rename may change the words
+// here, but reordering them re-deals the menu deck.
+export const INGREDIENTS = ['citrus', 'chocolate', 'caramel', 'fruit', 'nuts'];
 
 // Copies of each of the 25 colour/ingredient combinations in the bag.
 //

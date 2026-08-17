@@ -38,10 +38,10 @@ function twoClaimState({ cupcakes = 3 } = {}) {
   p.cupcakes = cupcakes;
   p.board = Array(25).fill(null);
   // Cells 0-1 and 3-4: two adjacent yellow pairs with a gap between them.
-  p.board[0] = { colour: 'yellow', ingredient: 'lemon' };
-  p.board[1] = { colour: 'yellow', ingredient: 'lemon' };
-  p.board[3] = { colour: 'yellow', ingredient: 'almond' };
-  p.board[4] = { colour: 'yellow', ingredient: 'almond' };
+  p.board[0] = { colour: 'yellow', ingredient: 'citrus' };
+  p.board[1] = { colour: 'yellow', ingredient: 'citrus' };
+  p.board[3] = { colour: 'yellow', ingredient: 'nuts' };
+  p.board[4] = { colour: 'yellow', ingredient: 'nuts' };
   // Two copies of card 1 (Lemon madeleine, two adjacent yellows), given distinct
   // ids because claim() resolves cards by id.
   const base = REWARD_CARDS.find(c => c.id === 1);
@@ -118,7 +118,7 @@ console.log('\n=== There is no per-turn cap - the PRICE is the cap ===');
   p.cupcakes = 5;
   p.board = Array(25).fill(null);
   // Three separated yellow pairs: cells 0-1, 3-4, 10-11.
-  for (const i of [0, 1, 3, 4, 10, 11]) p.board[i] = { colour: 'yellow', ingredient: 'lemon' };
+  for (const i of [0, 1, 3, 4, 10, 11]) p.board[i] = { colour: 'yellow', ingredient: 'citrus' };
   const base = REWARD_CARDS.find(c => c.id === 1);
   s.cardMarket = [{ ...base, id: 9001 }, { ...base, id: 9002 }, { ...base, id: 9003 }];
   claim(s, 9001, 0, { type: 'crumb' });

@@ -14,7 +14,7 @@
 //   maj5      5 VP to the leader, ties all paid in full
 //   maj8      8 VP to the leader, ties all paid in full
 //   maj8/4    8 to the leader, 4 to second - the standard Euro softener for the
-//             "I collected lemons all game and got nothing" complaint
+//             "I collected citrus tiles all game and got nothing" complaint
 //   Tie frequency is reported because it decides whether a tiebreak rule is
 //   needed at all.
 //

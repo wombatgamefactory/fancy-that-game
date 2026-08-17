@@ -208,7 +208,7 @@ export function getTastingMenuCount(playerCount) {
 // Dean's original statement of the rule capped a player at one Tasting Menu per
 // turn. Measured incidence of qualifying for two at once was 0.7% UNSTEERED, but a
 // steering player can deliberately build an overlapping pair (t1 and t6 share a
-// lemon and need only five tiles between them), so the cap matters more once bots
+// citrus and need only five tiles between them), so the cap matters more once bots
 // chase menus - and on the three-tile deck they do: 27.2% of players now finish
 // with two or more menus. Still shipped OFF, behind this flag, so it can be A/B'd
 // rather than argued about, but it is a live question now rather than a remote
@@ -2027,7 +2027,7 @@ export function isTastingMenuInPlay(gameState) {
 // rewrite it, and so the rule is visible where the rest of the module lives.
 export const MENU_COUNTS_CRUMB_TRAY = true;
 
-// Ingredient multiset of a player's CAKE STAND only - { lemon: 2, almond: 1 }.
+// Ingredient multiset of a player's CAKE STAND only - { citrus: 2, nuts: 1 }.
 // STAND ONLY, deliberately: this is what the stand-shape metrics and the UI's
 // stand panel read. THE MENU PREDICATE IS getMenuIngredients BELOW - do not
 // reach for this one when the question is about a Tasting Menu.

@@ -424,7 +424,58 @@ async function playHumanTurn(page, { mode = 'drag', stopAfterPlacement = false, 
   // went with the markup.
   await page.waitForSelector('.ds-opt', { timeout: 5000 });
   await page.click('.ds-opt');
-  await page.waitForFunction(() => window._gameUI?.gameState?.gamePhase === 'place', null, { timeout: 5000 });
+
+  // A LINE-CLEARING SWEEP PARKS IN THE SWEEP PHASE (added 17/08/2026). If the
+  // sweep empties its whole row or column the player is owed a bonus tile, and
+  // the engine holds the game in 'sweep' with bonusTileAvailable set until they
+  // take one - the phase bar says "Bonus tile available! tap any market tile".
+  // This script had no branch for it, so it waited five seconds for a 'place'
+  // that was never coming and threw a bare TimeoutError from the middle of a
+  // width sweep, taking the whole run down with it.
+  //
+  // IT WAS ALWAYS A HOLE AND IT SURFACED THE DAY THE BOT CHANGED. The turn played
+  // here is scripted but the three bots before it are not: their moves are a pure
+  // function of the seed AND of basicBot's heuristics, so any tuning of the bot
+  // re-deals every position this script walks into. Teaching basicBot to want the
+  // 3 VP end trigger (17 August) moved the 390 walk onto a line-clearing sweep for
+  // the first time. Nothing about the build had regressed - the harness simply
+  // could not play a legal turn it had never been dealt.
+  //
+  // The bonus tile is TAKEN rather than declined, because there is no decline
+  // control in the interface: any market tile claims it, and that is the whole
+  // interaction. It goes into the same pending pile as the swept tiles, so the
+  // placement loop below needs no change - it reads pendingSweepTiles.
+  //
+  // WAIT FOR THE SWEEP TO ACTUALLY RUN BEFORE ASKING. onSweep hands the sweep to
+  // gatherPlan, which plays the gather animation and calls the engine in its
+  // callback, so the click returns before the game state has moved. Reading
+  // bonusTileAvailable straight after the click reads the state BEFORE the sweep
+  // and always answers false - which is how the first attempt at this fix
+  // reported "stuck-in-sweep" at every width instead of at none.
+  await page.waitForFunction(() => {
+    const gs = window._gameUI?.gameState;
+    return gs && (gs.gamePhase === 'place' || gs.bonusTileAvailable === true);
+  }, null, { timeout: 8000 }).catch(() => {});
+
+  if (await page.evaluate(() => window._gameUI?.gameState?.bonusTileAvailable === true)) {
+    // .ft-tile--pickable is the class board.js puts on exactly the cells that
+    // respond to a click right now, which is a stronger selector than "not
+    // empty": it is the interface's own answer rather than this script's guess.
+    const bonusCell = page.locator('#market .ft-tile--pickable').first();
+    if (await bonusCell.count() > 0) {
+      await bonusCell.click({ timeout: 5000 }).catch(() => {});
+    }
+  }
+
+  const reachedPlace = await page.waitForFunction(
+    () => window._gameUI?.gameState?.gamePhase === 'place', null, { timeout: 5000 },
+  ).then(() => true).catch(() => false);
+  // Reported rather than thrown, for the same reason the obstructed sweep button
+  // above is: a turn this script cannot finish is a finding about the build or
+  // about the script, and either way the rest of the sweep should still run.
+  if (!reachedPlace) {
+    return { reached: `stuck-in-${await phaseOf(page)}`, placed: 0, expected: 0 };
+  }
   await page.waitForTimeout(300);
 
   const tileCount = await page.evaluate(() => window._gameUI.gameState.pendingSweepTiles.length);

@@ -186,7 +186,7 @@
   /* ---- The five china stops (8.6, the empty plate) -----------------------
      Sampled off empty_plate.png, whose filigree renders at 0.39 / 0.32 / 0.29
      CSS px and whose scallops render at 1.11 / 0.89 / 0.81 - under the 2.00px
-     floor at every size, four times further under it than the almond. Stage 4
+     floor at every size, four times further under it than the nut symbol. Stage 4
      replaces the image with a CSS plate built from these, at zero bytes. */
   --china: #F1EADE;        /* Y 82.8  the body's mid stop */
   --china-lit: #FCF8F0;    /* Y 94.1 */
@@ -378,8 +378,8 @@
        60  XL, every board     rim, full form, ink, slab shadow 2px 3px
        48  L and M, your board rim, full form, ink, slab shadow 2px 3px
        44  phone, your board   rim, full form, ink, slab shadow 1px 2px
-       42  ------------------- the almond's two grooves go below here
-       40  L, an opponent      rim, full form, ink less the almond's grooves
+       42  ------------------- the nut symbol's two grooves go below here
+       40  L, an opponent      rim, full form, ink less the nut's grooves
        33  ------------------- the floor for drawing an ingredient at all
        24  M, an opponent      rim, edge light only, no ink, no cast shadow
        14  phone, an opponent  rim only, no form, no ink, no cast shadow
@@ -1862,12 +1862,20 @@ a .ft-icon {
 
    All the renderer emits now is the card's ADDRESS on the sheet - a column and
    a row - and the geometry is done in percentages, which are independent of the
-   rendered size. reward-cards-v8.webp is a TTS-style 10x7 sheet (3391 x 3290);
+   rendered size. reward-cards-v9.webp is a TTS-style 10x7 sheet (3391 x 3290);
    cards 1-50 fill the first five rows and the last two are blank.
+
+   v9 (17 August) IS THE BATTENBERG DIAGONAL SWAP, resampled from
+   Reward-Cards-v13.png. Three cards changed and nothing else: 43 Summer fruit
+   tart, 49 Iced fancies and 50 Autumn fruit tart were 2x2s of four and three
+   different colours, which playtesting found too complicated to read, and are
+   now two-colour diagonals in the manner of card 41 Battenberg - 43 Blood
+   orange harlequin, 49 Marmalade and damson chequerboard, 50 Lime and blueberry
+   chequer slice. Same geometry as v8, so the percentages below are untouched.
 
    v7/v8 (13 August) ARE THE PATTERN REMIX. Every card's pattern was redrawn so
    it depicts its own patisserie - colour reads as appearance, not flavour - and
-   25 of the 50 subjects changed. v8 is the live one, resampled from
+   25 of the 50 subjects changed. v8 was the live one, resampled from
    Reward-Cards-v12a.png; v7 came from the earlier Reward-Cards-v12.png and is
    superseded twice over - card 17 was a duplicate of card 48, and a laurel
    wreath had been left printed under the VP. THAT WREATH IS WHY THE SOURCE IS
@@ -1916,7 +1924,7 @@ a .ft-icon {
   position: relative;
   height: var(--card-height);
   aspect-ratio: 0.72155;
-  background-image: url('images/reward-cards-v8.webp?v=8');
+  background-image: url('images/reward-cards-v9.webp?v=9');
   background-repeat: no-repeat;
   background-size: 1000% 700%;
   background-position: calc(var(--sprite-col) / 9 * 100%)
@@ -3102,6 +3110,63 @@ a .ft-icon {
   border-radius: 5px;
   background: linear-gradient(90deg, var(--color-accent) 0%, #D89A78 100%);
   transition: width 0.3s ease;
+}
+
+/* ---- The SECOND gauge: the fullest cake stand (17 August) ------------------
+   End condition 3 shipped on 12 August and this panel carried only end condition
+   1. The two readings are the same KIND of fact - how close is somebody to
+   ending the game - so they are the same object twice rather than two designs,
+   and the second one inherits .ft-claim-meter__track and __bar untouched.
+
+   THE FILL IS THE ONLY THING THAT DIFFERS, and it differs because the two bars
+   are stacked 30px apart and a player has to be able to tell at a glance which
+   one moved. The board bar runs terracotta; this one runs the cake stand's own
+   gold, which is the ink the stand and its plates are already drawn in
+   everywhere else on the screen. Same geometry, same easing, same height. */
+.ft-claim-meter__bar--stand {
+  background: linear-gradient(90deg, #C9A227 0%, #E3C878 100%);
+}
+
+/* The second figure's head needs the gap the first one gets from the section's
+   own top padding. 10px is the panel's internal rhythm - the same step the
+   caption above it sits on - so the pair reads as two rows of one panel rather
+   than as a panel and an afterthought. */
+.ft-section__head--second {
+  margin-top: 10px;
+}
+
+/* THE FINAL-ROUND LINE (17 August). A third note on the ending panel, and the
+   only one of the three that is an EVENT rather than a standing reading - it is
+   absent for the whole game and then appears for one lap. So it is the one that
+   is allowed to be loud: primary ink, and the panel's own accent as a left rule,
+   which is the same device the tea gauge uses when the pot is due.
+
+   It is NOT a colour-only signal. The line opens with the words "Final round." in
+   bold, and the sentence names who armed the ending and whose last turn this is,
+   so nothing about it depends on seeing the rule at the side. */
+.ft-section__note--final {
+  margin-top: 10px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--color-accent);
+  border-radius: 0 4px 4px 0;
+  background-color: rgba(201, 162, 39, 0.10);
+  color: var(--color-text-primary);
+}
+
+/* ---- The start player marker (17 August) -----------------------------------
+   The teapot beside the seat that went first. It sits in the seat header next to
+   the human/bot marker and is sized to match it, so the header carries two small
+   facts about the seat in one row rather than growing a second.
+
+   NO WIDTH OF ITS OWN AT THE NARROW BANDS: the opponent strip has none to spend
+   (see the seat rule's note in section 8.9), so the marker is inline and the
+   16px image is its whole footprint. */
+.ft-seat__start {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  vertical-align: middle;
+  opacity: 0.85;
 }
 
 /* THE PANTRY GOALS STYLESHEET IS DELETED (4 August), all ~195 lines of it:
@@ -5181,7 +5246,7 @@ select:focus {
 }
 
 /* TAKEN - struck through, dashed, and carrying the name of whoever took it. The
-   name is the point: "the player on my left took the two-lemon one" is what makes
+   name is the point: "the player on my left took the two-citrus one" is what makes
    losing a race feel personal rather than arbitrary, and it is the one thing the
    Freshness panel could never honestly show.
 
@@ -5219,7 +5284,7 @@ select:focus {
 }
 
 /* The ingredient symbols on a player's Tasting Menu score line, showing which
-   menus they took rather than only the total - "she took the two-lemon-two-
+   menus they took rather than only the total - "she took the two-citrus-two-
    chocolate one" is how players actually talk about which cards have gone. */
 .ft-score-breakdown__symbol {
   width: 14px;
@@ -5741,15 +5806,23 @@ select:focus {
   }
 
   /* THE 42px RUNG (plan section 17, amendment 2). L's opponent tile is 40px, and
-     the redrawn almond's two grooves render at 1.91 CSS px there - under the
+     the redrawn nut's two grooves render at 1.91 CSS px there - under the
      2.00px floor, and anything under the floor is DELETED rather than shrunk.
      The solid teardrop is the same drawing with its two grooves filled, derived
      from the same source render rather than redrawn, so the silhouette is
      identical and only the sub-floor detail is gone. It loses nothing that
      carries the ingredient.
      `content` on a replaced element swaps the image without a second code path
-     in board.js and without a second <img> in 25 cells. */
-  .ft-seat--opp .ft-tile__icon[alt="almond"] {
+     in board.js and without a second <img> in 25 cells.
+
+     THE SELECTOR MOVED WITH THE 17 AUGUST RENAME, and this is the one place in
+     the stylesheet that had to. It matched alt="almond" - the raw engine id, back
+     when the id, the label and the file stem were one word. All three are now
+     separate: the id is `nuts`, the alt text is the LABEL a screen reader reads,
+     and the file is still named for what it is a picture OF. So the selector
+     matches the label and the url keeps the old stem, which looks like a
+     mismatch and is not - see src/ui/ingredients.js. */
+  .ft-seat--opp .ft-tile__icon[alt="Nuts"] {
     content: url('images/symbol-almond-solid-v3.png');
   }
 }

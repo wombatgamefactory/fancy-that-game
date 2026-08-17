@@ -32,8 +32,8 @@
 // THE CONSTRUCTION
 //
 //   Lay the five ingredients on a ring. One half joins each ingredient to its
-//   NEIGHBOUR (2 lemon + chocolate); the other half joins each ingredient to the
-//   two OPPOSITE it (caramel + strawberry + almond) - precisely the ones it is
+//   NEIGHBOUR (2 citrus + chocolate); the other half joins each ingredient to the
+//   two OPPOSITE it (caramel + fruit + nuts) - precisely the ones it is
 //   never paired with on the first half's cards. The check below confirms the
 //   side effect that makes this the right choice of the several balanced options:
 //   all ten ingredient pairings appear across the deck, each exactly twice.

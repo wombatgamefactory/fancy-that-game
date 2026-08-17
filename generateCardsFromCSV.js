@@ -4,13 +4,38 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Map CSV ingredient names to internal names
+// CSV `Scoring` column -> the engine's ingredient id.
+//
+// THE RENAME OF 17 AUGUST LIVES HERE, and this map is the seam that let it be
+// done without touching the CSV. The engine's ids are now citrus / fruit / nuts
+// (see INGREDIENTS in src/engine/tiles.js); reward_cards.csv is an EXPORT from
+// Dean's `Fancy That v13.xlsm` and still says Lemon / Strawberry / Almond, which
+// is correct on its own terms - the spreadsheet names the patisserie's scoring
+// family the way the art does, and the art deliberately did not change.
+//
+// SO BOTH SPELLINGS MAP TO THE NEW ID, on purpose. The next export from the
+// spreadsheet will say Lemon again and must keep producing `citrus`; if Dean ever
+// renames the column in the workbook, that must keep producing `citrus` too.
+//
+// AND AN UNKNOWN NAME NOW THROWS rather than falling through to a lowercased
+// copy of whatever the CSV said. That fallback is exactly how a stale id would
+// creep back in silently: a typo, or a sixth family, would have written itself
+// into tiles.js as a family no INGREDIENTS array has ever heard of, and nothing
+// would have said a word. This project already has one monument to two
+// representations drifting apart (tools/check-card-sheet.mjs); it does not need
+// a second.
 const INGREDIENT_MAP = {
-  'Lemon': 'lemon',
+  // The spreadsheet's names, which are the names of the PICTURES.
+  'Lemon': 'citrus',
+  'Strawberry': 'fruit',
+  'Almond': 'nuts',
+  // The engine's names, in case the workbook is ever brought into line.
+  'Citrus': 'citrus',
+  'Fruit': 'fruit',
+  'Nuts': 'nuts',
+  // Unchanged by the rename; both spellings are the same word.
   'Chocolate': 'chocolate',
-  'Caramel': 'caramel',
-  'Strawberry': 'strawberry',
-  'Almond': 'almond'
+  'Caramel': 'caramel'
 };
 
 function parseCSV(filePath) {
@@ -61,7 +86,16 @@ function parseCSV(filePath) {
     // Filter out null/empty and normalize
     const patternCells = pattern.map(p => p === '' || p === null ? null : p);
 
-    const scoringIngredient = row['Scoring']?.toLowerCase() || '';
+    // The scoring family, resolved through INGREDIENT_MAP and never guessed. See
+    // the map for why the old silent lowercase fallback is now a throw.
+    const scoring = (row['Scoring'] || '').trim();
+    const family = INGREDIENT_MAP[scoring];
+    if (!family) {
+      throw new Error(
+        `Card ${cardNum} (${row['Title']}) has an unknown Scoring value "${scoring}" - `
+        + `add it to INGREDIENT_MAP with the engine id it means, or fix the CSV.`,
+      );
+    }
 
     // Victory points: value from the CSV `vp` column — the CSV is authoritative,
     // so per-card VP is fully data-driven and the band is NOT fixed here (it is
@@ -76,7 +110,7 @@ function parseCSV(filePath) {
     cards.push({
       id: cardNum,
       name: row['Title'] || `Card ${cardNum}`,
-      family: INGREDIENT_MAP[row['Scoring']] || scoringIngredient,
+      family,
       pattern: patternCells,
       vp
     });

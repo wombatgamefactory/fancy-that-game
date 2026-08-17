@@ -233,8 +233,8 @@ console.log('');
 // than a shape average. Two things it is measuring that a shape average cannot:
 //
 //   (a) INGREDIENTS ARE NOT CONSUMED, so two dealt cards that overlap can both be
-//       satisfied by a stand that only just covers the union. 2 lemon + 2 chocolate
-//       and 2 lemon + caramel + strawberry need six tiles between them, not eight.
+//       satisfied by a stand that only just covers the union. 2 citrus + 2 chocolate
+//       and 2 citrus + caramel + fruit need six tiles between them, not eight.
 //       If that happens often, the dose is double what one card's value suggests.
 //
 //   (b) A goal is taken by ONE player. Qualifying is not the same as scoring, so

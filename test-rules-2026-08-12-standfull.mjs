@@ -47,7 +47,7 @@ const tile = (ingredient, colour = 'pink') => ({ colour, ingredient });
 // The four ingredients a full stand needs, one per row. There are five in the
 // game and a stand has four rows, so one ingredient is always left out - which is
 // itself part of why this ending is rare.
-const ROW_INGREDIENTS = ['lemon', 'chocolate', 'caramel', 'strawberry'];
+const ROW_INGREDIENTS = ['citrus', 'chocolate', 'caramel', 'fruit'];
 
 // Fill `count` rows of a player's stand to capacity, one ingredient per row,
 // obeying the one-row-per-ingredient rule. Writes the rows directly rather than
@@ -105,7 +105,7 @@ console.log('\n=== A full stand can only reach the crumb tray ===');
   const s = refillState();
   const p = s.players[0];
   fillStand(p, 4);
-  for (const ingredient of [...ROW_INGREDIENTS, 'almond']) {
+  for (const ingredient of [...ROW_INGREDIENTS, 'nuts']) {
     const dests = getLegalDestinations(p, tile(ingredient));
     check(`${ingredient}: the tray and nothing else`,
       dests.length === 1 && dests[0].type === 'crumb',
